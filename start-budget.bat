@@ -1,4 +1,4 @@
 @echo off
-cd /d "d:\Vibe Coding\Loot Council\loot-council"
+cd /d "%~dp0"
 start http://localhost:3000
 npm run start
