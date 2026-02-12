@@ -1,0 +1,362 @@
+// Loot Council - Prisma Schema
+// SQLite database for local-first budgeting
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================================
+// ACCOUNTS (Your Gold Pouches)
+// ==========================================
+model Account {
+  id                String        @id @default(cuid())
+  name              String
+  type              String        // checking, savings, credit, investment
+  onBudget          Boolean       @default(true)
+  balance           Int           @default(0) // Stored in cents
+  clearedBalance    Int           @default(0)
+  closed            Boolean       @default(false)
+  lastReconciled    DateTime?
+  linkedAccountId   String?       // For credit cards: link to payment account
+  ynabId            String?       @unique // Original YNAB account ID for delta sync
+  linkedAccount     Account?      @relation("CreditCardPayment", fields: [linkedAccountId], references: [id])
+  linkedCards       Account[]     @relation("CreditCardPayment")
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  transactions      Transaction[]
+}
+
+// ==========================================
+// CATEGORY GROUPS (Guilds)
+// ==========================================
+model CategoryGroup {
+  id         String     @id @default(cuid())
+  name       String
+  sortOrder  Int        @default(0)
+  isHidden   Boolean    @default(false)
+  ynabId     String?    @unique // Original YNAB group ID for delta sync
+  categories Category[]
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+}
+
+// ==========================================
+// CATEGORIES (Quests within Guilds)
+// ==========================================
+model Category {
+  id           String         @id @default(cuid())
+  name         String
+  groupId      String
+  group        CategoryGroup  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  goalType     String?        // TB, TBD, MF, NEED, DEBT
+  goalTarget   Int?           // Target amount in cents
+  goalDueDate  DateTime?
+  sortOrder    Int            @default(0)
+  isHidden     Boolean        @default(false)
+  ynabId       String?        @unique // Original YNAB category ID for delta sync
+  rolloverType String         @default("available") // available, none, cap
+  rolloverCap  Int?           // Max rollover amount (cents) if type = cap
+  
+  // Goal progress fields (from YNAB monthly data)
+  goalPercentageComplete Int?   // 0-100 progress percentage
+  goalUnderFunded        Int?   // Amount still needed this month (cents)
+  goalOverallFunded      Int?   // Total funded toward goal (cents)
+  goalOverallLeft        Int?   // Total remaining for goal (cents)
+  goalCadence            Int?   // 1=weekly, 2=every other week, 3=twice a month, etc
+  goalCadenceFrequency   Int?   // Every N periods
+  goalDay                Int?   // Day of month for certain goals
+  
+  transactions    Transaction[]
+  subTransactions SubTransaction[]
+  monthlyData     MonthlyBudget[]
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+}
+
+// ==========================================
+// MONTHLY BUDGET (Monthly Allocations)
+// ==========================================
+model MonthlyBudget {
+  id         String   @id @default(cuid())
+  month      String   // Format: "2024-01"
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  assigned   Int      @default(0) // Money assigned this month (cents)
+  activity   Int      @default(0) // Spending this month (cents)
+  available  Int      @default(0) // Rollover + Assigned - Activity (cents)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([month, categoryId])
+}
+
+// ==========================================
+// TRANSACTIONS (The Ledger)
+// ==========================================
+model Transaction {
+  id              String           @id @default(cuid())
+  date            DateTime
+  amount          Int              // Positive = inflow, Negative = outflow (cents)
+  payee           String?
+  memo            String?
+  accountId       String
+  account         Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  categoryId      String?
+  category        Category?        @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  cleared         Boolean          @default(false)
+  approved        Boolean          @default(true)
+  isReconciled    Boolean          @default(false)
+  isSplit         Boolean          @default(false) // True if this has subtransactions
+  transferId      String?          // Links two transactions for transfers
+  ynabId          String?          @unique // Original YNAB transaction ID for delta sync
+  subTransactions SubTransaction[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+}
+
+// ==========================================
+// SUB-TRANSACTIONS (Split across categories)
+// ==========================================
+model SubTransaction {
+  id            String      @id @default(cuid())
+  transactionId String
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  categoryId    String?
+  category      Category?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  amount        Int         // Amount for this split (cents)
+  memo          String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
+
+// ==========================================
+// PAYEES (Merchants / NPCs)
+// ==========================================
+model Payee {
+  id                String   @id @default(cuid())
+  name              String   @unique
+  ynabId            String?  @unique // Original YNAB payee ID
+  transferAccountId String?  // For transfer payees, links to Account
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+// ==========================================
+// TRANSFERS (Linked account movements)
+// ==========================================
+model Transfer {
+  id                    String   @id @default(cuid())
+  amount                Int      // Amount in cents (positive)
+  date                  DateTime
+  memo                  String?
+  sourceAccountId       String   // Where money comes from
+  destinationAccountId  String   // Where money goes
+  sourceTransactionId   String?  // The outflow transaction
+  destTransactionId     String?  // The inflow transaction
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+// ==========================================
+// ASSETS (The Treasury - Investments)
+// ==========================================
+model Asset {
+  id           String   @id @default(cuid())
+  symbol       String   // Ticker symbol (e.g., AAPL, BTC) or custom identifier
+  name         String   // Full name (e.g., Apple Inc.)
+  assetClass   String   // stock, etf, crypto, property, super, cash, other
+  currency     String   @default("AUD") // Currency the asset is priced in
+  quantity     Float    @default(1)     // For manual assets, typically 1
+  costBasis    Int      @default(0)     // Total cost in cents
+  currentPrice Int      @default(0)     // Current price per unit in cents (or total value for manual)
+  isManual     Boolean  @default(false) // Manual assets don't auto-fetch prices
+  
+  // Dividend/Yield tracking
+  annualDividend   Int      @default(0) // Estimated annual dividend in cents
+  dividendYield    Float    @default(0) // Dividend yield as decimal (0.04 = 4%)
+  
+  // Staking (for crypto)
+  stakingYield     Float    @default(0) // Staking yield as decimal
+  
+  lots             AssetLot[]  // Individual purchase lots for CGT
+  lastUpdated      DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+// ==========================================
+// ASSET LOTS (Purchase History for CGT)
+// ==========================================
+model AssetLot {
+  id            String    @id @default(cuid())
+  assetId       String
+  asset         Asset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  purchaseDate  DateTime  // Date of purchase
+  units         Float     // Number of units purchased
+  unitPrice     Int       // Price per unit at purchase (cents)
+  totalCost     Int       // Total cost including fees (cents)
+  brokerage     Int       @default(0) // Brokerage/fees (cents)
+  soldUnits     Float     @default(0) // Units sold from this lot
+  soldDate      DateTime? // Date sold (if fully/partially sold)
+  salePrice     Int?      // Sale price per unit (cents)
+  saleTotal     Int?      // Total sale amount (cents)
+  capitalGain   Int?      // Realized capital gain (cents)
+  cgtDiscount   Boolean   @default(false) // True if held > 12 months (50% discount)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+// ==========================================
+// ALLOCATION TARGETS (Portfolio Rebalancing)
+// ==========================================
+model AllocationTarget {
+  id           String   @id @default(cuid())
+  assetClass   String   @unique // etf, stock, crypto, cash, super, property, other
+  targetPct    Float    // Target allocation as decimal (0.30 = 30%)
+  priority     Int      @default(0) // Higher = invest first when rebalancing
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// ==========================================
+// FIRE SETTINGS (Financial Independence)
+// ==========================================
+model FireSettings {
+  id                      String   @id @default("default")
+  yearOfBirth             Int      @default(1990)
+  retirementAge           Int      @default(60) // Traditional retirement age
+  preservationAge         Int      @default(60) // Super preservation age (Aus)
+  
+  // FIRE calculations
+  annualExpenses          Int      @default(0) // Expected yearly expenses (cents)
+  withdrawalRate          Float    @default(0.04) // 4% safe withdrawal rate
+  inflationRate           Float    @default(0.025) // 2.5% inflation
+  expectedReturn          Float    @default(0.07) // 7% expected investment return
+  
+  // Super contributions
+  annualSuperContrib      Int      @default(0) // Annual super contributions (cents)
+  employerContribRate     Float    @default(0.115) // 11.5% employer super rate
+  
+  // Targets
+  fireNumber              Int      @default(0) // Target net worth for FIRE (cents)
+  coastFireNumber         Int      @default(0) // Coast FIRE number (cents)
+  
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+}
+
+// ==========================================
+// EXCHANGE RATES (Currency conversion)
+// ==========================================
+model ExchangeRate {
+  id           String   @id @default(cuid())
+  fromCurrency String   // e.g., "USD"
+  toCurrency   String   // e.g., "AUD"
+  rate         Float    // 1 USD = X AUD
+  lastUpdated  DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([fromCurrency, toCurrency])
+}
+
+// ==========================================
+// SETTINGS
+// ==========================================
+model Settings {
+  id                    String   @id @default("default")
+  budgetName            String   @default("My Realm")
+  currency              String   @default("AUD")
+  dateFormat            String   @default("DD/MM/YYYY")
+  startOfWeek           Int      @default(1) // 0 = Sunday, 1 = Monday
+  theme                 String   @default("dungeon")
+  toBeBudgeted          Int      @default(0) // Ready to Assign from YNAB (cents)
+  lastYnabSync          DateTime?
+  ynabBudgetId          String?  // YNAB budget ID for delta sync
+  ynabServerKnowledge   Int      @default(0) // YNAB server_knowledge cursor for delta sync
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+// ==========================================
+// API INTEGRATIONS (Secure API keys)
+// ==========================================
+model ApiIntegration {
+  id          String   @id @default(cuid())
+  provider    String   @unique // binance, coinbase, etc.
+  apiKey      String   // Stored encrypted
+  apiSecret   String   // Stored encrypted
+  enabled     Boolean  @default(true)
+  lastSynced  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ==========================================
+// SCHEDULED TRANSACTIONS (Recurring Bills)
+// ==========================================
+model ScheduledTransaction {
+  id           String    @id @default(cuid())
+  name         String    // "Netflix", "Rent", etc.
+  amount       Int       // In cents (negative for expenses)
+  payee        String?
+  memo         String?
+  accountId    String    // Which account to use
+  categoryId   String?   // Budget category
+  frequency    String    // daily, weekly, biweekly, monthly, yearly
+  nextDueDate  DateTime  // When it's next due
+  dayOfMonth   Int?      // For monthly: which day (1-31)
+  dayOfWeek    Int?      // For weekly: which day (0-6, 0=Sunday)
+  endDate      DateTime? // Optional end date
+  autoCreate   Boolean   @default(false) // Auto-create when due
+  reminderDays Int       @default(3)     // Days before to remind
+  lastCreated  DateTime? // Last time a transaction was created
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+// ==========================================
+// TRANSACTION RULES (Auto-categorization)
+// ==========================================
+model TransactionRule {
+  id           String   @id @default(cuid())
+  name         String   // Rule name for display
+  matchField   String   // payee, memo, amount
+  matchType    String   // contains, equals, startsWith, endsWith, regex
+  matchValue   String   // The value to match against
+  categoryId   String?  // Category to assign
+  payeeRename  String?  // Optional: rename the payee
+  memoTemplate String?  // Optional: set memo
+  priority     Int      @default(0) // Higher = checked first
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// ==========================================
+// BUDGET TEMPLATES (Saved monthly allocations)
+// ==========================================
+model BudgetTemplate {
+  id          String               @id @default(cuid())
+  name        String               // "Regular Month", "Christmas", etc.
+  description String?
+  items       BudgetTemplateItem[]
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+}
+
+model BudgetTemplateItem {
+  id         String         @id @default(cuid())
+  templateId String
+  template   BudgetTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  categoryId String         // Which category
+  amount     Int            // Amount to assign (cents)
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+}
