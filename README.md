@@ -70,8 +70,10 @@ Most budgeting apps want your data in their cloud and a monthly subscription fee
 - "Ready to Assign" — give every dollar a job
 - Split transactions across categories
 - Transfer tracking between accounts
+- **Budget transfers** between categories
 - Reconciliation mode (cleared/reconciled)
 - Age of Money metric
+- **Budget flow bar** — income → assigned → available
 
 </td>
 <td width="50%" valign="top">
@@ -138,9 +140,9 @@ Most budgeting apps want your data in their cloud and a monthly subscription fee
 
 ### 🤖 AI Features <sup>optional</sup>
 - Chat-based financial advisor
-- Auto-categorize transactions
 - AI-generated spending insights
 - Budget optimization suggestions
+- **Data consent** — explicit opt-in before sharing data
 
 </td>
 <td width="50%" valign="top">
@@ -151,6 +153,7 @@ Most budgeting apps want your data in their cloud and a monthly subscription fee
 - Full JSON backup & restore
 - Payee management (merge/rename)
 - Bulk transaction editing
+- **Multi-profile** — independent budgets per profile
 
 </td>
 </tr>
@@ -205,7 +208,7 @@ Most budgeting apps want your data in their cloud and a monthly subscription fee
 | AI | OpenAI API | 6.17.0 | Financial advisor & insights |
 | Stock Data | yahoo-finance2 | 3.13.0 | Stock prices & symbol lookup |
 | Crypto Data | CoinGecko API | — | Cryptocurrency prices |
-| Exchange Rates | exchangerate-api.com | — | Currency conversion (1hr cache) |
+| Exchange Rates | exchangerate-api.com | — | Currency conversion |
 | Crypto Sync | Binance API | — | Direct wallet sync |
 | Spreadsheets | xlsx + jszip | 0.18.5 | YNAB import parsing |
 | Drag & Drop | dnd-kit | 6.3.1 | Category reordering |
@@ -269,32 +272,33 @@ BINANCE_API_SECRET="..."
 ```
 loot-council/
 ├── prisma/
-│   ├── schema.prisma         # Database schema (17 models)
+│   ├── schema.prisma         # Database schema (18 models)
 │   └── migrations/           # Database migrations
 ├── src/
 │   ├── app/
-│   │   ├── api/              # 46 API routes across 26 domains
+│   │   ├── api/              # 46 API routes across 28 domains
 │   │   │   ├── accounts/     # Account CRUD
-│   │   │   ├── ai/           # AI features (chat, categorize, insights, optimize)
-│   │   │   ├── budget/       # Budget operations (auto-assign, copy, quick-actions)
+│   │   │   ├── ai/           # AI features (chat, insights, optimize)
+│   │   │   ├── budget/       # Budget operations (auto-assign, copy, transfer, quick-actions)
 │   │   │   ├── categories/   # Category management
 │   │   │   ├── transactions/ # Transaction CRUD (bulk, splits, transfers)
 │   │   │   ├── investments/  # Portfolio (holdings, lots, prices, allocations)
+│   │   │   ├── profiles/     # Multi-profile management
 │   │   │   ├── fire/         # FIRE calculator
 │   │   │   ├── binance/      # Binance wallet sync
 │   │   │   ├── import/       # Data import (YNAB, CSV, backup)
 │   │   │   ├── export/       # JSON backup export
-│   │   │   └── ...           # + 16 more domains
+│   │   │   └── ...           # + 17 more domains
 │   │   ├── budget/           # Budget page
 │   │   ├── transactions/     # Transactions page
 │   │   ├── accounts/         # Accounts page
 │   │   ├── reports/          # Reports page
 │   │   ├── investments/      # Portfolio page
 │   │   ├── fire/             # FIRE calculator page
-│   │   ├── settings/         # Settings page
-│   │   └── wizard/           # AI assistant page
+│   │   ├── settings/         # Settings page (with profiles)
+│   │   └── assistant/        # AI assistant page
 │   ├── components/           # 26 React components
-│   ├── lib/                  # Utilities, hooks & helpers
+│   ├── lib/                  # Utilities, hooks & helpers (7 files)
 │   └── generated/            # Prisma client (auto-generated)
 └── public/                   # Static assets
 ```
@@ -303,15 +307,14 @@ loot-council/
 
 ## 🎨 Themes
 
-Five handcrafted dark color themes to match your style:
+Five handcrafted dark color themes plus a clean professional option:
 
 <table>
 <tr>
 <td align="center">
 <img src="https://via.placeholder.com/80/D4A017/D4A017?text=+" alt="Dungeon" /><br/>
 <b>🌑 Dungeon</b><br/>
-<sub>Dark + Gold Accents</sub><br/>
-<sup>(Default)</sup>
+<sub>Dark + Gold Accents</sub>
 </td>
 <td align="center">
 <img src="https://via.placeholder.com/80/7cb342/7cb342?text=+" alt="Forest" /><br/>
@@ -333,6 +336,11 @@ Five handcrafted dark color themes to match your style:
 <b>👑 Royal</b><br/>
 <sub>Rich Purples</sub>
 </td>
+<td align="center">
+<img src="https://via.placeholder.com/80/1a73e8/1a73e8?text=+" alt="Finance" /><br/>
+<b>💼 Finance</b><br/>
+<sub>Clean Professional</sub>
+</td>
 </tr>
 </table>
 
@@ -349,14 +357,20 @@ Five handcrafted dark color themes to match your style:
 | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> | Redo action |
 | <kbd>Ctrl</kbd>+<kbd>A</kbd> | Select all transactions |
 | <kbd>Delete</kbd> | Delete selected |
+| <kbd>N</kbd> | New transaction (global) |
 
 ---
 
 ## 📊 Database Schema
 
 <details>
-<summary><b>17 Prisma models across 7 domains</b></summary>
+<summary><b>18 Prisma models across 8 domains</b></summary>
 <br/>
+
+**Profiles**
+| Model | Description |
+|-------|-------------|
+| `Profile` | User profiles — each with independent data isolation |
 
 **Core Budgeting**
 | Model | Description |
@@ -384,12 +398,14 @@ Five handcrafted dark color themes to match your style:
 **Configuration**
 | Model | Description |
 |-------|-------------|
-| `Settings` | App config — theme, currency, date format |
+| `Settings` | App config — theme, currency, date format (per profile) |
 | `FireSettings` | FIRE preferences — withdrawal rate, super, inflation |
-| `ExchangeRate` | Cached currency rates (1hr TTL) |
+| `ExchangeRate` | Cached currency rates |
 | `BudgetTemplate` | Saved budget configurations |
 | `BudgetTemplateItem` | Template line items |
 | `Payee` | Payee management |
+| `Transfer` | Linked account-to-account movements |
+| `ApiIntegration` | Stored API credentials (Binance, etc.) |
 
 </details>
 
@@ -398,7 +414,7 @@ Five handcrafted dark color themes to match your style:
 ## 🔧 Development
 
 ```bash
-# Start dev server (Turbopack)
+# Start dev server (Turbopack, bound to 127.0.0.1)
 npm run dev
 
 # Build for production
