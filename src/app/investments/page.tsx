@@ -7,6 +7,7 @@ import {
     Trash2, X, AlertCircle, ArrowUpRight, ArrowDownRight, Edit
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
+import { useSettings } from '@/components/SettingsProvider';
 import {
     ResponsiveContainer,
     AreaChart,
@@ -103,8 +104,8 @@ const ASSET_CLASSES = [
     { value: 'other', label: 'Other', color: '#94a3b8' },
 ];
 
-function formatCurrencyAUD(cents: number): string {
-    return formatCurrency(cents, 'AUD', {
+function formatCurrencyShort(cents: number, currency = 'AUD'): string {
+    return formatCurrency(cents, currency, {
         minimumFractionDigits: 0,
         maximumFractionDigits: 0,
     });
@@ -119,6 +120,9 @@ function getAssetClassColor(assetClass: string): string {
 }
 
 export default function InvestmentsPage() {
+    const { settings } = useSettings();
+    const currency = settings?.currency || 'AUD';
+    const fmt = useCallback((cents: number) => formatCurrencyShort(cents, currency), [currency]);
     const [data, setData] = useState<InvestmentData | null>(null);
     const [allocations, setAllocations] = useState<AllocationData | null>(null);
     const [netWorthData, setNetWorthData] = useState<NetWorthData | null>(null);
@@ -126,6 +130,7 @@ export default function InvestmentsPage() {
     const [refreshing, setRefreshing] = useState(false);
     const [showAddModal, setShowAddModal] = useState(false);
     const [editingManualAsset, setEditingManualAsset] = useState<Asset | null>(null);
+    const [addingLotAsset, setAddingLotAsset] = useState<Asset | null>(null);
     const [showAllocationSettings, setShowAllocationSettings] = useState(false);
     const [expandedAsset, setExpandedAsset] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<'overview' | 'portfolio' | 'allocation' | 'cgt'>('overview');
@@ -324,21 +329,21 @@ export default function InvestmentsPage() {
                         Net Worth {excludeSuperFromNetWorth && '(ex. Super)'} (AUD)
                     </p>
                     <p className="text-2xl font-bold text-gold">
-                        {formatCurrencyAUD(excludeSuperFromNetWorth ? currentNetWorth - superValue : currentNetWorth)}
+                        {fmt(excludeSuperFromNetWorth ? currentNetWorth - superValue : currentNetWorth)}
                     </p>
                     {netWorthData && (
                         <p className="text-xs text-neutral mt-1">
-                            Cash: {formatCurrencyAUD(netWorthData.accountBalance)} + 
-                            Investments: {formatCurrencyAUD(investmentsExSuper)}
-                            {superValue > 0 && !excludeSuperFromNetWorth && <> + Super: {formatCurrencyAUD(superValue)}</>}
-                            {superValue > 0 && excludeSuperFromNetWorth && <span className="text-neutral/50"> (Super: {formatCurrencyAUD(superValue)} excluded)</span>}
+                            Cash: {fmt(netWorthData.accountBalance)} + 
+                            Investments: {fmt(investmentsExSuper)}
+                            {superValue > 0 && !excludeSuperFromNetWorth && <> + Super: {fmt(superValue)}</>}
+                            {superValue > 0 && excludeSuperFromNetWorth && <span className="text-neutral/50"> (Super: {fmt(superValue)} excluded)</span>}
                         </p>
                     )}
                 </div>
                 <div className="card">
                     <p className="text-sm text-neutral mb-1">Investments (AUD)</p>
-                    <p className="text-2xl font-bold text-foreground">{formatCurrencyAUD(netWorthData?.assetValue || 0)}</p>
-                    <p className="text-xs text-neutral mt-1">Cost: {formatCurrencyAUD(summary.totalCostBasis)}</p>
+                    <p className="text-2xl font-bold text-foreground">{fmt(netWorthData?.assetValue || 0)}</p>
+                    <p className="text-xs text-neutral mt-1">Cost: {fmt(summary.totalCostBasis)}</p>
                 </div>
                 <div className="card">
                     <p className="text-sm text-neutral mb-1">Investment Return (AUD)</p>
@@ -349,7 +354,7 @@ export default function InvestmentsPage() {
                             <ArrowDownRight className="w-5 h-5 text-danger" />
                         )}
                         <p className={`text-2xl font-bold ${isPositive ? 'text-positive' : 'text-danger'}`}>
-                            {formatCurrencyAUD(tradeableReturn)}
+                            {fmt(tradeableReturn)}
                         </p>
                     </div>
                     <p className={`text-xs mt-1 ${isPositive ? 'text-positive' : 'text-danger'}`}>
@@ -358,8 +363,8 @@ export default function InvestmentsPage() {
                 </div>
                 <div className="card">
                     <p className="text-sm text-neutral mb-1">Annual Dividends</p>
-                    <p className="text-2xl font-bold text-info">{formatCurrencyAUD(summary.totalDividends)}</p>
-                    <p className="text-xs text-neutral mt-1">{formatCurrencyAUD(summary.totalDividends / 12)}/month</p>
+                    <p className="text-2xl font-bold text-info">{fmt(summary.totalDividends)}</p>
+                    <p className="text-xs text-neutral mt-1">{fmt(summary.totalDividends / 12)}/month</p>
                 </div>
             </div>
 
@@ -371,7 +376,7 @@ export default function InvestmentsPage() {
                         <div>
                             <p className="text-sm text-neutral">Next Investment Recommendation</p>
                             <p className="text-lg font-semibold text-foreground">
-                                Invest <span className="text-gold">{formatCurrencyAUD(allocations.investNextAmount)}</span> in{' '}
+                                Invest <span className="text-gold">{fmt(allocations.investNextAmount)}</span> in{' '}
                                 <span className="text-gold capitalize">{allocations.investNext}</span> to reach target allocation
                             </p>
                         </div>
@@ -435,7 +440,7 @@ export default function InvestmentsPage() {
                                                 borderRadius: '8px',
                                             }}
                                             labelStyle={{ color: '#e8e6e3' }}
-                                            formatter={(value) => typeof value === 'number' ? [formatCurrencyAUD(value * 100), 'Net Worth'] : ''}
+                                            formatter={(value) => typeof value === 'number' ? [fmt(value * 100), 'Net Worth'] : ''}
                                         />
                                         <Area
                                             type="monotone"
@@ -493,6 +498,8 @@ export default function InvestmentsPage() {
                     setShowAddModal={setShowAddModal}
                     hideZeroBalances={hideZeroBalances}
                     onUpdateManualAsset={setEditingManualAsset}
+                    onAddLot={setAddingLotAsset}
+                    formatMoney={fmt}
                 />
             )}
 
@@ -503,16 +510,26 @@ export default function InvestmentsPage() {
                     onUpdate={fetchData}
                     showSettings={showAllocationSettings}
                     setShowSettings={setShowAllocationSettings}
+                    formatMoney={fmt}
                 />
             )}
 
             {/* CGT Tab */}
-            {activeTab === 'cgt' && <CapitalGainsView assets={data?.assets || []} />}
+            {activeTab === 'cgt' && <CapitalGainsView assets={data?.assets || []} formatMoney={fmt} />}
 
             {/* Add Asset Modal */}
             {showAddModal && (
                 <AddAssetModal
                     onClose={() => setShowAddModal(false)}
+                    onAdded={fetchData}
+                />
+            )}
+
+            {/* Add Lot Modal */}
+            {addingLotAsset && (
+                <AddLotModal
+                    asset={addingLotAsset}
+                    onClose={() => setAddingLotAsset(null)}
                     onAdded={fetchData}
                 />
             )}
@@ -537,6 +554,8 @@ function PortfolioView({
     setShowAddModal,
     hideZeroBalances,
     onUpdateManualAsset,
+    onAddLot,
+    formatMoney,
 }: {
     data: InvestmentData | null;
     expandedAsset: string | null;
@@ -545,6 +564,8 @@ function PortfolioView({
     setShowAddModal: (v: boolean) => void;
     hideZeroBalances: boolean;
     onUpdateManualAsset: (asset: Asset) => void;
+    onAddLot: (asset: Asset) => void;
+    formatMoney: (cents: number) => string;
 }) {
     async function handleDelete(assetId: string, symbol: string) {
         if (!confirm(`Delete ${symbol}?`)) return;
@@ -585,9 +606,9 @@ function PortfolioView({
                                 <span className="text-sm text-neutral">({classAssets.length} assets)</span>
                             </div>
                             <div className="text-right">
-                                <p className="text-lg font-bold text-foreground">{formatCurrencyAUD(classTotal)}</p>
+                                <p className="text-lg font-bold text-foreground">{formatMoney(classTotal)}</p>
                                 <p className={`text-sm ${classReturn >= 0 ? 'text-positive' : 'text-danger'}`}>
-                                    {classReturn >= 0 ? '+' : ''}{formatCurrencyAUD(classReturn)} ({formatPercent(classReturnPct)})
+                                    {classReturn >= 0 ? '+' : ''}{formatMoney(classReturn)} ({formatPercent(classReturnPct)})
                                 </p>
                             </div>
                         </div>
@@ -678,49 +699,63 @@ function PortfolioView({
                                     </div>
 
                                     {/* Expanded Lot Details */}
-                                    {expandedAsset === asset.id && asset.lots.length > 0 && (
+                                    {expandedAsset === asset.id && !asset.isManual && (
                                         <div className="ml-8 mt-2 space-y-1">
-                                            <div className="text-xs text-neutral font-medium py-1 grid grid-cols-7 gap-2">
-                                                <span>Date</span>
-                                                <span className="text-right">Units</span>
-                                                <span className="text-right">Cost/Unit</span>
-                                                <span className="text-right">Total Cost</span>
-                                                <span className="text-right">Current</span>
-                                                <span className="text-right">Gain</span>
-                                                <span className="text-right">CGT</span>
-                                            </div>
-                                            {asset.lots.map((lot: AssetLot) => (
-                                                <div
-                                                    key={lot.id}
-                                                    className="text-sm grid grid-cols-7 gap-2 py-2 border-t border-border/50"
-                                                >
-                                                    <span className="text-foreground">
-                                                        {new Date(lot.purchaseDate).toLocaleDateString('en-AU')}
-                                                    </span>
-                                                    <span className="text-right text-foreground">
-                                                        {(lot.remainingUnits ?? 0).toFixed(4)}
-                                                    </span>
-                                                    <span className="text-right text-foreground">
-                                                        {formatCurrency(lot.unitPrice, asset.currency, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                                                    </span>
-                                                    <span className="text-right text-foreground">
-                                                        {formatCurrency(lot.totalCost, asset.currency, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                                                    </span>
-                                                    <span className="text-right text-foreground">
-                                                        {formatCurrency(lot.currentValue, asset.currency, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                                                    </span>
-                                                    <span className={`text-right ${lot.unrealizedGain >= 0 ? 'text-positive' : 'text-danger'}`}>
-                                                        {lot.unrealizedGain >= 0 ? '+' : '-'}{formatCurrency(lot.unrealizedGain, asset.currency, { minimumFractionDigits: 0, maximumFractionDigits: 0, useAbsolute: true })}
-                                                    </span>
-                                                    <span className="text-right">
-                                                        {lot.isEligibleForDiscount ? (
-                                                            <span className="text-positive text-xs">50% discount</span>
-                                                        ) : (
-                                                            <span className="text-neutral text-xs">{lot.holdingDays}d</span>
-                                                        )}
-                                                    </span>
-                                                </div>
-                                            ))}
+                                            {asset.lots.length > 0 && (
+                                                <>
+                                                    <div className="text-xs text-neutral font-medium py-1 grid grid-cols-7 gap-2">
+                                                        <span>Date</span>
+                                                        <span className="text-right">Units</span>
+                                                        <span className="text-right">Cost/Unit</span>
+                                                        <span className="text-right">Total Cost</span>
+                                                        <span className="text-right">Current</span>
+                                                        <span className="text-right">Gain</span>
+                                                        <span className="text-right">CGT</span>
+                                                    </div>
+                                                    {asset.lots.map((lot: AssetLot) => (
+                                                        <div
+                                                            key={lot.id}
+                                                            className="text-sm grid grid-cols-7 gap-2 py-2 border-t border-border/50"
+                                                        >
+                                                            <span className="text-foreground">
+                                                                {new Date(lot.purchaseDate).toLocaleDateString('en-AU')}
+                                                            </span>
+                                                            <span className="text-right text-foreground">
+                                                                {(lot.remainingUnits ?? 0).toFixed(4)}
+                                                            </span>
+                                                            <span className="text-right text-foreground">
+                                                                {formatCurrency(lot.unitPrice, asset.currency, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                                            </span>
+                                                            <span className="text-right text-foreground">
+                                                                {formatCurrency(lot.totalCost, asset.currency, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                                            </span>
+                                                            <span className="text-right text-foreground">
+                                                                {formatCurrency(lot.currentValue, asset.currency, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                                            </span>
+                                                            <span className={`text-right ${lot.unrealizedGain >= 0 ? 'text-positive' : 'text-danger'}`}>
+                                                                {lot.unrealizedGain >= 0 ? '+' : '-'}{formatCurrency(lot.unrealizedGain, asset.currency, { minimumFractionDigits: 0, maximumFractionDigits: 0, useAbsolute: true })}
+                                                            </span>
+                                                            <span className="text-right">
+                                                                {lot.isEligibleForDiscount ? (
+                                                                    <span className="text-positive text-xs">50% discount</span>
+                                                                ) : (
+                                                                    <span className="text-neutral text-xs">{lot.holdingDays}d</span>
+                                                                )}
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </>
+                                            )}
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    onAddLot(asset);
+                                                }}
+                                                className="flex items-center gap-1 text-xs text-gold hover:text-gold/80 mt-2 py-1"
+                                            >
+                                                <Plus className="w-3 h-3" />
+                                                Add Purchase Lot
+                                            </button>
                                         </div>
                                     )}
                                 </div>
@@ -750,11 +785,13 @@ function AllocationView({
     onUpdate,
     showSettings,
     setShowSettings,
+    formatMoney,
 }: {
     allocations: AllocationData;
     onUpdate: () => void;
     showSettings: boolean;
     setShowSettings: (v: boolean) => void;
+    formatMoney: (cents: number) => string;
 }) {
     const [targets, setTargets] = useState<Record<string, number>>({});
     const [saving, setSaving] = useState(false);
@@ -837,7 +874,7 @@ function AllocationView({
                             <div className="absolute inset-0 flex items-center justify-center">
                                 <div className="text-center">
                                     <p className="text-2xl font-bold text-foreground">
-                                        {formatCurrencyAUD(allocations.totalValue)}
+                                        {formatMoney(allocations.totalValue)}
                                     </p>
                                     <p className="text-xs text-neutral">Total</p>
                                 </div>
@@ -956,7 +993,7 @@ function AllocationView({
     );
 }
 
-function CapitalGainsView({ assets }: { assets: Asset[] }) {
+function CapitalGainsView({ assets, formatMoney }: { assets: Asset[]; formatMoney: (cents: number) => string }) {
     const allLots = assets.flatMap(a => 
         a.lots.map(lot => ({
             ...lot,
@@ -990,17 +1027,17 @@ function CapitalGainsView({ assets }: { assets: Asset[] }) {
                 <div className="card">
                     <p className="text-sm text-neutral mb-1">Total Unrealized Gains</p>
                     <p className={`text-2xl font-bold ${totalUnrealizedGain >= 0 ? 'text-positive' : 'text-danger'}`}>
-                        {totalUnrealizedGain >= 0 ? '+' : ''}{formatCurrencyAUD(totalUnrealizedGain)}
+                        {totalUnrealizedGain >= 0 ? '+' : ''}{formatMoney(totalUnrealizedGain)}
                     </p>
                 </div>
                 <div className="card">
                     <p className="text-sm text-neutral mb-1">Eligible for 50% Discount</p>
-                    <p className="text-2xl font-bold text-positive">{formatCurrencyAUD(eligibleGains)}</p>
+                    <p className="text-2xl font-bold text-positive">{formatMoney(eligibleGains)}</p>
                     <p className="text-xs text-neutral">Held &gt; 12 months</p>
                 </div>
                 <div className="card">
                     <p className="text-sm text-neutral mb-1">Taxable (After Discount)</p>
-                    <p className="text-2xl font-bold text-warning">{formatCurrencyAUD(totalUnrealizedGain - taxableAtHalf)}</p>
+                    <p className="text-2xl font-bold text-warning">{formatMoney(totalUnrealizedGain - taxableAtHalf)}</p>
                 </div>
             </div>
 
@@ -1032,10 +1069,10 @@ function CapitalGainsView({ assets }: { assets: Asset[] }) {
                                     </td>
                                     <td className="py-2 px-3 text-right text-foreground">{lot.holdingDays}</td>
                                     <td className="py-2 px-3 text-right text-foreground">{lot.remainingUnits.toFixed(4)}</td>
-                                    <td className="py-2 px-3 text-right text-foreground">{formatCurrencyAUD(lot.totalCost)}</td>
-                                    <td className="py-2 px-3 text-right text-foreground">{formatCurrencyAUD(lot.currentValue)}</td>
+                                    <td className="py-2 px-3 text-right text-foreground">{formatMoney(lot.totalCost)}</td>
+                                    <td className="py-2 px-3 text-right text-foreground">{formatMoney(lot.currentValue)}</td>
                                     <td className={`py-2 px-3 text-right font-medium ${lot.unrealizedGain >= 0 ? 'text-positive' : 'text-danger'}`}>
-                                        {lot.unrealizedGain >= 0 ? '+' : ''}{formatCurrencyAUD(lot.unrealizedGain)}
+                                        {lot.unrealizedGain >= 0 ? '+' : ''}{formatMoney(lot.unrealizedGain)}
                                     </td>
                                     <td className="py-2 px-3 text-right">
                                         {lot.isEligibleForDiscount ? (
@@ -1378,6 +1415,117 @@ function AddAssetModal({ onClose, onAdded }: { onClose: () => void; onAdded: () 
     );
 }
 
+function AddLotModal({ asset, onClose, onAdded }: { asset: Asset; onClose: () => void; onAdded: () => void }) {
+    const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split('T')[0]);
+    const [units, setUnits] = useState('');
+    const [unitPrice, setUnitPrice] = useState('');
+    const [brokerage, setBrokerage] = useState('');
+    const [saving, setSaving] = useState(false);
+
+    async function handleSubmit() {
+        if (!units || !unitPrice) return;
+        setSaving(true);
+        try {
+            await fetch('/api/investments/lots', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    assetId: asset.id,
+                    purchaseDate,
+                    units: parseFloat(units),
+                    unitPrice: parseFloat(unitPrice) * 100,
+                    brokerage: parseFloat(brokerage || '0') * 100,
+                }),
+            });
+            onAdded();
+            onClose();
+        } catch (err) {
+            console.error('Failed to add lot:', err);
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    return (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-background-secondary rounded-xl p-6 w-full max-w-md">
+                <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-semibold text-foreground">
+                        Add Lot — <span className="text-gold">{asset.symbol}</span>
+                    </h2>
+                    <button onClick={onClose} className="text-neutral hover:text-foreground">
+                        <X className="w-5 h-5" />
+                    </button>
+                </div>
+
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-neutral mb-1">Purchase/Vest Date</label>
+                        <input
+                            type="date"
+                            value={purchaseDate}
+                            onChange={(e) => setPurchaseDate(e.target.value)}
+                            className="input w-full"
+                        />
+                        <p className="text-xs text-neutral mt-1">When did you buy/vest? (affects CGT discount eligibility)</p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="block text-sm font-medium text-neutral mb-1">Units</label>
+                            <input
+                                type="number"
+                                step="0.0001"
+                                value={units}
+                                onChange={(e) => setUnits(e.target.value)}
+                                placeholder="2"
+                                className="input w-full"
+                                autoFocus
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-neutral mb-1">Price/Unit ($)</label>
+                            <input
+                                type="number"
+                                step="0.01"
+                                value={unitPrice}
+                                onChange={(e) => setUnitPrice(e.target.value)}
+                                placeholder="400.00"
+                                className="input w-full"
+                            />
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-neutral mb-1">Brokerage ($)</label>
+                        <input
+                            type="number"
+                            step="0.01"
+                            value={brokerage}
+                            onChange={(e) => setBrokerage(e.target.value)}
+                            placeholder="0.00"
+                            className="input w-full"
+                        />
+                    </div>
+
+                    <div className="flex gap-3">
+                        <button onClick={onClose} className="btn btn-ghost flex-1">
+                            Cancel
+                        </button>
+                        <button
+                            onClick={handleSubmit}
+                            disabled={saving || !units || !unitPrice}
+                            className="btn btn-primary flex-1"
+                        >
+                            {saving ? 'Adding...' : 'Add Lot'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 function UpdateManualAssetModal({ 
     asset, 
     onClose, 
@@ -1445,13 +1593,13 @@ function UpdateManualAssetModal({
                         <div className={`p-3 rounded-lg ${change >= 0 ? 'bg-positive/10' : 'bg-danger/10'}`}>
                             <p className="text-sm text-neutral">Change from previous update:</p>
                             <p className={`text-lg font-semibold ${change >= 0 ? 'text-positive' : 'text-danger'}`}>
-                                {change >= 0 ? '+' : ''}{formatCurrency(change * 100, 'AUD')} ({changePct >= 0 ? '+' : ''}{changePct.toFixed(1)}%)
+                                {change >= 0 ? '+' : ''}{formatCurrency(change * 100, asset.currency || 'AUD')} ({changePct >= 0 ? '+' : ''}{changePct.toFixed(1)}%)
                             </p>
                         </div>
                     )}
 
                     <p className="text-xs text-neutral">
-                        Previous value: {formatCurrency(previousValue * 100, 'AUD')} (as of {new Date(asset.lastUpdated).toLocaleDateString('en-AU')})
+                        Previous value: {formatCurrency(previousValue * 100, asset.currency || 'AUD')} (as of {new Date(asset.lastUpdated).toLocaleDateString('en-AU')})
                     </p>
 
                     <button

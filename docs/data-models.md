@@ -1,24 +1,29 @@
 # Loot Council — Data Models
 
-> **Generated:** 2026-02-12 | **Scan Level:** Quick
+> **Generated:** 2026-03-04 | **Scan Level:** Comprehensive
 
 ---
 
 ## Overview
 
-The database uses **SQLite** (local file: `prisma/loot-council.db`) managed through **Prisma 6** ORM. The schema defines **17 models** organized into 7 functional domains.
+The database uses **SQLite** (local file: `prisma/loot-council.db`) managed through **Prisma 6** ORM. The schema defines **18 models** organized into 8 functional domains.
 
 **Key conventions:**
 - All monetary values stored as **integers in cents** (avoids floating-point errors)
 - IDs use **CUID** strings (Prisma default)
 - Timestamps use `DateTime` with `@default(now())` and `@updatedAt`
 - YNAB import compatibility via optional `ynabId` fields
+- **Multi-profile:** Most models have an optional `profileId` FK to scope data per profile
 
 ---
 
 ## Entity Relationship Diagram (Conceptual)
 
 ```
+┌─────────────────┐
+│    Profile       │────┐ (scopes all data per user/profile)
+└─────────────────┘    │
+                          ▼
 ┌─────────────────┐     ┌──────────────────┐     ┌────────────────┐
 │   Settings      │     │  CategoryGroup   │────▶│    Category     │
 │   (singleton)   │     │  (guilds)        │ 1:N │  (quests)       │
@@ -57,6 +62,22 @@ The database uses **SQLite** (local file: `prisma/loot-council.db`) managed thro
 
 ---
 
+## Domain 0: Profiles
+
+### Profile
+User profile for data isolation. All major models reference a profile.
+
+| Field | Type | Notes |
+|-------|------|-------|
+| id | String (CUID) | Primary key |
+| name | String | Profile display name |
+| createdAt | DateTime | Auto-set |
+| updatedAt | DateTime | Auto-updated |
+
+**Relations:** Has many Account, CategoryGroup, Payee, Transfer, Asset, AllocationTarget, FireSettings, ScheduledTransaction, TransactionRule, BudgetTemplate, Settings, ApiIntegration.
+
+---
+
 ## Domain 1: Core Budgeting
 
 ### Account
@@ -74,8 +95,9 @@ Represents a financial account (checking, savings, credit card, investment).
 | lastReconciled | DateTime? | Last reconciliation date |
 | linkedAccountId | String? | For credit cards: payment source account |
 | ynabId | String? | YNAB import ID (unique) |
+| profileId | String? | FK to Profile |
 
-**Relations:** Has many `Transaction`. Self-referential for credit card linking.
+**Relations:** Has many `Transaction`. Belongs to `Profile`. Self-referential for credit card linking.
 
 ### CategoryGroup
 Groups related budget categories together (e.g., "Bills", "Fun Money").
@@ -306,4 +328,4 @@ Stored API credentials (Binance, etc.).
 
 | Migration | Date | Description |
 |-----------|------|-------------|
-| `20260202034301_init` | 2026-02-02 | Initial schema (all 17 models) |
+| `20260202034301_init` | 2026-02-02 | Initial schema (all 18 models including Profile) |

@@ -6,6 +6,7 @@ import {
     Calendar, Target, Save, ChevronRight
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
+import { useSettings } from '@/components/SettingsProvider';
 
 interface FIREData {
     settings: {
@@ -36,14 +37,17 @@ interface FIREData {
     };
 }
 
-function formatFireCurrency(cents: number): string {
-    return formatCurrency(cents, 'AUD', {
+function formatFireCurrency(cents: number, currency = 'AUD'): string {
+    return formatCurrency(cents, currency, {
         minimumFractionDigits: 0,
         maximumFractionDigits: 0,
     });
 }
 
 export default function FIREPage() {
+    const { settings } = useSettings();
+    const currency = settings?.currency || 'AUD';
+    const fmt = useCallback((cents: number) => formatFireCurrency(cents, currency), [currency]);
     const [data, setData] = useState<FIREData | null>(null);
     const [loading, setLoading] = useState(true);
     const [editing, setEditing] = useState(false);
@@ -159,7 +163,7 @@ export default function FIREPage() {
                     </div>
                     <div className="text-right">
                         <p className="text-sm text-neutral mb-1">FIRE Number</p>
-                        <p className="text-2xl font-bold text-gold">{formatFireCurrency(data?.calculations?.fireNumber || 0)}</p>
+                        <p className="text-2xl font-bold text-gold">{fmt(data?.calculations?.fireNumber || 0)}</p>
                     </div>
                 </div>
 
@@ -174,12 +178,12 @@ export default function FIREPage() {
                 <div className="flex items-center justify-between text-sm">
                     <div>
                         <span className="text-neutral">Current: </span>
-                        <span className="text-foreground font-medium">{formatFireCurrency(data?.calculations?.preSuperNetWorth || 0)}</span>
+                        <span className="text-foreground font-medium">{fmt(data?.calculations?.preSuperNetWorth || 0)}</span>
                     </div>
                     <div>
                         <span className="text-neutral">Remaining: </span>
                         <span className="text-foreground font-medium">
-                            {formatFireCurrency(Math.max(0, (data?.calculations?.fireNumber || 0) - (data?.calculations?.preSuperNetWorth || 0)))}
+                            {fmt(Math.max(0, (data?.calculations?.fireNumber || 0) - (data?.calculations?.preSuperNetWorth || 0)))}
                         </span>
                     </div>
                 </div>
@@ -211,10 +215,10 @@ export default function FIREPage() {
                             <p className="text-sm text-neutral">Annual Savings Needed</p>
                         </div>
                         <p className="text-2xl font-bold text-foreground">
-                            {formatFireCurrency(data?.calculations?.monthlySavingsNeeded ? data.calculations.monthlySavingsNeeded * 12 : 0)}
+                            {fmt(data?.calculations?.monthlySavingsNeeded ? data.calculations.monthlySavingsNeeded * 12 : 0)}
                         </p>
                         <p className="text-sm text-neutral mt-1">
-                            {formatFireCurrency(data?.calculations?.monthlySavingsNeeded || 0)}/month
+                            {fmt(data?.calculations?.monthlySavingsNeeded || 0)}/month
                         </p>
                     </div>
 
@@ -224,10 +228,10 @@ export default function FIREPage() {
                             <p className="text-sm text-neutral">Target Annual Expenses</p>
                         </div>
                         <p className="text-2xl font-bold text-foreground">
-                            {formatFireCurrency((data?.settings?.annualExpenses || 0))}
+                            {fmt((data?.settings?.annualExpenses || 0))}
                         </p>
                         <p className="text-sm text-neutral mt-1">
-                            {formatFireCurrency((data?.settings?.annualExpenses || 0) / 12)}/month
+                            {fmt((data?.settings?.annualExpenses || 0) / 12)}/month
                         </p>
                     </div>
                 </div>
@@ -364,7 +368,7 @@ export default function FIREPage() {
                                         />
                                     </div>
                                     <p className="text-xs text-neutral mt-2">
-                                        Coast FIRE Number: {formatFireCurrency(data?.calculations?.coastFireNumber || 0)}
+                                        Coast FIRE Number: {fmt(data?.calculations?.coastFireNumber || 0)}
                                     </p>
                                 </div>
 
@@ -383,7 +387,7 @@ export default function FIREPage() {
                                         />
                                     </div>
                                     <p className="text-xs text-neutral mt-2">
-                                        FIRE Number: {formatFireCurrency(data?.calculations?.fireNumber || 0)}
+                                        FIRE Number: {fmt(data?.calculations?.fireNumber || 0)}
                                     </p>
                                 </div>
 
@@ -402,11 +406,11 @@ export default function FIREPage() {
                                                     <div className="flex items-center gap-2">
                                                         <ChevronRight className={`w-4 h-4 ${achieved ? 'text-positive' : 'text-neutral'}`} />
                                                         <span className={achieved ? 'text-positive' : 'text-foreground'}>
-                                                            {pct}% ({formatFireCurrency(targetAmount)})
+                                                            {pct}% ({fmt(targetAmount)})
                                                         </span>
                                                     </div>
                                                     <span className={achieved ? 'text-positive font-medium' : 'text-neutral'}>
-                                                        {achieved ? 'Achieved!' : `${formatFireCurrency(targetAmount - currentNetWorth)} to go`}
+                                                        {achieved ? 'Achieved!' : `${fmt(targetAmount - currentNetWorth)} to go`}
                                                     </span>
                                                 </div>
                                             );
@@ -420,15 +424,15 @@ export default function FIREPage() {
                                     <div className="grid grid-cols-2 gap-3 text-sm">
                                         <div className="p-3 rounded bg-background">
                                             <p className="text-neutral">Investments</p>
-                                            <p className="font-bold text-foreground">{formatFireCurrency(data?.calculations?.preSuperNetWorth || 0)}</p>
+                                            <p className="font-bold text-foreground">{fmt(data?.calculations?.preSuperNetWorth || 0)}</p>
                                         </div>
                                         <div className="p-3 rounded bg-background">
                                             <p className="text-neutral">Superannuation</p>
-                                            <p className="font-bold text-foreground">{formatFireCurrency(data?.calculations?.superBalance || 0)}</p>
+                                            <p className="font-bold text-foreground">{fmt(data?.calculations?.superBalance || 0)}</p>
                                         </div>
                                         <div className="p-3 rounded bg-background col-span-2">
                                             <p className="text-neutral">Total Net Worth</p>
-                                            <p className="font-bold text-gold">{formatFireCurrency(data?.calculations?.totalNetWorth || 0)}</p>
+                                            <p className="font-bold text-gold">{fmt(data?.calculations?.totalNetWorth || 0)}</p>
                                         </div>
                                     </div>
                                 </div>

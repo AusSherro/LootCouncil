@@ -112,6 +112,10 @@ export function KeyboardShortcutsProvider({ children }: { children: ReactNode })
                     const searchInput = document.querySelector('input[type="text"][placeholder*="Search"]') as HTMLInputElement;
                     searchInput?.focus();
                     break;
+                case 'n':
+                    e.preventDefault();
+                    router.push('/transactions?new=1');
+                    break;
             }
         }
 

@@ -37,7 +37,6 @@ src/
 │   │   ├── accounts/           # Account CRUD
 │   │   ├── age-of-money/       # Age of Money calculation
 │   │   ├── ai/                 # AI-powered features
-│   │   │   ├── categorize/     # Auto-categorize transactions
 │   │   │   ├── chat/           # Financial advisor chat
 │   │   │   ├── insights/       # Spending insights
 │   │   │   └── optimize/       # Budget optimization
@@ -46,9 +45,9 @@ src/
 │   │   ├── budget/             # Budget operations
 │   │   │   ├── auto-assign/    # Auto-assign goal funding
 │   │   │   ├── quick-actions/  # Quick budget actions
-│   │   │   └── copy/           # Copy budget between months
+│   │   │   ├── copy/           # Copy budget between months
+│   │   │   └── transfer/       # Transfer funds between categories
 │   │   ├── categories/         # Category management
-│   │   ├── exchange/           # Currency exchange rates
 │   │   ├── export/             # Data export (JSON backup)
 │   │   ├── fire/               # FIRE calculator settings
 │   │   ├── import/             # Data import
@@ -67,6 +66,7 @@ src/
 │   │   ├── payees/             # Payee operations
 │   │   │   ├── manage/         # Payee CRUD, merge, rename
 │   │   │   └── similar/        # Find similar payees
+│   │   ├── profiles/           # Profile CRUD (multi-profile)
 │   │   ├── quote/              # Random financial quotes
 │   │   ├── reconcile/          # Account reconciliation
 │   │   ├── reports/
@@ -87,8 +87,8 @@ src/
 │   ├── reports/                # Reports page (5 report types)
 │   ├── investments/            # Investment portfolio page
 │   ├── fire/                   # FIRE calculator page
-│   ├── settings/               # Settings page
-│   ├── wizard/                 # AI assistant
+│   ├── assistant/              # AI assistant
+│   ├── settings/               # Settings page (with profiles)
 │   ├── globals.css             # Theme variables, animations
 │   └── layout.tsx              # Root layout with providers
 ├── components/
@@ -102,27 +102,30 @@ src/
 │   ├── PayeeManagement.tsx     # Payee CRUD UI
 │   ├── QuickTransferModal.tsx  # Quick account transfers
 │   ├── CreditCardPaymentModal.tsx # Credit card payment workflow
-│   ├── AddAssetModal.tsx       # Investment asset management
 │   ├── BudgetTemplatesModal.tsx # Budget template management
+│   ├── BudgetTransferModal.tsx # Transfer between budget categories
+│   ├── BudgetFlowBar.tsx       # Budget flow visualization
 │   ├── CSVImportModal.tsx      # CSV file import UI
 │   ├── ReconciliationModeModal.tsx # Reconciliation workflow
 │   ├── ScheduledTransactions.tsx # Scheduled transaction list
 │   ├── TransactionRulesSettings.tsx # Rule management UI
 │   ├── ConfirmDialog.tsx       # Reusable confirmation dialog
 │   ├── InlineEdit.tsx          # Inline text editing component
-│   ├── Sparkline.tsx           # Mini sparkline charts
-│   ├── LoadingSkeleton.tsx     # Loading state components
-│   ├── Skeleton.tsx            # Base skeleton component
+│   ├── Skeleton.tsx            # Loading skeleton component
 │   ├── ErrorBoundary.tsx       # Error handling wrapper
 │   ├── KeyboardShortcutsProvider.tsx # Global keyboard shortcuts
+│   ├── ProfileProvider.tsx     # Multi-profile context provider
 │   ├── UndoToast.tsx           # Undo/redo floating UI
-│   └── SettingsProvider.tsx    # Settings context
+│   ├── SettingsProvider.tsx    # Settings context
+│   └── Toast.tsx               # Toast notification component
 ├── lib/
 │   ├── prisma.ts               # Prisma client singleton
 │   ├── openai.ts               # OpenAI client
 │   ├── utils.ts                # Helper functions
-│   ├── useKeyboardShortcuts.tsx # Keyboard navigation hook
-│   └── useUndo.tsx             # Undo/redo system
+│   ├── apiHandler.ts           # Centralized API error handler
+│   ├── clientCache.ts          # Lightweight in-memory TTL cache
+│   ├── navigation.ts           # Shared nav items (Sidebar/MobileNav)
+│   └── profile.ts              # Profile ID resolution (cookie/query/fallback)
 └── generated/prisma/           # Generated Prisma client
 ```
 
@@ -135,6 +138,8 @@ src/
 - **Connection**: `DATABASE_URL="file:./loot-council.db"` in `.env`
 - **Schema changes**: Always run `npx prisma generate` after changing `schema.prisma`
 - **Client location**: Generated to `src/generated/prisma` (custom output path)
+- **Multi-profile**: All data models have optional `profileId` FK. Use `getProfileId()` from `src/lib/profile.ts` in API routes.
+- **Error handling**: Wrap API route handlers with `withErrorHandler()` from `src/lib/apiHandler.ts`
 
 ### 1.5. Environment Variables
 ```env
@@ -169,20 +174,25 @@ text-success, text-danger, text-warning, text-info
 
 ### 4. API Route Patterns
 ```typescript
-// Standard GET with query params
-export async function GET(request: NextRequest) {
+// Standard GET with error handler and profile scoping
+import { withErrorHandler } from '@/lib/apiHandler';
+import { getProfileId } from '@/lib/profile';
+
+export const GET = withErrorHandler(async (request: NextRequest) => {
+    const profileId = await getProfileId(request);
     const { searchParams } = new URL(request.url);
     const param = searchParams.get('paramName');
-    // ... fetch from Prisma
+    // ... fetch from Prisma with profile scoping
     return NextResponse.json({ data });
-}
+}, 'Fetch data');
 
 // Standard POST with body
-export async function POST(request: NextRequest) {
+export const POST = withErrorHandler(async (request: NextRequest) => {
+    const profileId = await getProfileId(request);
     const body = await request.json();
-    // ... create in Prisma
+    // ... create in Prisma with profileId
     return NextResponse.json({ success: true, data });
-}
+}, 'Create record');
 ```
 
 ---
@@ -224,11 +234,20 @@ export async function POST(request: NextRequest) {
 | **FIRE Calculator** | FI projections with Coast/Barista FIRE |
 | **Exchange Rates** | Cached currency conversion (1hr TTL) |
 | **Scheduled Transactions** | Recurring bills and income |
-| **AI Advisor** | AI-powered financial chat and categorization |
+| **AI Advisor** | AI-powered financial chat and insights |
 | **CSV Import** | Import transactions from CSV files |
 | **Age of Money** | Track how old your money is |
 | **Auto-Assign Goals** | Automatically fund goal categories |
 | **Credit Card Payments** | Track credit card payment workflow |
+| **Multi-Profile** | Independent profiles with separate data |
+| **Budget Transfers** | Transfer funds between budget categories |
+| **Budget Flow Bar** | Visual income → assigned → available flow |
+| **Server-Side Filtering** | Transaction filtering on the API |
+| **Client Cache** | Lightweight in-memory TTL cache for API reads |
+| **API Error Handler** | Centralized error handling via withErrorHandler |
+| **Shared Navigation** | Sidebar/MobileNav use shared nav config |
+| **AI Data Consent** | Consent modal before sending data to OpenAI |
+| **Global New Txn Shortcut** | Press N anywhere to add a new transaction |
 
 ### 🚧 Planned Features
 
@@ -242,6 +261,14 @@ export async function POST(request: NextRequest) {
 ## 📊 Database Schema (Key Models)
 
 ```prisma
+model Profile {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  // Has many: accounts, categoryGroups, payees, transfers, assets, etc.
+}
+
 model Account {
   id              String   @id @default(cuid())
   name            String
@@ -252,6 +279,7 @@ model Account {
   closed          Boolean  @default(false)
   lastReconciled  DateTime?
   linkedAccountId String?  // For credit cards: link to payment account
+  profileId       String?  // FK to Profile
 }
 
 model Transaction {
@@ -394,7 +422,7 @@ model AllocationTarget {
 }
 
 model FireSettings {
-  id                  String @id @default("default")
+  id                  String @id @default(cuid())
   yearOfBirth         Int    @default(1990)
   retirementAge       Int    @default(60)
   preservationAge     Int    @default(60)
@@ -406,6 +434,7 @@ model FireSettings {
   employerContribRate Float  @default(0.115)
   fireNumber          Int    @default(0) // cents
   coastFireNumber     Int    @default(0) // cents
+  profileId           String? // FK to Profile
 }
 
 model ExchangeRate {
@@ -418,13 +447,14 @@ model ExchangeRate {
 }
 
 model Settings {
-  id           String   @id @default("default")
+  id           String   @id @default(cuid())
   budgetName   String   @default("My Realm")
   currency     String   @default("AUD")
   dateFormat   String   @default("DD/MM/YYYY")
   startOfWeek  Int      @default(1) // 0=Sunday, 1=Monday
-  theme        String   @default("dungeon")
+  theme        String   @default("finance")
   toBeBudgeted Int      @default(0) // Ready to Assign (cents)
+  profileId    String?  // FK to Profile
 }
 
 // Also: Payee, Transfer, CategoryGroup, ApiIntegration (see schema.prisma for full details)
@@ -435,7 +465,7 @@ model Settings {
 ## 🔄 Common Development Commands
 
 ```bash
-# Start dev server (Turbopack)
+# Start dev server (Turbopack, bound to 127.0.0.1)
 npm run dev
 
 # View database
@@ -464,6 +494,7 @@ Themes are CSS class-based (applied to `<html>`):
 - `theme-ocean` — Blue accents
 - `theme-crimson` — Red/warm accents
 - `theme-royal` — Purple accents
+- `theme-finance` — Clean professional finance look
 
 Theme is stored in `localStorage` as `loot-council-theme`.
 
@@ -484,6 +515,7 @@ When working on specific features, these files are most relevant:
 | Feature | Key Files |
 |---------|-----------|
 | Budget logic | `app/budget/page.tsx`, `api/budget/route.ts` |
+| Budget transfers | `components/BudgetTransferModal.tsx`, `api/budget/transfer/route.ts` |
 | Transactions | `app/transactions/page.tsx`, `api/transactions/route.ts` |
 | Split transactions | `components/SplitTransactionModal.tsx`, `api/splits/route.ts` |
 | Categories/Goals | `components/GoalEditorModal.tsx`, `api/categories/route.ts` |
@@ -497,17 +529,19 @@ When working on specific features, these files are most relevant:
 | Allocations | `api/investments/allocations/route.ts` |
 | FIRE Calculator | `app/fire/page.tsx`, `api/fire/route.ts` |
 | Binance Sync | `api/binance/route.ts` |
-| Exchange Rates | `api/exchange/route.ts` |
 | Net Worth | `api/networth/route.ts` |
 | Reconciliation | `components/ReconciliationModeModal.tsx`, `api/reconcile/route.ts` |
 | Credit cards | `components/CreditCardPaymentModal.tsx` |
 | Payee management | `components/PayeeManagement.tsx`, `api/payees/manage/route.ts` |
 | CSV import | `components/CSVImportModal.tsx`, `api/import/csv/route.ts` |
-| AI features | `api/ai/chat/route.ts`, `api/ai/categorize/route.ts`, `lib/openai.ts` |
+| AI features | `api/ai/chat/route.ts`, `api/ai/insights/route.ts`, `lib/openai.ts` |
+| Profiles | `components/ProfileProvider.tsx`, `api/profiles/route.ts`, `lib/profile.ts` |
 | Settings | `app/settings/page.tsx`, `components/SettingsProvider.tsx` |
-| Mobile UI | `components/Sidebar.tsx`, `components/MobileNav.tsx` |
+| Mobile UI | `components/Sidebar.tsx`, `components/MobileNav.tsx`, `lib/navigation.ts` |
 | Undo/Redo | `lib/useUndo.tsx`, `components/UndoToast.tsx` |
 | Keyboard nav | `lib/useKeyboardShortcuts.tsx`, `components/KeyboardShortcutsProvider.tsx` |
+| Error handling | `lib/apiHandler.ts` |
+| Client caching | `lib/clientCache.ts` |
 
 ### Investment API Details
 

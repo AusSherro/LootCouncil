@@ -15,9 +15,11 @@ interface GoalProgressProps {
 }
 
 function formatGoalCurrency(cents: number): string {
+    // Show cents when there's a fractional dollar amount
+    const hasCents = cents % 100 !== 0;
     return formatCurrency(cents, 'AUD', {
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0,
+        minimumFractionDigits: hasCents ? 2 : 0,
+        maximumFractionDigits: hasCents ? 2 : 0,
         useAbsolute: true,
         showSign: cents < 0,
     });
@@ -119,7 +121,9 @@ export default function GoalProgress({
                 );
 
             case 'MF': // Monthly Funding
-                const isFunded = assigned >= (goalTarget || 0);
+                // Use available (includes rollover) to determine if funded
+                const mfNeeded = Math.max(0, (goalTarget || 0) - available);
+                const isFunded = mfNeeded === 0;
                 return (
                     <div className="flex items-center gap-2">
                         {isFunded ? (
@@ -128,7 +132,7 @@ export default function GoalProgress({
                             </span>
                         ) : (
                             <span className="text-xs bg-warning/20 text-warning px-2 py-0.5 rounded font-medium">
-                                Needs {formatGoalCurrency((goalTarget || 0) - assigned)}
+                                Needs {formatGoalCurrency(mfNeeded)}
                             </span>
                         )}
                         <span className="text-xs text-ghost-500">
@@ -138,11 +142,13 @@ export default function GoalProgress({
                 );
 
             case 'NEED': // Needed for Spending
+                // Calculate underfunded dynamically from current data
+                const needUnderFunded = goalTarget ? Math.max(0, goalTarget - available) : underFunded;
                 return (
                     <div className="flex items-center gap-2">
-                        {underFunded > 0 ? (
+                        {needUnderFunded > 0 ? (
                             <span className="text-xs bg-warning/20 text-warning px-2 py-0.5 rounded font-medium">
-                                Needs {formatGoalCurrency(underFunded)}
+                                Needs {formatGoalCurrency(needUnderFunded)}
                             </span>
                         ) : available >= 0 ? (
                             <span className="text-xs bg-success/20 text-success px-2 py-0.5 rounded font-medium">

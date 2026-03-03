@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { getProfileId } from '@/lib/profile';
 
 // GET - List all budget templates
-export async function GET() {
+export async function GET(request: NextRequest) {
+    const profileId = await getProfileId(request);
     try {
         const templates = await prisma.budgetTemplate.findMany({
+            where: { profileId },
             include: {
                 items: {
                     include: {

@@ -1,12 +1,12 @@
 # Loot Council — API Contracts
 
-> **Generated:** 2026-02-12 | **Scan Level:** Quick (pattern-based, endpoints inferred from file structure)
+> **Generated:** 2026-03-04 | **Scan Level:** Comprehensive
 
 ---
 
 ## Overview
 
-The API layer consists of **46 route files** across **26 domains**, all implemented as Next.js App Router API routes (`route.ts`). All routes use Prisma ORM to interact with a local SQLite database.
+The API layer consists of **46 route files** across **28 domains**, all implemented as Next.js App Router API routes (`route.ts`). All routes use Prisma ORM to interact with a local SQLite database. Most routes are profile-scoped via `getProfileId()` helper.
 
 **Base URL:** `http://localhost:3000/api`
 
@@ -18,6 +18,8 @@ The API layer consists of **46 route files** across **26 domains**, all implemen
 - `DELETE` — Remove records
 - All amounts stored in **cents** (integers)
 - All responses return JSON
+- Error handling via `withErrorHandler` wrapper (`src/lib/apiHandler.ts`)
+- Profile scoping via `getProfileId()` (`src/lib/profile.ts`)
 
 ---
 
@@ -32,6 +34,7 @@ The API layer consists of **46 route files** across **26 domains**, all implemen
 | `/api/budget/auto-assign` | POST | Auto-fund categories with goals |
 | `/api/budget/copy` | POST | Copy budget from one month to another |
 | `/api/budget/quick-actions` | POST | Quick budget actions (last month, average, underfunded) |
+| `/api/budget/transfer` | POST | Transfer funds between budget categories |
 | `/api/categories` | GET, POST, PATCH, DELETE | Category and category group management |
 | `/api/transactions` | GET, POST | Transaction list (with filtering) and creation |
 | `/api/transactions/[id]` | PATCH, DELETE | Individual transaction update/delete |
@@ -61,7 +64,6 @@ The API layer consists of **46 route files** across **26 domains**, all implemen
 | `/api/fire` | GET, PUT | FIRE calculator settings |
 | `/api/assets` | PATCH | Asset value updates |
 | `/api/binance` | GET, POST | Binance wallet sync |
-| `/api/exchange` | GET | Currency exchange rates (1hr cached) |
 | `/api/networth` | GET | Net worth history |
 
 ### AI Features
@@ -69,7 +71,6 @@ The API layer consists of **46 route files** across **26 domains**, all implemen
 | Route | Methods | Description |
 |-------|---------|-------------|
 | `/api/ai/chat` | POST | Financial advisor chat (OpenAI) |
-| `/api/ai/categorize` | POST | Auto-categorize transactions |
 | `/api/ai/insights` | POST | Spending insights generation |
 | `/api/ai/optimize` | POST | Budget optimization suggestions |
 
@@ -93,6 +94,7 @@ The API layer consists of **46 route files** across **26 domains**, all implemen
 | `/api/payees` | GET | Payee list |
 | `/api/payees/manage` | POST, PATCH, DELETE | Payee merge, rename, delete |
 | `/api/payees/similar` | GET | Find similar/duplicate payees |
+| `/api/profiles` | GET, POST, PATCH, DELETE | Profile CRUD (multi-profile support) |
 | `/api/reports/advanced` | GET | Advanced reports (5 types) |
 | `/api/settings` | GET, PATCH | App settings (theme, currency, etc.) |
 | `/api/integrations` | GET, POST, PATCH, DELETE | API key management |
@@ -110,19 +112,16 @@ The API layer consists of **46 route files** across **26 domains**, all implemen
 ## Error Handling Pattern
 
 ```typescript
-// Standard error response pattern used across routes
-try {
-  // ... operation
-  return NextResponse.json({ data });
-} catch (error) {
-  return NextResponse.json(
-    { error: 'Operation failed', details: error.message },
-    { status: 500 }
-  );
-}
+// Centralized error handler wrapper (src/lib/apiHandler.ts)
+import { withErrorHandler } from '@/lib/apiHandler';
+
+export const GET = withErrorHandler(async (request: NextRequest) => {
+  const data = await prisma.model.findMany({ ... });
+  return NextResponse.json(data);
+}, 'Fetch data');
 ```
 
-> **Note:** Error details are currently leaked to the client (ISSUES.md SEC-4). No centralized error middleware exists (ISSUES.md FEAT-7).
+Errors are logged server-side only; generic messages returned to client.
 
 ---
 

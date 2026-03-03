@@ -1,41 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { withErrorHandler } from '@/lib/apiHandler';
+import { getProfileId } from '@/lib/profile';
 
 // GET all accounts
-export async function GET() {
-    try {
-        const accounts = await prisma.account.findMany({
-            orderBy: [
-                { onBudget: 'desc' },
-                { name: 'asc' },
-            ],
-        });
+export const GET = withErrorHandler(async (request: NextRequest) => {
+    const profileId = await getProfileId(request);
 
-        // Manually add linked account info
-        const accountMap = new Map(accounts.map(a => [a.id, a]));
-        const accountsWithLinks = accounts.map(account => {
-            const linkedAccount = account.linkedAccountId 
-                ? accountMap.get(account.linkedAccountId) 
-                : null;
-            return {
-                ...account,
-                linkedAccount: linkedAccount 
-                    ? { id: linkedAccount.id, name: linkedAccount.name }
-                    : null,
-            };
-        });
+    const accounts = await prisma.account.findMany({
+        where: { profileId },
+        orderBy: [
+            { onBudget: 'desc' },
+            { name: 'asc' },
+        ],
+    });
 
-        return NextResponse.json({ accounts: accountsWithLinks });
-    } catch (error) {
-        console.error('Error fetching accounts:', error);
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        return NextResponse.json({ error: 'Failed to fetch accounts', details: errorMessage }, { status: 500 });
-    }
-}
+    // Manually add linked account info
+    const accountMap = new Map(accounts.map(a => [a.id, a]));
+    const accountsWithLinks = accounts.map(account => {
+        const linkedAccount = account.linkedAccountId
+            ? accountMap.get(account.linkedAccountId)
+            : null;
+        return {
+            ...account,
+            linkedAccount: linkedAccount
+                ? { id: linkedAccount.id, name: linkedAccount.name }
+                : null,
+        };
+    });
+
+    return NextResponse.json({ accounts: accountsWithLinks });
+}, 'Fetch accounts');
 
 // POST create new account
 export async function POST(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         const body = await request.json();
         const { name, type, onBudget, balance } = body;
 
@@ -53,6 +53,7 @@ export async function POST(request: NextRequest) {
                 onBudget: onBudget ?? true,
                 balance: balance ? Math.round(balance * 100) : 0,
                 clearedBalance: balance ? Math.round(balance * 100) : 0,
+                profileId,
             },
         });
 

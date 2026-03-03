@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useSettings } from '@/components/SettingsProvider';
 import { 
     PiggyBank, 
     ScrollText, 
@@ -20,6 +21,7 @@ import {
 import ScheduledTransactions from '@/components/ScheduledTransactions';
 import { SkeletonDashboard } from '@/components/Skeleton';
 import { formatCurrency } from '@/lib/utils';
+import { fetchJsonCached, clearCachedJson } from '@/lib/clientCache';
 
 interface DashboardData {
     netWorth: number;
@@ -37,8 +39,29 @@ interface DashboardData {
     }>;
 }
 
-function formatDashboardCurrency(cents: number): string {
-    return formatCurrency(cents, 'AUD', {
+interface NetWorthResponse {
+    accountBalance?: number;
+    assetValue?: number;
+    currentNetWorth?: number;
+}
+
+interface BudgetResponse {
+    totals?: {
+        readyToAssign?: number;
+    };
+}
+
+interface TransactionsResponse {
+    total?: number;
+    transactions?: DashboardData['recentTransactions'];
+}
+
+interface AgeOfMoneyResponse {
+    ageOfMoney?: number;
+}
+
+function formatDashboardCurrency(cents: number, currencyCode: string): string {
+    return formatCurrency(cents, currencyCode, {
         minimumFractionDigits: 0,
         maximumFractionDigits: 0,
     });
@@ -46,10 +69,13 @@ function formatDashboardCurrency(cents: number): string {
 
 export default function HomePage() {
     const router = useRouter();
+    const { settings } = useSettings();
+    const currency = settings?.currency || 'AUD';
     const [data, setData] = useState<DashboardData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [greeting, setGreeting] = useState('');
+    const [refreshKey, setRefreshKey] = useState(0);
 
     useEffect(() => {
         const hour = new Date().getHours();
@@ -61,24 +87,39 @@ export default function HomePage() {
             setError(null);
             setLoading(true);
             try {
-                const [networthRes, budgetRes, transactionsRes, aomRes] = await Promise.all([
-                    fetch('/api/networth?months=1'),
-                    fetch('/api/budget'),
-                    fetch('/api/transactions?limit=5'),
-                    fetch('/api/age-of-money'),
+                const [networthRes, budgetRes, transactionsRes, aomRes] = await Promise.allSettled([
+                    fetchJsonCached<NetWorthResponse>('/api/networth?months=1', 30_000),
+                    fetchJsonCached<BudgetResponse>('/api/budget', 30_000),
+                    fetchJsonCached<TransactionsResponse>('/api/transactions?limit=5', 15_000),
+                    fetchJsonCached<AgeOfMoneyResponse>('/api/age-of-money', 30_000),
                 ]);
 
                 // Check if any critical fetches failed
-                if (!networthRes.ok && !budgetRes.ok && !transactionsRes.ok && !aomRes.ok) {
+                if (
+                    networthRes.status === 'rejected' &&
+                    budgetRes.status === 'rejected' &&
+                    transactionsRes.status === 'rejected' &&
+                    aomRes.status === 'rejected'
+                ) {
                     throw new Error('All dashboard data sources failed to load');
                 }
 
-                const [networth, budget, transactions, aom] = await Promise.all([
-                    networthRes.ok ? networthRes.json() : { accountBalance: 0, assetValue: 0, currentNetWorth: 0 },
-                    budgetRes.ok ? budgetRes.json() : { totals: { readyToAssign: 0 } },
-                    transactionsRes.ok ? transactionsRes.json() : { total: 0, transactions: [] },
-                    aomRes.ok ? aomRes.json() : { ageOfMoney: 0 },
-                ]);
+                const networth =
+                    networthRes.status === 'fulfilled'
+                        ? networthRes.value
+                        : { accountBalance: 0, assetValue: 0, currentNetWorth: 0 };
+                const budget =
+                    budgetRes.status === 'fulfilled'
+                        ? budgetRes.value
+                        : { totals: { readyToAssign: 0 } };
+                const transactions =
+                    transactionsRes.status === 'fulfilled'
+                        ? transactionsRes.value
+                        : { total: 0, transactions: [] };
+                const aom =
+                    aomRes.status === 'fulfilled'
+                        ? aomRes.value
+                        : { ageOfMoney: 0 };
 
                 const accountsTotal = networth.accountBalance || 0;
                 const assetsTotal = networth.assetValue || 0;
@@ -102,15 +143,18 @@ export default function HomePage() {
         }
 
         fetchDashboard();
-    }, []);
+    }, [refreshKey]);
 
     // Retry handler
     function handleRetry() {
+        clearCachedJson('/api/networth?months=1');
+        clearCachedJson('/api/budget');
+        clearCachedJson('/api/transactions?limit=5');
+        clearCachedJson('/api/age-of-money');
         setError(null);
         setLoading(true);
         setData(null);
-        // Re-trigger the effect by forcing a re-render
-        window.location.reload();
+        setRefreshKey(prev => prev + 1);
     }
 
     if (loading) {
@@ -158,7 +202,7 @@ export default function HomePage() {
                     </div>
                     <div className="flex items-end gap-3 mb-4">
                         <p className="text-3xl font-bold text-foreground">
-                            {formatDashboardCurrency(data?.netWorth || 0)}
+                            {formatDashboardCurrency(data?.netWorth || 0, currency)}
                         </p>
                         {data?.netWorthChange !== 0 && (
                             <div className={`flex items-center gap-1 px-2 py-0.5 rounded text-sm font-medium ${
@@ -178,11 +222,11 @@ export default function HomePage() {
                     <div className="grid grid-cols-2 gap-3">
                         <div className="p-3 rounded-lg bg-background-tertiary/50">
                             <p className="text-xs text-neutral mb-1">Cash & Accounts</p>
-                            <p className="text-base font-medium text-foreground">{formatDashboardCurrency(data?.accountsTotal || 0)}</p>
+                            <p className="text-base font-medium text-foreground">{formatDashboardCurrency(data?.accountsTotal || 0, currency)}</p>
                         </div>
                         <div className="p-3 rounded-lg bg-background-tertiary/50">
                             <p className="text-xs text-neutral mb-1">Investments</p>
-                            <p className="text-base font-medium text-foreground">{formatDashboardCurrency(data?.assetsTotal || 0)}</p>
+                            <p className="text-base font-medium text-foreground">{formatDashboardCurrency(data?.assetsTotal || 0, currency)}</p>
                         </div>
                     </div>
                 </div>
@@ -198,7 +242,7 @@ export default function HomePage() {
                     <p className={`text-2xl font-bold ${
                         (data?.readyToAssign || 0) >= 0 ? 'text-success' : 'text-danger'
                     }`}>
-                        {formatDashboardCurrency(data?.readyToAssign || 0)}
+                        {formatDashboardCurrency(data?.readyToAssign || 0, currency)}
                     </p>
                     <Link href="/budget" className="flex items-center gap-1 text-sm text-neutral hover:text-primary mt-2 transition-colors">
                         Go to Budget
@@ -316,7 +360,7 @@ export default function HomePage() {
                                         </div>
                                     </div>
                                     <span className={`text-sm font-medium ${t.amount >= 0 ? 'text-success' : 'text-foreground'}`}>
-                                        {t.amount >= 0 ? '+' : ''}{formatCurrency(t.amount, 'AUD', { useAbsolute: true, minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                        {t.amount >= 0 ? '+' : ''}{formatCurrency(t.amount, currency, { useAbsolute: true, minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                     </span>
                                 </div>
                             ))}

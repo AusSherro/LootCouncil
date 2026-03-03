@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { getProfileId } from '@/lib/profile';
 
 // GET all categories with groups
 export async function GET(request: NextRequest) {
+    const profileId = await getProfileId(request);
     const { searchParams } = new URL(request.url);
     const showHidden = searchParams.get('showHidden') === 'true';
 
     try {
         const categoryGroups = await prisma.categoryGroup.findMany({
-            where: showHidden ? {} : { isHidden: false },
+            where: showHidden ? { profileId } : { isHidden: false, profileId },
             include: {
                 categories: {
                     where: showHidden ? {} : { isHidden: false },
@@ -36,11 +38,13 @@ export async function POST(request: NextRequest) {
             const maxSortOrder = await prisma.categoryGroup.aggregate({
                 _max: { sortOrder: true },
             });
+            const profileId = await getProfileId(request);
             const newGroup = await prisma.categoryGroup.create({
                 data: {
                     name,
                     sortOrder: (maxSortOrder._max.sortOrder || 0) + 1,
                     isHidden: false,
+                    profileId,
                 },
             });
             return NextResponse.json({ group: newGroup });
@@ -90,12 +94,27 @@ export async function PATCH(request: NextRequest) {
             return NextResponse.json({ group: updated });
         } else {
             // Whitelist allowed fields for categories
-            const { name, isHidden, sortOrder, groupId } = updates ?? {};
+            const { name, isHidden, sortOrder, groupId,
+                goalType, goalTarget, goalDueDate,
+                goalPercentageComplete, goalUnderFunded,
+                goalOverallFunded, goalOverallLeft,
+                goalCadence, goalCadenceFrequency,
+            } = updates ?? {};
             const safeUpdates: Record<string, unknown> = {};
             if (name !== undefined) safeUpdates.name = name;
             if (isHidden !== undefined) safeUpdates.isHidden = isHidden;
             if (sortOrder !== undefined) safeUpdates.sortOrder = sortOrder;
             if (groupId !== undefined) safeUpdates.groupId = groupId;
+            // Goal fields
+            if (goalType !== undefined) safeUpdates.goalType = goalType;
+            if (goalTarget !== undefined) safeUpdates.goalTarget = goalTarget;
+            if (goalDueDate !== undefined) safeUpdates.goalDueDate = goalDueDate ? new Date(goalDueDate) : null;
+            if (goalPercentageComplete !== undefined) safeUpdates.goalPercentageComplete = goalPercentageComplete;
+            if (goalUnderFunded !== undefined) safeUpdates.goalUnderFunded = goalUnderFunded;
+            if (goalOverallFunded !== undefined) safeUpdates.goalOverallFunded = goalOverallFunded;
+            if (goalOverallLeft !== undefined) safeUpdates.goalOverallLeft = goalOverallLeft;
+            if (goalCadence !== undefined) safeUpdates.goalCadence = goalCadence;
+            if (goalCadenceFrequency !== undefined) safeUpdates.goalCadenceFrequency = goalCadenceFrequency;
 
             const updated = await prisma.category.update({
                 where: { id },

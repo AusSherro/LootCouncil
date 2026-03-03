@@ -1,27 +1,28 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { getProfileId } from '@/lib/profile';
 
 // DELETE - Clear only budget/YNAB data, preserve investments & integrations
-export async function DELETE() {
+export async function DELETE(request: NextRequest) {
+    const profileId = await getProfileId(request);
     try {
-        // Delete budget-related data in dependency order (children first)
-        await prisma.subTransaction.deleteMany();
-        await prisma.budgetTemplateItem.deleteMany();
-        await prisma.budgetTemplate.deleteMany();
-        await prisma.transactionRule.deleteMany();
-        await prisma.scheduledTransaction.deleteMany();
-        await prisma.transfer.deleteMany();
-        await prisma.transaction.deleteMany();
-        await prisma.monthlyBudget.deleteMany();
-        await prisma.payee.deleteMany();
-        await prisma.category.deleteMany();
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await (prisma.categoryGroup as any).deleteMany();
-        await prisma.account.deleteMany();
+        // Delete budget-related data in dependency order (children first) - scoped to profile
+        await prisma.subTransaction.deleteMany({ where: { transaction: { account: { profileId } } } });
+        await prisma.budgetTemplateItem.deleteMany({ where: { template: { profileId } } });
+        await prisma.budgetTemplate.deleteMany({ where: { profileId } });
+        await prisma.transactionRule.deleteMany({ where: { profileId } });
+        await prisma.scheduledTransaction.deleteMany({ where: { profileId } });
+        await prisma.transfer.deleteMany({ where: { profileId } });
+        await prisma.transaction.deleteMany({ where: { account: { profileId } } });
+        await prisma.monthlyBudget.deleteMany({ where: { category: { group: { profileId } } } });
+        await prisma.payee.deleteMany({ where: { profileId } });
+        await prisma.category.deleteMany({ where: { group: { profileId } } });
+        await prisma.categoryGroup.deleteMany({ where: { profileId } });
+        await prisma.account.deleteMany({ where: { profileId } });
 
         // Reset YNAB sync state but keep other settings
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await (prisma.settings as any).updateMany({
+        await prisma.settings.updateMany({
+            where: { profileId },
             data: {
                 toBeBudgeted: 0,
                 lastYnabSync: null,

@@ -11,6 +11,29 @@ datasource db {
 }
 
 // ==========================================
+// PROFILES (User Profiles)
+// ==========================================
+model Profile {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accounts              Account[]
+  categoryGroups        CategoryGroup[]
+  payees                Payee[]
+  transfers             Transfer[]
+  assets                Asset[]
+  allocationTargets     AllocationTarget[]
+  fireSettings          FireSettings[]
+  scheduledTransactions ScheduledTransaction[]
+  transactionRules      TransactionRule[]
+  budgetTemplates       BudgetTemplate[]
+  settings              Settings[]
+  apiIntegrations       ApiIntegration[]
+}
+
+// ==========================================
 // ACCOUNTS (Your Gold Pouches)
 // ==========================================
 model Account {
@@ -24,11 +47,17 @@ model Account {
   lastReconciled    DateTime?
   linkedAccountId   String?       // For credit cards: link to payment account
   ynabId            String?       @unique // Original YNAB account ID for delta sync
+  profileId         String?
+  profile           Profile?      @relation(fields: [profileId], references: [id])
   linkedAccount     Account?      @relation("CreditCardPayment", fields: [linkedAccountId], references: [id])
   linkedCards       Account[]     @relation("CreditCardPayment")
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
   transactions      Transaction[]
+
+  @@index([linkedAccountId])
+  @@index([closed])
+  @@index([profileId])
 }
 
 // ==========================================
@@ -40,9 +69,13 @@ model CategoryGroup {
   sortOrder  Int        @default(0)
   isHidden   Boolean    @default(false)
   ynabId     String?    @unique // Original YNAB group ID for delta sync
+  profileId  String?
+  profile    Profile?   @relation(fields: [profileId], references: [id])
   categories Category[]
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @updatedAt
+
+  @@index([profileId])
 }
 
 // ==========================================
@@ -76,6 +109,8 @@ model Category {
   monthlyData     MonthlyBudget[]
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
+
+  @@index([groupId])
 }
 
 // ==========================================
@@ -93,6 +128,8 @@ model MonthlyBudget {
   updatedAt  DateTime @updatedAt
 
   @@unique([month, categoryId])
+  @@index([month])
+  @@index([categoryId])
 }
 
 // ==========================================
@@ -117,6 +154,11 @@ model Transaction {
   subTransactions SubTransaction[]
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
+
+  @@index([accountId])
+  @@index([categoryId])
+  @@index([date])
+  @@index([transferId])
 }
 
 // ==========================================
@@ -132,6 +174,9 @@ model SubTransaction {
   memo          String?
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
+
+  @@index([transactionId])
+  @@index([categoryId])
 }
 
 // ==========================================
@@ -142,8 +187,12 @@ model Payee {
   name              String   @unique
   ynabId            String?  @unique // Original YNAB payee ID
   transferAccountId String?  // For transfer payees, links to Account
+  profileId         String?
+  profile           Profile? @relation(fields: [profileId], references: [id])
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+
+  @@index([profileId])
 }
 
 // ==========================================
@@ -158,8 +207,12 @@ model Transfer {
   destinationAccountId  String   // Where money goes
   sourceTransactionId   String?  // The outflow transaction
   destTransactionId     String?  // The inflow transaction
+  profileId             String?
+  profile               Profile? @relation(fields: [profileId], references: [id])
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
+
+  @@index([profileId])
 }
 
 // ==========================================
@@ -183,10 +236,14 @@ model Asset {
   // Staking (for crypto)
   stakingYield     Float    @default(0) // Staking yield as decimal
   
+  profileId        String?
+  profile          Profile? @relation(fields: [profileId], references: [id])
   lots             AssetLot[]  // Individual purchase lots for CGT
   lastUpdated      DateTime @default(now())
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+
+  @@index([profileId])
 }
 
 // ==========================================
@@ -209,6 +266,8 @@ model AssetLot {
   cgtDiscount   Boolean   @default(false) // True if held > 12 months (50% discount)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+
+  @@index([assetId])
 }
 
 // ==========================================
@@ -219,15 +278,19 @@ model AllocationTarget {
   assetClass   String   @unique // etf, stock, crypto, cash, super, property, other
   targetPct    Float    // Target allocation as decimal (0.30 = 30%)
   priority     Int      @default(0) // Higher = invest first when rebalancing
+  profileId    String?
+  profile      Profile? @relation(fields: [profileId], references: [id])
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  @@index([profileId])
 }
 
 // ==========================================
 // FIRE SETTINGS (Financial Independence)
 // ==========================================
 model FireSettings {
-  id                      String   @id @default("default")
+  id                      String   @id @default(cuid())
   yearOfBirth             Int      @default(1990)
   retirementAge           Int      @default(60) // Traditional retirement age
   preservationAge         Int      @default(60) // Super preservation age (Aus)
@@ -246,8 +309,12 @@ model FireSettings {
   fireNumber              Int      @default(0) // Target net worth for FIRE (cents)
   coastFireNumber         Int      @default(0) // Coast FIRE number (cents)
   
+  profileId               String?
+  profile                 Profile? @relation(fields: [profileId], references: [id])
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
+
+  @@index([profileId])
 }
 
 // ==========================================
@@ -269,18 +336,22 @@ model ExchangeRate {
 // SETTINGS
 // ==========================================
 model Settings {
-  id                    String   @id @default("default")
-  budgetName            String   @default("My Realm")
+  id                    String   @id @default(cuid())
+  budgetName            String   @default("My Budget")
   currency              String   @default("AUD")
   dateFormat            String   @default("DD/MM/YYYY")
   startOfWeek           Int      @default(1) // 0 = Sunday, 1 = Monday
-  theme                 String   @default("dungeon")
+  theme                 String   @default("finance")
   toBeBudgeted          Int      @default(0) // Ready to Assign from YNAB (cents)
   lastYnabSync          DateTime?
   ynabBudgetId          String?  // YNAB budget ID for delta sync
   ynabServerKnowledge   Int      @default(0) // YNAB server_knowledge cursor for delta sync
+  profileId             String?
+  profile               Profile? @relation(fields: [profileId], references: [id])
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
+
+  @@index([profileId])
 }
 
 // ==========================================
@@ -288,13 +359,18 @@ model Settings {
 // ==========================================
 model ApiIntegration {
   id          String   @id @default(cuid())
-  provider    String   @unique // binance, coinbase, etc.
+  provider    String   // binance, coinbase, etc.
   apiKey      String   // Stored encrypted
   apiSecret   String   // Stored encrypted
   enabled     Boolean  @default(true)
   lastSynced  DateTime?
+  profileId   String?
+  profile     Profile? @relation(fields: [profileId], references: [id])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@unique([provider, profileId])
+  @@index([profileId])
 }
 
 // ==========================================
@@ -317,8 +393,12 @@ model ScheduledTransaction {
   reminderDays Int       @default(3)     // Days before to remind
   lastCreated  DateTime? // Last time a transaction was created
   isActive     Boolean   @default(true)
+  profileId    String?
+  profile      Profile?  @relation(fields: [profileId], references: [id])
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
+
+  @@index([profileId])
 }
 
 // ==========================================
@@ -335,8 +415,12 @@ model TransactionRule {
   memoTemplate String?  // Optional: set memo
   priority     Int      @default(0) // Higher = checked first
   isActive     Boolean  @default(true)
+  profileId    String?
+  profile      Profile? @relation(fields: [profileId], references: [id])
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  @@index([profileId])
 }
 
 // ==========================================
@@ -346,9 +430,13 @@ model BudgetTemplate {
   id          String               @id @default(cuid())
   name        String               // "Regular Month", "Christmas", etc.
   description String?
+  profileId   String?
+  profile     Profile?             @relation(fields: [profileId], references: [id])
   items       BudgetTemplateItem[]
   createdAt   DateTime             @default(now())
   updatedAt   DateTime             @updatedAt
+
+  @@index([profileId])
 }
 
 model BudgetTemplateItem {
@@ -359,4 +447,6 @@ model BudgetTemplateItem {
   amount     Int            // Amount to assign (cents)
   createdAt  DateTime       @default(now())
   updatedAt  DateTime       @updatedAt
+
+  @@index([templateId])
 }

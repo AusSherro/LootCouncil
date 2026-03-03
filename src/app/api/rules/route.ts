@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { getProfileId } from '@/lib/profile';
 
 // GET - List all transaction rules
-export async function GET() {
+export async function GET(request: NextRequest) {
+    const profileId = await getProfileId(request);
     try {
         const rules = await prisma.transactionRule.findMany({
+            where: { profileId },
             orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }],
         });
         return NextResponse.json({ rules });
@@ -33,6 +36,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
         }
 
+        const profileId = await getProfileId(request);
         const rule = await prisma.transactionRule.create({
             data: {
                 name,
@@ -43,6 +47,7 @@ export async function POST(request: NextRequest) {
                 payeeRename: payeeRename || null,
                 memoTemplate: memoTemplate || null,
                 priority: priority || 0,
+                profileId,
             },
         });
 
@@ -57,15 +62,27 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
     try {
         const body = await request.json();
-        const { id, ...updates } = body;
+        const { id, name, matchField, matchType, matchValue, categoryId, payeeRename, memoTemplate, priority, isActive } = body;
 
         if (!id) {
             return NextResponse.json({ error: 'Missing rule ID' }, { status: 400 });
         }
 
+        // Whitelist allowed fields only
+        const safeUpdates: Record<string, unknown> = {};
+        if (name !== undefined) safeUpdates.name = name;
+        if (matchField !== undefined) safeUpdates.matchField = matchField;
+        if (matchType !== undefined) safeUpdates.matchType = matchType;
+        if (matchValue !== undefined) safeUpdates.matchValue = matchValue;
+        if (categoryId !== undefined) safeUpdates.categoryId = categoryId || null;
+        if (payeeRename !== undefined) safeUpdates.payeeRename = payeeRename || null;
+        if (memoTemplate !== undefined) safeUpdates.memoTemplate = memoTemplate || null;
+        if (priority !== undefined) safeUpdates.priority = priority;
+        if (isActive !== undefined) safeUpdates.isActive = isActive;
+
         const rule = await prisma.transactionRule.update({
             where: { id },
-            data: updates,
+            data: safeUpdates,
         });
 
         return NextResponse.json({ rule });
@@ -147,6 +164,9 @@ function isMatch(value: string, matchType: string, matchValue: string): boolean 
             return lowerValue.endsWith(lowerMatch);
         case 'regex':
             try {
+                // ReDoS protection: reject overly long or dangerous patterns
+                if (matchValue.length > 200) return false;
+                if (/([+*])\1|(\([^)]*[+*][^)]*\))[+*]/.test(matchValue)) return false;
                 const regex = new RegExp(matchValue, 'i');
                 return regex.test(value);
             } catch {

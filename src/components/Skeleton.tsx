@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode } from 'react';
+import type { ReactNode } from 'react';
 
 // Base skeleton component with animation
 export function Skeleton({ className = '' }: { className?: string }) {
@@ -12,11 +12,6 @@ export function Skeleton({ className = '' }: { className?: string }) {
 // Text line skeleton
 export function SkeletonText({ width = 'w-full', height = 'h-4' }: { width?: string; height?: string }) {
     return <Skeleton className={`${width} ${height}`} />;
-}
-
-// Circle skeleton (for avatars, icons)
-export function SkeletonCircle({ size = 'w-10 h-10' }: { size?: string }) {
-    return <Skeleton className={`${size} rounded-full`} />;
 }
 
 // Card skeleton
@@ -72,74 +67,6 @@ export function SkeletonTransactionList({ rows = 8 }: { rows?: number }) {
     );
 }
 
-// Budget category skeleton
-export function SkeletonBudgetCategory() {
-    return (
-        <div className="p-4 border-b border-border">
-            <div className="flex items-center justify-between mb-2">
-                <SkeletonText width="w-32" />
-                <SkeletonText width="w-24" />
-            </div>
-            <Skeleton className="h-2 w-full rounded-full" />
-        </div>
-    );
-}
-
-// Budget group skeleton
-export function SkeletonBudgetGroup() {
-    return (
-        <div className="card p-0 overflow-hidden">
-            <div className="p-4 border-b border-border bg-background-tertiary/50">
-                <SkeletonText width="w-40" height="h-5" />
-            </div>
-            <SkeletonBudgetCategory />
-            <SkeletonBudgetCategory />
-            <SkeletonBudgetCategory />
-        </div>
-    );
-}
-
-// Chart skeleton
-export function SkeletonChart({ height = 'h-64' }: { height?: string }) {
-    const barHeights = [45, 72, 33, 88, 56, 41, 67, 79, 52, 38, 84, 60];
-    return (
-        <SkeletonCard>
-            <SkeletonText width="w-32" height="h-5" />
-            <div className={`mt-4 ${height} flex items-end gap-2`}>
-                {barHeights.map((h, i) => (
-                    <div 
-                        key={i} 
-                        className="flex-1"
-                        style={{ height: `${h}%` }}
-                    >
-                        <Skeleton className="w-full h-full rounded-t" />
-                    </div>
-                ))}
-            </div>
-        </SkeletonCard>
-    );
-}
-
-// Table skeleton
-export function SkeletonTable({ rows = 5, cols = 4 }: { rows?: number; cols?: number }) {
-    return (
-        <div className="space-y-2">
-            <div className="flex gap-4 pb-2 border-b border-border">
-                {Array.from({ length: cols }).map((_, i) => (
-                    <SkeletonText key={i} width="w-24" />
-                ))}
-            </div>
-            {Array.from({ length: rows }).map((_, i) => (
-                <div key={i} className="flex gap-4 py-2">
-                    {Array.from({ length: cols }).map((_, j) => (
-                        <SkeletonText key={j} width="w-24" />
-                    ))}
-                </div>
-            ))}
-        </div>
-    );
-}
-
 // Dashboard skeleton
 export function SkeletonDashboard() {
     return (
@@ -170,17 +97,4 @@ export function SkeletonDashboard() {
     );
 }
 
-// Page loading skeleton
-export function SkeletonPage({ title = true }: { title?: boolean }) {
-    return (
-        <div className="p-6 lg:p-8 space-y-6">
-            {title && (
-                <div className="space-y-1">
-                    <SkeletonText width="w-32" height="h-8" />
-                    <SkeletonText width="w-48" height="h-4" />
-                </div>
-            )}
-            <SkeletonCard className="h-96" />
-        </div>
-    );
-}
+

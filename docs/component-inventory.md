@@ -1,6 +1,6 @@
 # Loot Council — Component Inventory
 
-> **Generated:** 2026-02-12 | **Scan Level:** Quick (pattern-based)
+> **Generated:** 2026-03-04 | **Scan Level:** Comprehensive
 
 ---
 
@@ -28,8 +28,8 @@ The application has **26 React components** in `src/components/`, all client-sid
 | GoalEditorModal | `GoalEditorModal.tsx` | Category goal configuration (TB, TBD, MF, NEED, DEBT) |
 | QuickTransferModal | `QuickTransferModal.tsx` | Quick account-to-account transfer |
 | CreditCardPaymentModal | `CreditCardPaymentModal.tsx` | Credit card payment workflow |
-| AddAssetModal | `AddAssetModal.tsx` | Investment asset add/edit with symbol lookup |
 | BudgetTemplatesModal | `BudgetTemplatesModal.tsx` | Budget template save/load management |
+| BudgetTransferModal | `BudgetTransferModal.tsx` | Transfer funds between budget categories |
 | CSVImportModal | `CSVImportModal.tsx` | CSV file import wizard with column mapping |
 | ReconciliationModeModal | `ReconciliationModeModal.tsx` | Account reconciliation workflow |
 | ConfirmDialog | `ConfirmDialog.tsx` | Reusable confirmation dialog (via `useConfirmDialog` hook) |
@@ -39,9 +39,8 @@ The application has **26 React components** in `src/components/`, all client-sid
 | Component | File | Description |
 |-----------|------|-------------|
 | GoalProgress | `GoalProgress.tsx` | Goal progress bar with percentage and remaining |
-| Sparkline | `Sparkline.tsx` | Mini inline sparkline charts |
-| LoadingSkeleton | `LoadingSkeleton.tsx` | Page-level loading skeleton states |
-| Skeleton | `Skeleton.tsx` | Base skeleton animation component |
+| BudgetFlowBar | `BudgetFlowBar.tsx` | Budget flow visualization (income → assigned → available) |
+| Skeleton | `Skeleton.tsx` | Loading skeleton animation component |
 
 ### Input Components
 
@@ -63,6 +62,7 @@ The application has **26 React components** in `src/components/`, all client-sid
 | Component | File | Description |
 |-----------|------|-------------|
 | SettingsProvider | `SettingsProvider.tsx` | React Context provider for app settings |
+| ProfileProvider | `ProfileProvider.tsx` | React Context provider for multi-profile management |
 | KeyboardShortcutsProvider | `KeyboardShortcutsProvider.tsx` | Global keyboard shortcut registration |
 | ErrorBoundary | `ErrorBoundary.tsx` | React error boundary wrapper |
 
@@ -82,12 +82,13 @@ The application has **26 React components** in `src/components/`, all client-sid
 - **Modal pattern:** Fixed overlay (`z-50+`) with centered card
 - **Form pattern:** Controlled inputs with `useState`, async submit handlers
 - **Icons:** Lucide React (consistent across all components)
-- **Themes:** 5 CSS class-based themes applied to `<html>` element
+- **Themes:** 6 CSS class-based themes applied to `<html>` element
   - `theme-dungeon` (default) — Dark with gold accents
   - `theme-forest` — Green accents
   - `theme-ocean` — Blue accents
   - `theme-crimson` — Red/warm accents
   - `theme-royal` — Purple accents
+  - `theme-finance` — Clean professional finance look
 - **Color tokens:** `text-gold`, `bg-background`, `bg-background-secondary`, `text-foreground`, `text-success`, `text-danger`, etc.
 
 ---
@@ -97,6 +98,7 @@ The application has **26 React components** in `src/components/`, all client-sid
 ```
 layout.tsx
 ├── SettingsProvider          # Wraps entire app
+├── ProfileProvider           # Multi-profile management
 ├── KeyboardShortcutsProvider # Global shortcuts
 ├── Sidebar                   # Desktop nav
 ├── MobileNav                 # Mobile nav
@@ -104,10 +106,9 @@ layout.tsx
 └── ErrorBoundary             # Error handling
 
 Page Components (each page)
-├── LoadingSkeleton / Skeleton # Loading states
+├── Skeleton                   # Loading states
 ├── TransactionForm            # Shared transaction modal
 ├── ConfirmDialog              # Shared confirmation
 ├── Toast                      # Notifications
-├── Sparkline                  # Data visualization
 └── [Feature-specific modals]  # Per-page modals
 ```

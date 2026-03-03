@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { getProfileId } from '@/lib/profile';
 
 /**
  * Age of Money (AOM) - YNAB's signature financial health metric
@@ -9,11 +10,12 @@ import prisma from '@/lib/prisma';
  * - Higher = healthier (money sits longer, you're ahead of bills)
  * - Target: 30+ days means you're spending last month's income
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+    const profileId = await getProfileId(request);
     try {
         // Get all on-budget accounts
         const accounts = await prisma.account.findMany({
-            where: { onBudget: true, closed: false },
+            where: { onBudget: true, closed: false, profileId },
             select: { id: true },
         });
         const accountIds = accounts.map(a => a.id);

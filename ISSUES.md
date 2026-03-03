@@ -37,16 +37,16 @@
 
 ## Security Concerns
 
-- [ ] **SEC-1: No API Authentication**
+- [x] **SEC-1: No API Authentication**
   - **Files:** All `src/app/api/*/route.ts`
   - **Problem:** All API routes are open. If dev server binds to `0.0.0.0`, anyone on the network can read/modify financial data.
-  - **Fix:** Ensure server binds to `127.0.0.1` only, or add a simple auth middleware.
+  - **Fix:** Bound local servers to loopback by default (`next dev -H 127.0.0.1`, `next start -H 127.0.0.1` in `package.json` scripts).
   - **Priority:** Medium — local-first mitigates this
 
-- [ ] **SEC-2: Financial Data Sent to OpenAI Without Consent**
-  - **File:** `src/lib/openai.ts`
+- [x] **SEC-2: Financial Data Sent to OpenAI Without Consent**
+  - **File:** `src/app/assistant/page.tsx`
   - **Problem:** `chatWithAdvisor()` sends net worth, income, expenses, and transactions to OpenAI without explicit user consent prompt.
-  - **Fix:** Add a consent/disclaimer modal before first AI feature use.
+  - **Fix:** Added consent/disclaimer modal on first AI feature use, persisted to localStorage.
   - **Priority:** Medium
 
 - [x] **SEC-3: OpenAI Key Initialization Guard**
@@ -55,7 +55,7 @@
   - **Fix:** Add guard: `if (!process.env.OPENAI_API_KEY) console.warn('AI features unavailable');`
   - **Priority:** Low
 
-- [ ] **SEC-4: Error Details Leaked to Client**
+- [x] **SEC-4: Error Details Leaked to Client**
   - **Files:** `src/app/api/budget/route.ts`, `src/app/api/accounts/route.ts`, others
   - **Problem:** Error responses include raw Prisma error messages (`details: errorMessage`).
   - **Fix:** Return generic error messages; log details server-side only.
@@ -65,28 +65,29 @@
 
 ## Performance Issues
 
-- [ ] **PERF-1: Client-Side Transaction Filtering**
+- [x] **PERF-1: Client-Side Transaction Filtering**
   - **File:** `src/app/transactions/page.tsx`
   - **Problem:** Fetches ~100 records, then applies all filters (date, amount, category, search) client-side.
-  - **Fix:** Push filters to the API as query params for DB-level filtering.
+  - **Fix:** Moved filter/search params into `GET /api/transactions` query params and updated transactions page to fetch filtered records from the API.
   - **Priority:** Medium
 
 - [ ] **PERF-2: No Data Caching (SWR/React Query)**
   - **Files:** `src/app/page.tsx`, most page components
   - **Problem:** Dashboard fires 4+ parallel fetch calls on every mount with no caching. All pages fetch fresh on every visit.
   - **Fix:** Adopt SWR or React Query for automatic caching, revalidation, and deduplication.
+  - **Progress:** Added lightweight client cache utility (`src/lib/clientCache.ts`) and applied it to dashboard API reads and transactions filter metadata fetches; broader SWR/React Query migration still pending.
   - **Priority:** Medium — improves UX significantly
 
-- [ ] **PERF-3: TransactionForm Refetches on Every Open**
+- [x] **PERF-3: TransactionForm Refetches on Every Open**
   - **File:** `src/components/TransactionForm.tsx`
   - **Problem:** Accounts and categories fetched every time the modal opens. These are slow-changing data.
-  - **Fix:** Lift account/category data to context or cache with SWR.
+  - **Fix:** Added local cache behavior in modal state: only fetch accounts/categories when those lists are empty; retry path still forces refetch on errors.
   - **Priority:** Low
 
-- [ ] **PERF-4: CSS Ambient Animation Performance**
+- [x] **PERF-4: CSS Ambient Animation Performance**
   - **File:** `src/app/globals.css`
   - **Problem:** `body::before` runs a continuous `30s` animation on a `200% × 200%` pseudo-element — can cause jank on low-end devices.
-  - **Fix:** Add `will-change: transform` or reduce to a static gradient on low-perf devices.
+  - **Fix:** Added `will-change: transform` and `prefers-reduced-motion: reduce` media query to disable animation.
   - **Priority:** Low
 
 - [x] **PERF-5: Budget PUT — Sequential Category×Month Upserts** ✅ Fixed
@@ -100,13 +101,13 @@
 
 ## Code Quality
 
-- [ ] **CQ-1: Hardcoded 'AUD' Currency**
+- [x] **CQ-1: Hardcoded 'AUD' Currency**
   - **File:** `src/app/page.tsx`
   - **Problem:** Dashboard hardcodes `'AUD'` in `formatDashboardCurrency()` despite configurable currency in Settings.
   - **Fix:** Read currency from settings context.
   - **Priority:** Medium
 
-- [ ] **CQ-2: `useConfirmDialog` — Component Identity Re-renders**
+- [x] **CQ-2: `useConfirmDialog` — Component Identity Re-renders**
   - **File:** `src/components/ConfirmDialog.tsx`
   - **Problem:** Dialog returned by `useConfirmDialog` hook is wrapped in `useCallback` with `[state]` dep — every state change creates new component identity, causing unmount/remount flickers.
   - **Fix:** Extract Dialog as a stable component receiving props.
@@ -130,16 +131,16 @@
   - **Fix:** Add a `key` prop tied to the pathname, or implement `componentDidUpdate` to check for route changes.
   - **Priority:** Medium
 
-- [ ] **CQ-6: Sidebar Always Renders on Mobile**
+- [x] **CQ-6: Sidebar Always Renders on Mobile**
   - **File:** `src/components/Sidebar.tsx`
   - **Problem:** Full sidebar DOM rendered on all screen sizes, hidden via CSS.
-  - **Fix:** Use conditional rendering to avoid unnecessary DOM on mobile.
+  - **Fix:** Added `hidden lg:flex` to sidebar so it's not rendered in DOM on mobile.
   - **Priority:** Low
 
-- [ ] **CQ-7: Inconsistent Navigation Items**
-  - **Files:** `src/components/Sidebar.tsx`, `src/components/MobileNav.tsx`
+- [x] **CQ-7: Inconsistent Navigation Items**
+  - **Files:** `src/components/Sidebar.tsx`, `src/components/MobileNav.tsx`, `src/lib/navigation.ts`
   - **Problem:** Sidebar shows 7 nav items, MobileNav shows 5. No shared constant.
-  - **Fix:** Define navigation items in a shared constant file.
+  - **Fix:** Extracted navigation items to `src/lib/navigation.ts` shared constant. Both components now consume from the same source.
   - **Priority:** Low
 
 - [ ] **CQ-8: No Schema Validation (Zod)**
@@ -198,8 +199,8 @@
 - [ ] **FEAT-2: Zod Validation Layer**
   - Shared schema validation for all API inputs. Better error messages, prevents invalid data, reduces boilerplate.
 
-- [ ] **FEAT-3: Transaction Search Debouncing**
-  - Search input in transactions filters on every keystroke. Add 300ms debounce for smoother UX.
+- [x] **FEAT-3: Transaction Search Debouncing**
+  - Search input in transactions filters on every keystroke. Added 300ms debounce for smoother UX.
 
 - [ ] **FEAT-4: Proper Pagination**
   - Currently hard-limited to ~100 transactions. Add infinite scroll or page navigation controls.
@@ -210,11 +211,11 @@
 - [ ] **FEAT-6: PWA / Offline Support**
   - Since it's local-first, add a service worker + manifest for full offline-capable progressive web app.
 
-- [ ] **FEAT-7: API Error Middleware**
-  - Centralized error handling wrapper for all route handlers. Eliminates repeated try-catch boilerplate across 25+ API routes.
+- [x] **FEAT-7: API Error Middleware**
+  - Created `src/lib/apiHandler.ts` and applied it to `src/app/api/accounts/route.ts` (`GET`), `src/app/api/settings/route.ts` (`GET`, `PUT`), `src/app/api/transactions/route.ts` (`GET`, `POST`, `PUT`, `DELETE`), and `src/app/api/budget/route.ts` (`PUT`) to standardize error handling and reduce repeated try-catch boilerplate.
 
-- [ ] **FEAT-8: Global "New Transaction" Shortcut**
-  - Keyboard shortcut system exists but `N` for "new transaction" isn't wired up as a global shortcut.
+- [x] **FEAT-8: Global "New Transaction" Shortcut**
+  - Wired global `N` in `KeyboardShortcutsProvider` to navigate to `/transactions?new=1`, and added handling in transactions page to auto-open the new transaction modal.
 
 - [ ] **FEAT-9: Budget Overspending Toasts**
   - Show a notification/toast when a budget category goes negative after an assignment or transaction.

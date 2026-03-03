@@ -1,6 +1,6 @@
 'use client';
 
-import { Coins, Plus, ArrowUpRight, ArrowDownLeft, RefreshCw, X, Lock, MoreVertical, Archive, ArrowRightLeft, CreditCard } from 'lucide-react';
+import { Coins, Plus, ArrowUpRight, ArrowDownLeft, RefreshCw, X, Lock, MoreVertical, Archive, ArrowRightLeft, CreditCard, ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react';
 import { useState, useEffect, useCallback } from 'react';
 import QuickTransferModal from '@/components/QuickTransferModal';
 import ReconciliationModeModal from '@/components/ReconciliationModeModal';
@@ -131,6 +131,7 @@ export default function AccountsPage() {
     const [showTransferModal, setShowTransferModal] = useState(false);
     const [reconcileAccount, setReconcileAccount] = useState<Account | null>(null);
     const [showCreditCard, setShowCreditCard] = useState(false);
+    const [showClosedAccounts, setShowClosedAccounts] = useState(false);
     const [newAccount, setNewAccount] = useState({ name: '', type: 'checking', balance: '' });
 
     const fetchAccounts = useCallback(async () => {
@@ -306,25 +307,79 @@ export default function AccountsPage() {
                     </div>
 
                     {/* Closed Accounts */}
-                    {closedAccounts.length > 0 && (
-                        <>
-                            <div className="flex items-center justify-between mt-8 mb-4">
-                                <h2 className="text-lg font-semibold text-neutral">Closed Accounts</h2>
-                                <span className="text-neutral text-sm">{closedAccounts.length} account{closedAccounts.length !== 1 ? 's' : ''}</span>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {closedAccounts.map((account) => (
-                                    <AccountCard 
-                                        key={account.id} 
-                                        account={account} 
-                                        onReconcile={setReconcileAccount}
-                                        onClose={handleCloseAccount}
-                                        onReopen={handleReopenAccount}
-                                    />
-                                ))}
-                            </div>
-                        </>
-                    )}
+                    {closedAccounts.length > 0 && (() => {
+                        const notableClosedAccounts = closedAccounts.filter(
+                            a => a.balance !== 0 || a.balance !== a.clearedBalance
+                        );
+                        const plainClosedAccounts = closedAccounts.filter(
+                            a => a.balance === 0 && a.balance === a.clearedBalance
+                        );
+                        const hasNotable = notableClosedAccounts.length > 0;
+
+                        return (
+                            <>
+                                {/* Notable closed accounts always visible */}
+                                {hasNotable && (
+                                    <>
+                                        <div className="flex items-center gap-2 mt-8 mb-4">
+                                            <AlertTriangle className="w-4 h-4 text-warning" />
+                                            <h2 className="text-lg font-semibold text-neutral">Closed — Needs Attention</h2>
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                            {notableClosedAccounts.map((account) => (
+                                                <AccountCard 
+                                                    key={account.id} 
+                                                    account={account} 
+                                                    onReconcile={setReconcileAccount}
+                                                    onClose={handleCloseAccount}
+                                                    onReopen={handleReopenAccount}
+                                                />
+                                            ))}
+                                        </div>
+                                    </>
+                                )}
+
+                                {/* Collapsible bar for remaining closed accounts */}
+                                {plainClosedAccounts.length > 0 && (
+                                    <>
+                                        <button
+                                            onClick={() => setShowClosedAccounts(!showClosedAccounts)}
+                                            className="w-full mt-8 flex items-center justify-between px-4 py-3 bg-background-secondary border border-border rounded-lg hover:bg-background-tertiary transition-colors group"
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                {showClosedAccounts ? (
+                                                    <ChevronDown className="w-4 h-4 text-neutral" />
+                                                ) : (
+                                                    <ChevronRight className="w-4 h-4 text-neutral" />
+                                                )}
+                                                <Archive className="w-4 h-4 text-neutral" />
+                                                <span className="text-sm font-medium text-neutral">
+                                                    {plainClosedAccounts.length} Closed Account{plainClosedAccounts.length !== 1 ? 's' : ''}
+                                                </span>
+                                            </div>
+                                            <span className="text-xs text-neutral opacity-0 group-hover:opacity-100 transition-opacity">
+                                                Click to {showClosedAccounts ? 'collapse' : 'expand'}
+                                            </span>
+                                        </button>
+
+                                        {showClosedAccounts && (
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-4 animate-fade-in">
+                                                {plainClosedAccounts.map((account) => (
+                                                    <AccountCard 
+                                                        key={account.id} 
+                                                        account={account} 
+                                                        onReconcile={setReconcileAccount}
+                                                        onClose={handleCloseAccount}
+                                                        onReopen={handleReopenAccount}
+                                                    />
+                                                ))}
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+                            </>
+                        );
+                    })()}
                 </>
             )}
 

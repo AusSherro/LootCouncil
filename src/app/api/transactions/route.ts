@@ -1,37 +1,101 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import prisma from '@/lib/prisma';
+import { withErrorHandler } from '@/lib/apiHandler';
+import { getProfileId } from '@/lib/profile';
 
 // GET all transactions
-export async function GET(request: NextRequest) {
+export const GET = withErrorHandler(async (request: NextRequest) => {
+    const profileId = await getProfileId(request);
     const { searchParams } = new URL(request.url);
     const accountId = searchParams.get('accountId');
+    const categoryId = searchParams.get('categoryId');
+    const cleared = searchParams.get('cleared');
+    const query = searchParams.get('q');
     const limit = parseInt(searchParams.get('limit') || '100');
     const offset = parseInt(searchParams.get('offset') || '0');
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
+    const minAmount = searchParams.get('minAmount');
+    const maxAmount = searchParams.get('maxAmount');
+    const hideReconciliationAdjustments = searchParams.get('hideReconciliationAdjustments') === 'true';
     const includeRunningBalance = searchParams.get('runningBalance') === 'true';
 
-    try {
-        const where: {
-            accountId?: string;
-            date?: { gte?: Date; lte?: Date };
-        } = {};
+    const where: Prisma.TransactionWhereInput = { account: { profileId } };
+    const andFilters: Prisma.TransactionWhereInput[] = [];
         
         if (accountId) {
             where.accountId = accountId;
         }
+
+        if (categoryId) {
+            where.categoryId = categoryId;
+        }
+
+        if (cleared === 'true') {
+            where.cleared = true;
+        } else if (cleared === 'false') {
+            where.cleared = false;
+        }
         
         if (startDate || endDate) {
-            where.date = {};
+            const dateFilter: Prisma.DateTimeFilter = {};
             if (startDate) {
-                where.date.gte = new Date(startDate);
+                dateFilter.gte = new Date(startDate);
             }
             if (endDate) {
-                where.date.lte = new Date(endDate);
+                dateFilter.lte = new Date(endDate);
+            }
+            where.date = dateFilter;
+        }
+
+        if (query) {
+            andFilters.push({
+                OR: [
+                    { payee: { contains: query } },
+                    { memo: { contains: query } },
+                    { category: { is: { name: { contains: query } } } },
+                ],
+            });
+        }
+
+        if (hideReconciliationAdjustments) {
+            andFilters.push({
+                NOT: {
+                    payee: { contains: 'reconciliation balance adjustment' },
+                },
+            });
+        }
+
+        if (minAmount) {
+            const minAmountCents = Math.round(parseFloat(minAmount) * 100);
+            if (!Number.isNaN(minAmountCents)) {
+                andFilters.push({
+                    OR: [
+                        { amount: { gte: minAmountCents } },
+                        { amount: { lte: -minAmountCents } },
+                    ],
+                });
             }
         }
 
-        const transactions = await prisma.transaction.findMany({
+        if (maxAmount) {
+            const maxAmountCents = Math.round(parseFloat(maxAmount) * 100);
+            if (!Number.isNaN(maxAmountCents)) {
+                andFilters.push({
+                    AND: [
+                        { amount: { lte: maxAmountCents } },
+                        { amount: { gte: -maxAmountCents } },
+                    ],
+                });
+            }
+        }
+
+        if (andFilters.length > 0) {
+            where.AND = andFilters;
+        }
+
+    const transactions = await prisma.transaction.findMany({
             where,
             include: {
                 account: { select: { id: true, name: true } },
@@ -47,127 +111,118 @@ export async function GET(request: NextRequest) {
             skip: offset,
         });
 
-        const total = await prisma.transaction.count({ where });
+    const total = await prisma.transaction.count({ where });
 
         // Calculate running balance if requested and filtering by account
-        if (includeRunningBalance && accountId) {
-            const account = await prisma.account.findUnique({ where: { id: accountId } });
-            if (account) {
-                // Get all transactions for this account to calculate running balance
-                const allTransactions = await prisma.transaction.findMany({
-                    where: { accountId },
-                    orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
-                    select: { id: true, amount: true },
-                });
+    if (includeRunningBalance && accountId) {
+        const account = await prisma.account.findUnique({ where: { id: accountId } });
+        if (account) {
+            // Get all transactions for this account to calculate running balance
+            const allTransactions = await prisma.transaction.findMany({
+                where: { accountId },
+                orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
+                select: { id: true, amount: true },
+            });
 
-                // Build running balance map
-                let runningBalance = 0;
-                const balanceMap = new Map<string, number>();
-                for (const t of allTransactions) {
-                    runningBalance += t.amount;
-                    balanceMap.set(t.id, runningBalance);
-                }
-
-                // Add running balance to each transaction
-                const transactionsWithBalance = transactions.map(t => ({
-                    ...t,
-                    runningBalance: balanceMap.get(t.id) || 0,
-                }));
-
-                return NextResponse.json({ transactions: transactionsWithBalance, total });
+            // Build running balance map
+            let runningBalance = 0;
+            const balanceMap = new Map<string, number>();
+            for (const t of allTransactions) {
+                runningBalance += t.amount;
+                balanceMap.set(t.id, runningBalance);
             }
-        }
 
-        return NextResponse.json({ transactions, total });
-    } catch (error) {
-        console.error('Error fetching transactions:', error);
-        return NextResponse.json({ error: 'Failed to fetch transactions' }, { status: 500 });
+            // Add running balance to each transaction
+            const transactionsWithBalance = transactions.map(t => ({
+                ...t,
+                runningBalance: balanceMap.get(t.id) || 0,
+            }));
+
+            return NextResponse.json({ transactions: transactionsWithBalance, total });
+        }
     }
-}
+
+    return NextResponse.json({ transactions, total });
+}, 'Fetch transactions');
 
 // POST create new transaction
-export async function POST(request: NextRequest) {
-    try {
-        const body = await request.json();
-        const { date, amount, accountId, cleared, applyRules } = body;
-        let { payee, memo, categoryId } = body;
+export const POST = withErrorHandler(async (request: NextRequest) => {
+    const body = await request.json();
+    const { date, amount, accountId, cleared, applyRules } = body;
+    let { payee, memo, categoryId } = body;
 
-        // Validate required fields
-        if (!date || amount === undefined || !accountId) {
-            return NextResponse.json(
-                { error: 'Missing required fields: date, amount, accountId' },
-                { status: 400 }
-            );
-        }
+    // Validate required fields
+    if (!date || amount === undefined || !accountId) {
+        return NextResponse.json(
+            { error: 'Missing required fields: date, amount, accountId' },
+            { status: 400 }
+        );
+    }
 
-        // Apply transaction rules if requested and no category set
-        if (applyRules !== false && !categoryId) {
-            const rules = await prisma.transactionRule.findMany({
-                where: { isActive: true },
-                orderBy: { priority: 'desc' },
-            });
-
-            for (const rule of rules) {
-                let valueToMatch = '';
-                switch (rule.matchField) {
-                    case 'payee':
-                        valueToMatch = payee || '';
-                        break;
-                    case 'memo':
-                        valueToMatch = memo || '';
-                        break;
-                    case 'amount':
-                        valueToMatch = String(amount);
-                        break;
-                }
-
-                if (matchesRule(valueToMatch, rule.matchType, rule.matchValue)) {
-                    if (rule.categoryId) categoryId = rule.categoryId;
-                    if (rule.payeeRename) payee = rule.payeeRename;
-                    if (rule.memoTemplate) memo = rule.memoTemplate;
-                    break;
-                }
-            }
-        }
-
-        const amountCents = Math.round(amount * 100);
-
-        // Use a transaction to ensure atomicity of balance updates
-        const transaction = await prisma.$transaction(async (tx) => {
-            const created = await tx.transaction.create({
-                data: {
-                    date: new Date(date),
-                    amount: amountCents,
-                    payee: payee || null,
-                    memo: memo || null,
-                    accountId,
-                    categoryId: categoryId || null,
-                    cleared: cleared ?? false,
-                    approved: true,
-                },
-                include: {
-                    account: { select: { id: true, name: true } },
-                    category: { select: { id: true, name: true } },
-                },
-            });
-
-            await tx.account.update({
-                where: { id: accountId },
-                data: {
-                    balance: { increment: amountCents },
-                    clearedBalance: cleared ? { increment: amountCents } : undefined,
-                },
-            });
-
-            return created;
+    // Apply transaction rules if requested and no category set
+    if (applyRules !== false && !categoryId) {
+        const rules = await prisma.transactionRule.findMany({
+            where: { isActive: true },
+            orderBy: { priority: 'desc' },
         });
 
-        return NextResponse.json(transaction, { status: 201 });
-    } catch (error) {
-        console.error('Error creating transaction:', error);
-        return NextResponse.json({ error: 'Failed to create transaction' }, { status: 500 });
+        for (const rule of rules) {
+            let valueToMatch = '';
+            switch (rule.matchField) {
+                case 'payee':
+                    valueToMatch = payee || '';
+                    break;
+                case 'memo':
+                    valueToMatch = memo || '';
+                    break;
+                case 'amount':
+                    valueToMatch = String(amount);
+                    break;
+            }
+
+            if (matchesRule(valueToMatch, rule.matchType, rule.matchValue)) {
+                if (rule.categoryId) categoryId = rule.categoryId;
+                if (rule.payeeRename) payee = rule.payeeRename;
+                if (rule.memoTemplate) memo = rule.memoTemplate;
+                break;
+            }
+        }
     }
-}
+
+    const amountCents = Math.round(amount * 100);
+
+    // Use a transaction to ensure atomicity of balance updates
+    const transaction = await prisma.$transaction(async (tx) => {
+        const created = await tx.transaction.create({
+            data: {
+                date: new Date(date),
+                amount: amountCents,
+                payee: payee || null,
+                memo: memo || null,
+                accountId,
+                categoryId: categoryId || null,
+                cleared: cleared ?? false,
+                approved: true,
+            },
+            include: {
+                account: { select: { id: true, name: true } },
+                category: { select: { id: true, name: true } },
+            },
+        });
+
+        await tx.account.update({
+            where: { id: accountId },
+            data: {
+                balance: { increment: amountCents },
+                clearedBalance: cleared ? { increment: amountCents } : undefined,
+            },
+        });
+
+        return created;
+    });
+
+    return NextResponse.json(transaction, { status: 201 });
+}, 'Create transaction');
 
 // Helper function for rule matching
 function matchesRule(value: string, matchType: string, matchValue: string): boolean {
@@ -200,7 +255,7 @@ function matchesRule(value: string, matchType: string, matchValue: string): bool
 }
 
 // PUT update transaction
-export async function PUT(request: NextRequest) {
+export const PUT = withErrorHandler(async (request: NextRequest) => {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
@@ -208,101 +263,49 @@ export async function PUT(request: NextRequest) {
         return NextResponse.json({ error: 'Transaction ID required' }, { status: 400 });
     }
 
-    try {
-        const body = await request.json();
-        const { date, amount, payee, memo, accountId, categoryId, cleared } = body;
+    const body = await request.json();
+    const { date, amount, payee, memo, accountId, categoryId, cleared } = body;
 
-        // Get existing transaction to calculate balance difference
-        const existing = await prisma.transaction.findUnique({
+    // Get existing transaction to calculate balance difference
+    const existing = await prisma.transaction.findUnique({
+        where: { id },
+    });
+
+    if (!existing) {
+        return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
+    }
+
+    const newAmountCents = Math.round(amount * 100);
+    const amountDiff = newAmountCents - existing.amount;
+
+    // Use a transaction to ensure atomicity of balance updates
+    const transaction = await prisma.$transaction(async (tx) => {
+        const updated = await tx.transaction.update({
             where: { id },
+            data: {
+                date: date ? new Date(date) : undefined,
+                amount: newAmountCents,
+                payee: payee || null,
+                memo: memo || null,
+                accountId,
+                categoryId: categoryId || null,
+                cleared: cleared ?? existing.cleared,
+            },
+            include: {
+                account: { select: { id: true, name: true } },
+                category: { select: { id: true, name: true } },
+            },
         });
 
-        if (!existing) {
-            return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
-        }
-
-        const newAmountCents = Math.round(amount * 100);
-        const amountDiff = newAmountCents - existing.amount;
-
-        // Use a transaction to ensure atomicity of balance updates
-        const transaction = await prisma.$transaction(async (tx) => {
-            const updated = await tx.transaction.update({
-                where: { id },
+        if (accountId === existing.accountId) {
+            await tx.account.update({
+                where: { id: accountId },
                 data: {
-                    date: date ? new Date(date) : undefined,
-                    amount: newAmountCents,
-                    payee: payee || null,
-                    memo: memo || null,
-                    accountId,
-                    categoryId: categoryId || null,
-                    cleared: cleared ?? existing.cleared,
-                },
-                include: {
-                    account: { select: { id: true, name: true } },
-                    category: { select: { id: true, name: true } },
+                    balance: { increment: amountDiff },
+                    clearedBalance: cleared ? { increment: amountDiff } : undefined,
                 },
             });
-
-            if (accountId === existing.accountId) {
-                await tx.account.update({
-                    where: { id: accountId },
-                    data: {
-                        balance: { increment: amountDiff },
-                        clearedBalance: cleared ? { increment: amountDiff } : undefined,
-                    },
-                });
-            } else {
-                await tx.account.update({
-                    where: { id: existing.accountId },
-                    data: {
-                        balance: { decrement: existing.amount },
-                        clearedBalance: existing.cleared ? { decrement: existing.amount } : undefined,
-                    },
-                });
-                await tx.account.update({
-                    where: { id: accountId },
-                    data: {
-                        balance: { increment: newAmountCents },
-                        clearedBalance: cleared ? { increment: newAmountCents } : undefined,
-                    },
-                });
-            }
-
-            return updated;
-        });
-
-        return NextResponse.json(transaction);
-    } catch (error) {
-        console.error('Error updating transaction:', error);
-        return NextResponse.json({ error: 'Failed to update transaction' }, { status: 500 });
-    }
-}
-
-// DELETE transaction
-export async function DELETE(request: NextRequest) {
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get('id');
-
-    if (!id) {
-        return NextResponse.json({ error: 'Transaction ID required' }, { status: 400 });
-    }
-
-    try {
-        // Get existing transaction to reverse balance
-        const existing = await prisma.transaction.findUnique({
-            where: { id },
-        });
-
-        if (!existing) {
-            return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
-        }
-
-        // Use a transaction to ensure atomicity of balance updates
-        await prisma.$transaction(async (tx) => {
-            await tx.transaction.delete({
-                where: { id },
-            });
-
+        } else {
             await tx.account.update({
                 where: { id: existing.accountId },
                 data: {
@@ -310,11 +313,53 @@ export async function DELETE(request: NextRequest) {
                     clearedBalance: existing.cleared ? { decrement: existing.amount } : undefined,
                 },
             });
+            await tx.account.update({
+                where: { id: accountId },
+                data: {
+                    balance: { increment: newAmountCents },
+                    clearedBalance: cleared ? { increment: newAmountCents } : undefined,
+                },
+            });
+        }
+
+        return updated;
+    });
+
+    return NextResponse.json(transaction);
+}, 'Update transaction');
+
+// DELETE transaction
+export const DELETE = withErrorHandler(async (request: NextRequest) => {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+
+    if (!id) {
+        return NextResponse.json({ error: 'Transaction ID required' }, { status: 400 });
+    }
+
+    // Get existing transaction to reverse balance
+    const existing = await prisma.transaction.findUnique({
+        where: { id },
+    });
+
+    if (!existing) {
+        return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
+    }
+
+    // Use a transaction to ensure atomicity of balance updates
+    await prisma.$transaction(async (tx) => {
+        await tx.transaction.delete({
+            where: { id },
         });
 
-        return NextResponse.json({ success: true });
-    } catch (error) {
-        console.error('Error deleting transaction:', error);
-        return NextResponse.json({ error: 'Failed to delete transaction' }, { status: 500 });
-    }
-}
+        await tx.account.update({
+            where: { id: existing.accountId },
+            data: {
+                balance: { decrement: existing.amount },
+                clearedBalance: existing.cleared ? { decrement: existing.amount } : undefined,
+            },
+        });
+    });
+
+    return NextResponse.json({ success: true });
+}, 'Delete transaction');

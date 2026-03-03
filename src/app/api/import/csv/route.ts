@@ -117,48 +117,51 @@ export async function POST(request: NextRequest) {
         let duplicates = 0;
         const skipped = 0;
 
-        for (const t of transactions) {
-            // Check for duplicate (same date, amount, payee within 5 days)
-            const startDate = new Date(t.date);
-            startDate.setDate(startDate.getDate() - 2);
-            const endDate = new Date(t.date);
-            endDate.setDate(endDate.getDate() + 2);
+        // Wrap entire import in a transaction to prevent race conditions
+        await prisma.$transaction(async (tx) => {
+            for (const t of transactions) {
+                // Check for duplicate (same date, amount, payee within 5 days)
+                const startDate = new Date(t.date);
+                startDate.setDate(startDate.getDate() - 2);
+                const endDate = new Date(t.date);
+                endDate.setDate(endDate.getDate() + 2);
 
-            const existing = await prisma.transaction.findFirst({
-                where: {
-                    accountId,
-                    amount: t.amount,
-                    date: { gte: startDate, lte: endDate },
-                    payee: t.payee,
-                },
-            });
+                const existing = await tx.transaction.findFirst({
+                    where: {
+                        accountId,
+                        amount: t.amount,
+                        date: { gte: startDate, lte: endDate },
+                        payee: t.payee,
+                    },
+                });
 
-            if (existing) {
-                duplicates++;
-                continue;
+                if (existing) {
+                    duplicates++;
+                    continue;
+                }
+
+                // Create the transaction
+                await tx.transaction.create({
+                    data: {
+                        date: t.date,
+                        amount: t.amount,
+                        payee: t.payee,
+                        memo: t.memo || null,
+                        accountId,
+                        cleared: true,
+                        approved: false, // Mark as unapproved for review
+                    },
+                });
+
+                // Update account balance
+                await tx.account.update({
+                    where: { id: accountId },
+                    data: { balance: { increment: t.amount } },
+                });
+
+                imported++;
             }
-
-            // Create the transaction
-            await prisma.transaction.create({
-                data: {
-                    date: t.date,
-                    amount: t.amount,
-                    payee: t.payee,
-                    memo: t.memo || null,
-                    accountId,
-                    cleared: true,
-                    approved: false, // Mark as unapproved for review
-                },
-            });
-
-            // Update account balance
-            await prisma.account.update({
-                where: { id: accountId },
-                data: { balance: { increment: t.amount } },
-            });
-
-            imported++;
-        }
+        });
 
         return NextResponse.json({
             success: true,

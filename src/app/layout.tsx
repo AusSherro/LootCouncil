@@ -6,6 +6,7 @@ import MobileNav from "@/components/MobileNav";
 import UndoToast from "@/components/UndoToast";
 import { ToastProvider } from "@/components/Toast";
 import { SettingsProvider } from "@/components/SettingsProvider";
+import { ProfileProvider } from "@/components/ProfileProvider";
 import { UndoProvider } from "@/lib/useUndo";
 import { KeyboardShortcutsProvider } from "@/components/KeyboardShortcutsProvider";
 import { AutoResetErrorBoundary } from "@/components/ErrorBoundary";
@@ -34,10 +35,10 @@ export default function RootLayout({
   const themeScript = `
     (function() {
       try {
-        var theme = localStorage.getItem('loot-council-theme') || 'dungeon';
+        var theme = localStorage.getItem('loot-council-theme') || 'finance';
         document.documentElement.classList.add('theme-' + theme);
       } catch (e) {
-        document.documentElement.classList.add('theme-dungeon');
+        document.documentElement.classList.add('theme-finance');
       }
     })();
   `;
@@ -51,22 +52,24 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <ToastProvider>
-          <SettingsProvider>
-            <UndoProvider>
-              <KeyboardShortcutsProvider>
-                <div className="flex min-h-screen">
-                  <Sidebar />
-                  <main className="flex-1 overflow-auto pt-16 lg:pt-0 pb-20 lg:pb-0">
-                    <AutoResetErrorBoundary>
-                      {children}
-                    </AutoResetErrorBoundary>
-                  </main>
-                </div>
-                <MobileNav />
-                <UndoToast />
-              </KeyboardShortcutsProvider>
-            </UndoProvider>
-          </SettingsProvider>
+          <ProfileProvider>
+            <SettingsProvider>
+              <UndoProvider>
+                <KeyboardShortcutsProvider>
+                  <div className="flex min-h-screen">
+                    <Sidebar />
+                    <main className="flex-1 overflow-auto pt-16 lg:pt-0 pb-20 lg:pb-0">
+                      <AutoResetErrorBoundary>
+                        {children}
+                      </AutoResetErrorBoundary>
+                    </main>
+                  </div>
+                  <MobileNav />
+                  <UndoToast />
+                </KeyboardShortcutsProvider>
+              </UndoProvider>
+            </SettingsProvider>
+          </ProfileProvider>
         </ToastProvider>
       </body>
     </html>

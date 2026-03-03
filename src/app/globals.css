@@ -1,8 +1,7 @@
 @import "tailwindcss";
 
 /* ===================================== */
-/* LOOT COUNCIL - RPG THEME              */
-/* Dark Dungeon with Gold Accents        */
+/* LOOT COUNCIL - BASE THEME SYSTEM      */
 /* ===================================== */
 
 :root {
@@ -92,6 +91,7 @@ body::before {
   pointer-events: none;
   z-index: -1;
   animation: ambientMove 30s ease-in-out infinite;
+  will-change: transform;
 }
 
 @keyframes ambientMove {
@@ -99,6 +99,12 @@ body::before {
   25% { transform: translate(2%, 2%) rotate(1deg); }
   50% { transform: translate(-1%, 3%) rotate(-1deg); }
   75% { transform: translate(1%, -2%) rotate(0.5deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body::before {
+    animation: none;
+  }
 }
 
 /* Custom Scrollbar */
@@ -394,41 +400,43 @@ body::before {
 /* INPUT STYLES                          */
 /* ===================================== */
 
-.input {
-  width: 100%;
-  padding: 0.625rem 1rem;
-  background: var(--background);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  color: var(--foreground);
-  font-size: 0.875rem;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
+@layer components {
+  .input {
+    width: 100%;
+    padding: 0.625rem 1rem;
+    background: var(--background);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    color: var(--foreground);
+    font-size: 0.875rem;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
 
-.input:focus {
-  outline: none;
-  border-color: var(--gold);
-  box-shadow: 
-    0 0 0 3px rgba(212, 168, 70, 0.1),
-    0 0 20px rgba(212, 168, 70, 0.05);
-}
+  .input:focus {
+    outline: none;
+    border-color: var(--gold);
+    box-shadow: 
+      0 0 0 3px rgba(212, 168, 70, 0.1),
+      0 0 20px rgba(212, 168, 70, 0.05);
+  }
 
-.input:hover:not(:focus) {
-  border-color: var(--border-hover);
-}
+  .input:hover:not(:focus) {
+    border-color: var(--border-hover);
+  }
 
-.input::placeholder {
-  color: var(--neutral);
-}
+  .input::placeholder {
+    color: var(--neutral);
+  }
 
-/* Select styling */
-select.input {
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
-  background-position: right 0.75rem center;
-  background-repeat: no-repeat;
-  background-size: 1.25em 1.25em;
-  padding-right: 2.5rem;
+  /* Select styling */
+  select.input {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+    background-position: right 0.75rem center;
+    background-repeat: no-repeat;
+    background-size: 1.25em 1.25em;
+    padding-right: 2.5rem;
+  }
 }
 
 /* ===================================== */
@@ -584,6 +592,85 @@ select.input {
   --gold-glow: rgba(171, 71, 188, 0.4);
   --success: #4ade80;
   --info: #ba68c8;
+}
+
+/* Finance Theme */
+.theme-finance {
+  --background: #f6f8fc;
+  --foreground: #0f172a;
+  --background-secondary: #ffffff;
+  --background-tertiary: #eef2f7;
+  --border: #d8e1ec;
+  --border-hover: #bfd0e3;
+  --gold: #2563eb;
+  --gold-light: #60a5fa;
+  --gold-dark: #1d4ed8;
+  --gold-glow: rgba(37, 99, 235, 0.25);
+  --success: #16a34a;
+  --success-muted: #14532d;
+  --warning: #d97706;
+  --danger: #dc2626;
+  --danger-muted: #7f1d1d;
+  --info: #0891b2;
+  --positive: #16a34a;
+  --negative: #dc2626;
+  --neutral: #64748b;
+  --assigned: #0f766e;
+  --shadow: 0 4px 18px -12px rgba(15, 23, 42, 0.18);
+  --shadow-lg: 0 22px 44px -24px rgba(15, 23, 42, 0.24);
+  --shadow-gold: 0 0 24px rgba(37, 99, 235, 0.18);
+}
+
+/* Finance-specific component overrides */
+.theme-finance body::before {
+  background:
+    radial-gradient(ellipse at 20% 20%, rgba(37, 99, 235, 0.06) 0%, transparent 48%),
+    radial-gradient(ellipse at 80% 80%, rgba(8, 145, 178, 0.05) 0%, transparent 52%),
+    radial-gradient(ellipse at 55% 45%, rgba(22, 163, 74, 0.03) 0%, transparent 68%);
+}
+
+.theme-finance .card {
+  background: linear-gradient(145deg, #ffffff, #f7f9fd);
+  border: 1px solid #d8e1ec;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 8px 24px -18px rgba(15, 23, 42, 0.25);
+}
+
+.theme-finance .card::before {
+  background: linear-gradient(90deg, transparent, rgba(37, 99, 235, 0.35), transparent);
+}
+
+.theme-finance .card-hover:hover {
+  border-color: #2563eb;
+  box-shadow:
+    0 16px 30px -24px rgba(37, 99, 235, 0.35),
+    0 8px 20px -16px rgba(15, 23, 42, 0.2);
+}
+
+.theme-finance .card-glass {
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(191, 208, 227, 0.9);
+}
+
+.theme-finance .btn-primary {
+  color: #ffffff;
+  box-shadow: 0 8px 20px -12px rgba(37, 99, 235, 0.6);
+}
+
+.theme-finance .btn-secondary {
+  background: #ffffff;
+  border-color: #d8e1ec;
+}
+
+.theme-finance .btn-secondary:hover {
+  background: #eef2f7;
+  border-color: #bfd0e3;
+}
+
+.theme-finance .input:focus {
+  box-shadow:
+    0 0 0 3px rgba(37, 99, 235, 0.14),
+    0 8px 16px -12px rgba(37, 99, 235, 0.35);
 }
 
 /* ===================================== */

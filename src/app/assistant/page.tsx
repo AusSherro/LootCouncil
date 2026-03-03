@@ -29,6 +29,27 @@ interface Recommendation {
 
 export default function AssistantPage() {
     const [activeTab, setActiveTab] = useState<'chat' | 'insights' | 'optimize'>('chat');
+    const [hasConsented, setHasConsented] = useState(false);
+
+    // Check for prior consent on mount
+    useEffect(() => {
+        try {
+            if (localStorage.getItem('loot-council-ai-consent') === 'true') {
+                setHasConsented(true);
+            }
+        } catch (err) {
+            console.warn('Failed to read AI consent setting:', err);
+        }
+    }, []);
+
+    const acceptConsent = () => {
+        try {
+            localStorage.setItem('loot-council-ai-consent', 'true');
+        } catch (err) {
+            console.warn('Failed to persist AI consent setting:', err);
+        }
+        setHasConsented(true);
+    };
     
     // Chat state
     const [messages, setMessages] = useState<ChatMessage[]>([
@@ -208,6 +229,35 @@ export default function AssistantPage() {
                 </div>
             </div>
 
+            {/* Data Consent Disclaimer */}
+            {!hasConsented && (
+                <div className="card border-warning/30 bg-warning/5 mb-6">
+                    <div className="flex items-start gap-4">
+                        <AlertTriangle className="w-6 h-6 text-warning flex-shrink-0 mt-0.5" />
+                        <div className="flex-1">
+                            <h3 className="font-semibold text-foreground mb-2">Data Privacy Notice</h3>
+                            <p className="text-sm text-neutral mb-3">
+                                AI features send your financial data (including net worth, income, expenses, and transaction details) to OpenAI for processing. Your data is not stored by OpenAI but is transmitted over the internet. By continuing, you acknowledge and consent to this data sharing.
+                            </p>
+                            <div className="flex gap-3">
+                                <button onClick={acceptConsent} className="btn btn-primary text-sm">
+                                    I Understand, Continue
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {!hasConsented ? (
+                <div className="flex-1 flex items-center justify-center">
+                    <div className="text-center text-neutral">
+                        <Sparkles className="w-12 h-12 mx-auto mb-4 opacity-30" />
+                        <p>Please accept the data privacy notice above to use AI features.</p>
+                    </div>
+                </div>
+            ) : (
+            <>
             {/* Tabs */}
             <div className="flex gap-1 mb-6 p-1 bg-background-tertiary rounded-lg">
                 {tabs.map(tab => (
@@ -493,6 +543,8 @@ export default function AssistantPage() {
                     </div>
                 )}
             </div>
+            </>
+            )}
         </div>
     );
 }

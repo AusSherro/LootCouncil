@@ -2,21 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import {
-    PiggyBank,
-    ScrollText,
-    Coins,
-    BarChart3,
-    Settings,
-} from 'lucide-react';
-
-const navItems = [
-    { name: 'Budget', href: '/budget', icon: PiggyBank },
-    { name: 'Transactions', href: '/transactions', icon: ScrollText },
-    { name: 'Accounts', href: '/accounts', icon: Coins },
-    { name: 'Reports', href: '/reports', icon: BarChart3 },
-    { name: 'Settings', href: '/settings', icon: Settings },
-];
+import { mobileNavigation } from '@/lib/navigation';
 
 export default function MobileNav() {
     const pathname = usePathname();
@@ -24,7 +10,7 @@ export default function MobileNav() {
     return (
         <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-background-secondary border-t border-border z-50 safe-area-bottom">
             <div className="flex items-center justify-around h-16">
-                {navItems.map((item) => {
+                {mobileNavigation.map((item) => {
                     const isActive = pathname === item.href || pathname?.startsWith(item.href + '/');
                     const Icon = item.icon;
 

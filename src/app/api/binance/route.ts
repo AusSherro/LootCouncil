@@ -1,6 +1,7 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import crypto from 'crypto';
+import { getProfileId } from '@/lib/profile';
 
 const BINANCE_API_URL = 'https://api.binance.com';
 
@@ -44,11 +45,12 @@ async function fetchBinanceAccount(apiKey: string, apiSecret: string) {
 }
 
 // GET - Fetch wallet balances from Binance
-export async function GET() {
+export async function GET(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         // Get Binance credentials
-        const integration = await prisma.apiIntegration.findUnique({
-            where: { provider: 'binance' },
+        const integration = await prisma.apiIntegration.findFirst({
+            where: { provider: 'binance', profileId },
         });
 
         if (!integration || !integration.enabled) {
@@ -98,11 +100,12 @@ export async function GET() {
 }
 
 // POST - Sync Binance holdings to assets
-export async function POST() {
+export async function POST(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         // Get Binance credentials
-        const integration = await prisma.apiIntegration.findUnique({
-            where: { provider: 'binance' },
+        const integration = await prisma.apiIntegration.findFirst({
+            where: { provider: 'binance', profileId },
         });
 
         if (!integration || !integration.enabled) {
@@ -189,10 +192,12 @@ export async function POST() {
         }
 
         // Update last synced
-        await prisma.apiIntegration.update({
-            where: { provider: 'binance' },
-            data: { lastSynced: new Date() },
-        });
+        if (integration) {
+            await prisma.apiIntegration.update({
+                where: { id: integration.id },
+                data: { lastSynced: new Date() },
+            });
+        }
 
         return NextResponse.json({ 
             success: true,

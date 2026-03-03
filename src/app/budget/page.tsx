@@ -1,11 +1,12 @@
 'use client';
 
-import { PiggyBank, ChevronRight, ChevronLeft, ChevronDown, Plus, RefreshCw, Eye, EyeOff, MoreHorizontal, Edit3, X, GripVertical, Target, Wand2, FileCheck2, Copy, AlertTriangle, Clock, Calculator, Zap, Search, LayoutGrid, List, DollarSign } from 'lucide-react';
+import { PiggyBank, ChevronRight, ChevronLeft, ChevronDown, Plus, RefreshCw, Eye, EyeOff, MoreHorizontal, Edit3, X, GripVertical, Target, FileCheck2, Copy, AlertTriangle, Clock, Calculator, Zap, Search, LayoutGrid, List, DollarSign, ArrowDownUp } from 'lucide-react';
 import { useState, useEffect, useCallback } from 'react';
 import GoalProgress from '@/components/GoalProgress';
 import GoalEditorModal from '@/components/GoalEditorModal';
 import BudgetTemplatesModal from '@/components/BudgetTemplatesModal';
-import { Sparkline, TrendBadge } from '@/components/Sparkline';
+import BudgetFlowBar from '@/components/BudgetFlowBar';
+import BudgetTransferModal from '@/components/BudgetTransferModal';
 import { useToast } from '@/components/Toast';
 import { formatCurrency } from '@/lib/utils';
 import {
@@ -83,13 +84,14 @@ interface CategoryRowProps {
     onHide: (id: string, hide: boolean) => void;
     onRename: (id: string, name: string) => void;
     onGoalClick: (category: Category) => void;
+    onMoveMoney?: (categoryId: string) => void;
     onError?: (message: string) => void;
     isHidden?: boolean;
     isDragging?: boolean;
     isCompact?: boolean;
 }
 
-function CategoryRow({ category, month, onUpdate, onHide, onRename, onGoalClick, onError, isHidden, isDragging, isCompact }: CategoryRowProps) {
+function CategoryRow({ category, month, onUpdate, onHide, onRename, onGoalClick, onMoveMoney, onError, isHidden, isDragging, isCompact }: CategoryRowProps) {
     const [editing, setEditing] = useState(false);
     const [assignedInput, setAssignedInput] = useState((category.assigned / 100).toFixed(2));
     const [showMenu, setShowMenu] = useState(false);
@@ -307,31 +309,8 @@ function CategoryRow({ category, month, onUpdate, onHide, onRename, onGoalClick,
                     </div>
                 )}
             </div>
-            <div className={`text-right ${category.activity < 0 ? 'text-danger' : 'text-neutral'}`}>
-                {isCompact ? (
-                    formatCurrency(category.activity)
-                ) : (
-                    <div className="flex items-center justify-end gap-2">
-                        {category.spendingTrend && category.spendingTrend.some(v => v > 0) && (
-                            <Sparkline 
-                                data={category.spendingTrend} 
-                                width={50} 
-                                height={16}
-                                showFill={false}
-                            />
-                        )}
-                        <span className="flex items-center gap-1">
-                            {formatCurrency(category.activity)}
-                            {category.previousActivity !== undefined && category.previousActivity !== 0 && (
-                                <TrendBadge 
-                                    current={Math.abs(category.activity)}
-                                    previous={Math.abs(category.previousActivity)}
-                                    invertColors={true}
-                                />
-                            )}
-                        </span>
-                    </div>
-                )}
+            <div className={`text-right tabular-nums ${category.activity < 0 ? 'text-danger' : 'text-neutral'}`}>
+                {formatCurrency(category.activity)}
             </div>
             <div className={`text-right font-medium ${availableColor} flex items-center justify-end gap-1`}>
                 {category.available < 0 && (
@@ -350,6 +329,13 @@ function CategoryRow({ category, month, onUpdate, onHide, onRename, onGoalClick,
                 </button>
                 {showMenu && (
                     <div className="absolute right-0 top-full z-[60] bg-background-secondary border border-border rounded-lg shadow-lg py-1 min-w-[140px]">
+                        <button
+                            onClick={() => { onMoveMoney?.(category.id); setShowMenu(false); }}
+                            className="w-full px-3 py-2 text-left text-sm hover:bg-background-tertiary flex items-center gap-2"
+                        >
+                            <ArrowDownUp className="w-4 h-4" />
+                            Move Money
+                        </button>
                         <button
                             onClick={handleRenameClick}
                             className="w-full px-3 py-2 text-left text-sm hover:bg-background-tertiary flex items-center gap-2"
@@ -380,6 +366,7 @@ interface GroupSectionProps {
     onRenameCategory: (id: string, name: string) => void;
     onRenameGroup: (id: string, name: string) => void;
     onGoalClick: (category: Category) => void;
+    onMoveMoney?: (categoryId: string) => void;
     onError?: (message: string) => void;
     showHidden: boolean;
     activeId: string | null;
@@ -387,7 +374,7 @@ interface GroupSectionProps {
     searchQuery?: string;
 }
 
-function CategoryGroupSection({ group, month, onUpdate, onHideCategory, onHideGroup, onRenameCategory, onRenameGroup, onGoalClick, onError, showHidden, activeId, isCompact, searchQuery }: GroupSectionProps) {
+function CategoryGroupSection({ group, month, onUpdate, onHideCategory, onHideGroup, onRenameCategory, onRenameGroup, onGoalClick, onMoveMoney, onError, showHidden, activeId, isCompact, searchQuery }: GroupSectionProps) {
     const [showMenu, setShowMenu] = useState(false);
     const [collapsed, setCollapsed] = useState(false);
     const [renaming, setRenaming] = useState(false);
@@ -525,6 +512,7 @@ function CategoryGroupSection({ group, month, onUpdate, onHideCategory, onHideGr
                             onHide={onHideCategory}
                             onRename={onRenameCategory}
                             onGoalClick={onGoalClick}
+                            onMoveMoney={onMoveMoney}
                             onError={onError}
                             isHidden={group.isHidden}
                             isDragging={activeId === category.id}
@@ -652,11 +640,14 @@ export default function BudgetPage() {
     const [activeId, setActiveId] = useState<string | null>(null);
     const [editingGoal, setEditingGoal] = useState<Category | null>(null);
     const [autoAssigning, setAutoAssigning] = useState(false);
+    const [lastAutoAssign, setLastAutoAssign] = useState<{ month: string; categories: { categoryId: string; amount: number }[] } | null>(null);
     const [showTemplates, setShowTemplates] = useState(false);
     const [copyingBudget, setCopyingBudget] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [isCompact, setIsCompact] = useState(false);
     const [fundingUnderfunded, setFundingUnderfunded] = useState(false);
+    const [showTransferModal, setShowTransferModal] = useState(false);
+    const [transferFromId, setTransferFromId] = useState<string | undefined>();
 
     const sensors = useSensors(
         useSensor(PointerSensor, {
@@ -710,6 +701,16 @@ export default function BudgetPage() {
             const data = await res.json();
             
             if (res.ok && data.success) {
+                // Save the assignment for undo
+                if (data.categories?.length > 0) {
+                    setLastAutoAssign({
+                        month: currentMonth,
+                        categories: data.categories.map((c: { categoryId: string; amount: number }) => ({
+                            categoryId: c.categoryId,
+                            amount: c.amount,
+                        })),
+                    });
+                }
                 // Refresh budget to show updated assignments
                 fetchBudget();
             } else {
@@ -719,6 +720,26 @@ export default function BudgetPage() {
             console.error('Failed to auto-assign:', err);
         } finally {
             setAutoAssigning(false);
+        }
+    }
+
+    async function handleUndoAutoAssign() {
+        if (!lastAutoAssign) return;
+        try {
+            const res = await fetch('/api/budget/auto-assign', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(lastAutoAssign),
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+                setLastAutoAssign(null);
+                fetchBudget();
+            } else {
+                console.error('Undo auto-assign failed:', data.error);
+            }
+        } catch (err) {
+            console.error('Failed to undo auto-assign:', err);
         }
     }
 
@@ -964,12 +985,6 @@ export default function BudgetPage() {
         }
     }
 
-    const readyToAssignColor = (budgetData?.totals?.readyToAssign ?? 0) < 0
-        ? 'text-danger'
-        : (budgetData?.totals?.readyToAssign ?? 0) > 0
-            ? 'text-positive'
-            : 'text-gold';
-
     return (
         <div className="p-6 animate-fade-in">
             {/* Header */}
@@ -994,7 +1009,7 @@ export default function BudgetPage() {
                             placeholder="Search categories..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="input pl-9 pr-3 py-2 w-48 text-sm"
+                            className="input pl-9 pr-3 h-9 w-48 text-sm"
                         />
                         {searchQuery && (
                             <button 
@@ -1007,17 +1022,17 @@ export default function BudgetPage() {
                     </div>
 
                     {/* View Toggle */}
-                    <div className="flex items-center bg-background-tertiary rounded-lg p-1">
+                    <div className="flex items-center bg-background-tertiary rounded-lg h-9 p-1">
                         <button
                             onClick={() => setIsCompact(false)}
-                            className={`p-1.5 rounded ${!isCompact ? 'bg-background-secondary text-gold' : 'text-neutral hover:text-foreground'}`}
+                            className={`flex items-center justify-center w-7 h-7 rounded ${!isCompact ? 'bg-background-secondary text-gold' : 'text-neutral hover:text-foreground'}`}
                             title="Comfortable view"
                         >
                             <LayoutGrid className="w-4 h-4" />
                         </button>
                         <button
                             onClick={() => setIsCompact(true)}
-                            className={`p-1.5 rounded ${isCompact ? 'bg-background-secondary text-gold' : 'text-neutral hover:text-foreground'}`}
+                            className={`flex items-center justify-center w-7 h-7 rounded ${isCompact ? 'bg-background-secondary text-gold' : 'text-neutral hover:text-foreground'}`}
                             title="Compact view"
                         >
                             <List className="w-4 h-4" />
@@ -1028,11 +1043,21 @@ export default function BudgetPage() {
                     <button
                         onClick={handleCopyLastMonth}
                         disabled={copyingBudget}
-                        className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm bg-background-tertiary text-neutral hover:text-foreground transition-colors disabled:opacity-50"
+                        className="flex items-center justify-center gap-2 h-9 px-3 rounded-lg text-sm bg-background-tertiary text-neutral hover:text-foreground transition-colors disabled:opacity-50"
                         title="Copy last month's budget"
                     >
-                        <Copy className={`w-4 h-4 ${copyingBudget ? 'animate-spin' : ''}`} />
-                        <span className="hidden xl:inline">{copyingBudget ? 'Copying...' : 'Copy Last Month'}</span>
+                        <Copy className={`w-4 h-4 shrink-0 ${copyingBudget ? 'animate-spin' : ''}`} />
+                        <span className="hidden xl:inline whitespace-nowrap">{copyingBudget ? 'Copying...' : 'Copy Last Month'}</span>
+                    </button>
+
+                    {/* Move Money */}
+                    <button
+                        onClick={() => { setTransferFromId(undefined); setShowTransferModal(true); }}
+                        className="flex items-center justify-center gap-2 h-9 px-3 rounded-lg text-sm bg-background-tertiary text-neutral hover:text-foreground transition-colors"
+                        title="Move money between categories"
+                    >
+                        <ArrowDownUp className="w-4 h-4 shrink-0" />
+                        <span className="hidden xl:inline whitespace-nowrap">Move Money</span>
                     </button>
 
                     {/* Fund Underfunded */}
@@ -1040,28 +1065,28 @@ export default function BudgetPage() {
                         <button
                             onClick={handleFundUnderfunded}
                             disabled={fundingUnderfunded || (budgetData?.totals?.readyToAssign ?? 0) < totalUnderfunded}
-                            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm bg-gold/20 text-gold hover:bg-gold/30 transition-colors disabled:opacity-50"
+                            className="flex items-center justify-center gap-2 h-9 px-3 rounded-lg text-sm bg-gold/20 text-gold hover:bg-gold/30 transition-colors disabled:opacity-50"
                             title={`Fund ${underfundedCategories.length} underfunded categories (${formatCurrency(totalUnderfunded)})`}
                         >
-                            <DollarSign className={`w-4 h-4 ${fundingUnderfunded ? 'animate-spin' : ''}`} />
-                            <span className="hidden xl:inline">Fund Underfunded ({underfundedCategories.length})</span>
+                            <DollarSign className={`w-4 h-4 shrink-0 ${fundingUnderfunded ? 'animate-spin' : ''}`} />
+                            <span className="hidden xl:inline whitespace-nowrap">Fund Underfunded ({underfundedCategories.length})</span>
                         </button>
                     )}
 
                     {/* Templates Button */}
                     <button
                         onClick={() => setShowTemplates(true)}
-                        className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm bg-background-tertiary text-neutral hover:text-foreground transition-colors"
+                        className="flex items-center justify-center gap-2 h-9 px-3 rounded-lg text-sm bg-background-tertiary text-neutral hover:text-foreground transition-colors"
                         title="Budget templates"
                     >
-                        <FileCheck2 className="w-4 h-4" />
-                        <span className="hidden xl:inline">Templates</span>
+                        <FileCheck2 className="w-4 h-4 shrink-0" />
+                        <span className="hidden xl:inline whitespace-nowrap">Templates</span>
                     </button>
 
                     {/* Show Hidden Toggle */}
                     <button
                         onClick={() => setShowHidden(!showHidden)}
-                        className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${showHidden ? 'bg-gold/20 text-gold' : 'bg-background-tertiary text-neutral hover:text-foreground'}`}
+                        className={`flex items-center justify-center h-9 w-9 rounded-lg text-sm transition-colors ${showHidden ? 'bg-gold/20 text-gold' : 'bg-background-tertiary text-neutral hover:text-foreground'}`}
                         title={showHidden ? 'Hide hidden items' : 'Show hidden items'}
                     >
                         {showHidden ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
@@ -1069,92 +1094,42 @@ export default function BudgetPage() {
 
                     {/* Month Navigation */}
                     <div className="flex items-center gap-1">
-                        <button onClick={prevMonth} className="btn btn-ghost p-2">
-                            <ChevronLeft className="w-5 h-5" />
+                        <button onClick={prevMonth} className="flex items-center justify-center h-9 w-9 rounded-lg bg-background-tertiary text-neutral hover:text-foreground transition-colors">
+                            <ChevronLeft className="w-4 h-4" />
                         </button>
-                        <span className="px-3 py-2 bg-background-tertiary rounded-lg font-medium text-sm min-w-[140px] text-center">
+                        <span className="flex items-center justify-center h-9 px-3 bg-background-tertiary rounded-lg font-medium text-sm min-w-[140px]">
                             {formatMonth(currentMonth)}
                         </span>
-                        <button onClick={nextMonth} className="btn btn-ghost p-2">
-                            <ChevronRight className="w-5 h-5" />
+                        <button onClick={nextMonth} className="flex items-center justify-center h-9 w-9 rounded-lg bg-background-tertiary text-neutral hover:text-foreground transition-colors">
+                            <ChevronRight className="w-4 h-4" />
                         </button>
                     </div>
                 </div>
             </div>
 
-            {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                <div className="card border-gold/30">
-                    <div className="flex items-center justify-between mb-1">
-                        <p className="text-sm text-neutral">Ready to Assign</p>
-                        {(budgetData?.totals?.readyToAssign ?? 0) > 0 && (
-                            <button
-                                onClick={handleAutoAssign}
-                                disabled={autoAssigning}
-                                className="flex items-center gap-1 text-xs text-gold hover:text-gold-light transition-colors disabled:opacity-50"
-                                title="Auto-assign to goals"
-                            >
-                                <Wand2 className={`w-3.5 h-3.5 ${autoAssigning ? 'animate-spin' : ''}`} />
-                                {autoAssigning ? 'Assigning...' : 'Auto-Assign'}
-                            </button>
-                        )}
-                    </div>
-                    <p className={`text-2xl font-bold ${readyToAssignColor}`}>
-                        {formatCurrency(budgetData?.totals?.readyToAssign ?? 0)}
-                    </p>
-                    {/* Progress bar showing allocation */}
-                    {(() => {
-                        const total = (budgetData?.totals?.readyToAssign ?? 0) + (budgetData?.totals?.assigned ?? 0);
-                        const assigned = budgetData?.totals?.assigned ?? 0;
-                        const percent = total > 0 ? Math.min(100, (assigned / total) * 100) : 0;
-                        return total > 0 ? (
-                            <div className="mt-3">
-                                <div className="flex justify-between text-xs text-neutral mb-1">
-                                    <span>Allocated</span>
-                                    <span>{percent.toFixed(0)}%</span>
-                                </div>
-                                <div className="h-1.5 bg-background-tertiary rounded-full overflow-hidden">
-                                    <div 
-                                        className="h-full bg-gold rounded-full transition-all duration-300"
-                                        style={{ width: `${percent}%` }}
-                                    />
-                                </div>
-                            </div>
-                        ) : null;
-                    })()}
-                </div>
-                <div className="card">
-                    <p className="text-sm text-neutral mb-1">Assigned This Month</p>
-                    <p className="text-2xl font-bold text-foreground">
-                        {formatCurrency(budgetData?.totals?.assigned ?? 0)}
-                    </p>
-                </div>
-                <div className="card">
-                    <p className="text-sm text-neutral mb-1">Activity This Month</p>
-                    <p className={`text-2xl font-bold ${(budgetData?.totals?.activity ?? 0) < 0 ? 'text-danger' : 'text-foreground'}`}>
-                        {formatCurrency(budgetData?.totals?.activity ?? 0)}
-                    </p>
-                </div>
-            </div>
-
-            {/* Overspending Alert */}
+            {/* Budget Flow Visualization */}
             {(() => {
-                const overspentCategories = budgetData?.groups.flatMap(g => 
+                const rta = budgetData?.totals?.readyToAssign ?? 0;
+                const assignedTotal = budgetData?.totals?.assigned ?? 0;
+                const activityTotal = budgetData?.totals?.activity ?? 0;
+                const totalIncome = Math.max(0, rta + assignedTotal);
+                const overspentCats = budgetData?.groups.flatMap(g =>
                     g.categories.filter(c => c.available < 0)
                 ) || [];
-                if (overspentCategories.length === 0) return null;
-                const totalOverspent = overspentCategories.reduce((sum, c) => sum + Math.abs(c.available), 0);
+                const overspentAmt = overspentCats.reduce((sum, c) => sum + Math.abs(c.available), 0);
                 return (
-                    <div className="mb-4 p-3 bg-danger/10 border border-danger/30 rounded-lg flex items-center gap-3">
-                        <AlertTriangle className="w-5 h-5 text-danger flex-shrink-0" />
-                        <div className="flex-1">
-                            <p className="text-danger font-medium">
-                                {overspentCategories.length} {overspentCategories.length === 1 ? 'category is' : 'categories are'} overspent
-                            </p>
-                            <p className="text-sm text-danger/80">
-                                Total overspending: {formatCurrency(-totalOverspent)}
-                            </p>
-                        </div>
+                    <div className="mb-6">
+                        <BudgetFlowBar
+                            totalIncome={totalIncome}
+                            assigned={assignedTotal}
+                            readyToAssign={rta}
+                            activity={activityTotal}
+                            overspentTotal={overspentAmt}
+                            overspentCount={overspentCats.length}
+                            onAutoAssign={handleAutoAssign}
+                            autoAssigning={autoAssigning}
+                            onUndoAutoAssign={lastAutoAssign ? handleUndoAutoAssign : undefined}
+                        />
                     </div>
                 );
             })()}
@@ -1206,6 +1181,7 @@ export default function BudgetPage() {
                                     onRenameCategory={handleRenameCategory}
                                     onRenameGroup={handleRenameGroup}
                                     onGoalClick={setEditingGoal}
+                                    onMoveMoney={(catId) => { setTransferFromId(catId); setShowTransferModal(true); }}
                                     onError={(msg) => showToast(msg, 'error')}
                                     showHidden={showHidden}
                                     activeId={activeId}
@@ -1268,6 +1244,28 @@ export default function BudgetPage() {
                 currentBudgets={budgetData?.groups.flatMap(g => 
                     g.categories.map(c => ({ categoryId: c.id, budgeted: c.assigned }))
                 ) || []}
+            />
+
+            {/* Budget Transfer Modal */}
+            <BudgetTransferModal
+                isOpen={showTransferModal}
+                onClose={() => setShowTransferModal(false)}
+                onSuccess={() => {
+                    setShowTransferModal(false);
+                    fetchBudget();
+                }}
+                month={currentMonth}
+                categories={budgetData?.groups.filter(g => !g.isInflow).flatMap(g =>
+                    g.categories.map(c => ({
+                        id: c.id,
+                        name: c.name,
+                        groupName: g.name,
+                        available: c.available,
+                        assigned: c.assigned,
+                    }))
+                ) || []}
+                readyToAssign={budgetData?.totals?.readyToAssign ?? 0}
+                preselectedFromId={transferFromId}
             />
 
             {/* Add Category FAB */}

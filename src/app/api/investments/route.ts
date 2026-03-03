@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getProfileId } from '@/lib/profile';
 
 const HOME_CURRENCY = 'AUD';
 
@@ -54,9 +55,11 @@ async function getExchangeRate(from: string, to: string): Promise<number> {
 }
 
 // GET all assets with calculated values
-export async function GET() {
+export async function GET(request: NextRequest) {
+    const profileId = await getProfileId(request);
     try {
         const assets = await prisma.asset.findMany({
+            where: { profileId },
             include: {
                 lots: {
                     orderBy: { purchaseDate: 'asc' },

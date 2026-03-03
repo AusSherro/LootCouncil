@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getProfileId } from '@/lib/profile';
 
 // GET allocation targets with current allocations
-export async function GET() {
+export async function GET(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         // Get all assets to calculate current allocations
         const assets = await prisma.asset.findMany({
+            where: { profileId },
             include: { lots: true },
         });
 
@@ -31,6 +34,7 @@ export async function GET() {
 
         // Get targets
         const targets = await prisma.allocationTarget.findMany({
+            where: { profileId },
             orderBy: { priority: 'desc' },
         });
 

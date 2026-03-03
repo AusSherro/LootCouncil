@@ -1,6 +1,6 @@
 # Loot Council — Documentation Index
 
-> **Generated:** 2026-02-12 | **Mode:** Initial Scan | **Scan Level:** Quick
+> **Generated:** 2026-03-04 | **Mode:** Updated | **Scan Level:** Comprehensive
 
 ---
 
@@ -14,11 +14,12 @@
 
 ### Quick Reference
 
-- **Tech Stack:** Next.js 16-1 · TypeScript 5 · SQLite · Prisma 6 · Tailwind CSS 4 · Recharts · Lucide React · OpenAI
+- **Tech Stack:** Next.js 16.1.6 · TypeScript 5 · SQLite · Prisma 6 · Tailwind CSS 4 · Recharts · Lucide React · OpenAI
 - **Entry Point:** `src/app/layout.tsx` (root layout) → `src/app/page.tsx` (dashboard)
-- **API Gateway:** `src/app/api/*/route.ts` (46 route files, 26 domains)
-- **Database:** `prisma/schema.prisma` (17 models) → `prisma/loot-council.db`
+- **API Gateway:** `src/app/api/*/route.ts` (46 route files, 28 domains)
+- **Database:** `prisma/schema.prisma` (18 models) → `prisma/loot-council.db`
 - **Architecture Pattern:** Client-side rendered React pages fetching from co-located API routes over SQLite
+- **Multi-Profile:** Each profile has independent budgets, accounts, transactions, and settings
 
 ---
 
@@ -73,8 +74,8 @@ When working with AI coding assistants, provide these files as context:
 
 | Property | Value |
 |----------|-------|
-| Scan Date | 2026-02-12 |
-| Scan Level | Quick (pattern-based, no source file reading) |
-| Mode | Initial Scan |
+| Scan Date | 2026-03-04 |
+| Scan Level | Comprehensive |
+| Mode | Updated |
 | Documents Generated | 7 |
 | State File | [project-scan-report.json](./project-scan-report.json) |

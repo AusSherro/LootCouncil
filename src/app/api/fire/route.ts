@@ -1,22 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getProfileId } from '@/lib/profile';
 
 // GET FIRE calculations and settings
-export async function GET() {
+export async function GET(request: NextRequest) {
+    const profileId = await getProfileId(request);
     try {
         // Get or create FIRE settings
-        let settings = await prisma.fireSettings.findUnique({
-            where: { id: 'default' },
+        let settings = await prisma.fireSettings.findFirst({
+            where: { profileId },
         });
 
         if (!settings) {
             settings = await prisma.fireSettings.create({
-                data: { id: 'default' },
+                data: { profileId },
             });
         }
 
         // Get total investment value (excluding super)
         const assets = await prisma.asset.findMany({
+            where: { profileId },
             include: { lots: true },
         });
 
@@ -36,7 +39,7 @@ export async function GET() {
 
         // Get cash savings from accounts
         const accounts = await prisma.account.findMany({
-            where: { closed: false },
+            where: { closed: false, profileId },
         });
         const cashBalance = accounts.reduce((sum, a) => sum + a.balance, 0);
 
@@ -135,26 +138,35 @@ export async function GET() {
 // POST update FIRE settings
 export async function POST(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         const body = await request.json();
 
-        const settings = await prisma.fireSettings.upsert({
-            where: { id: 'default' },
-            update: {
-                ...(body.yearOfBirth !== undefined && { yearOfBirth: body.yearOfBirth }),
-                ...(body.retirementAge !== undefined && { retirementAge: body.retirementAge }),
-                ...(body.preservationAge !== undefined && { preservationAge: body.preservationAge }),
-                ...(body.annualExpenses !== undefined && { annualExpenses: body.annualExpenses }),
-                ...(body.withdrawalRate !== undefined && { withdrawalRate: body.withdrawalRate }),
-                ...(body.inflationRate !== undefined && { inflationRate: body.inflationRate }),
-                ...(body.expectedReturn !== undefined && { expectedReturn: body.expectedReturn }),
-                ...(body.annualSuperContrib !== undefined && { annualSuperContrib: body.annualSuperContrib }),
-                ...(body.employerContribRate !== undefined && { employerContribRate: body.employerContribRate }),
-            },
-            create: {
-                id: 'default',
-                ...body,
-            },
+        // Find existing settings for this profile
+        const existing = await prisma.fireSettings.findFirst({
+            where: { profileId },
         });
+
+        let settings;
+        if (existing) {
+            settings = await prisma.fireSettings.update({
+                where: { id: existing.id },
+                data: {
+                    ...(body.yearOfBirth !== undefined && { yearOfBirth: body.yearOfBirth }),
+                    ...(body.retirementAge !== undefined && { retirementAge: body.retirementAge }),
+                    ...(body.preservationAge !== undefined && { preservationAge: body.preservationAge }),
+                    ...(body.annualExpenses !== undefined && { annualExpenses: body.annualExpenses }),
+                    ...(body.withdrawalRate !== undefined && { withdrawalRate: body.withdrawalRate }),
+                    ...(body.inflationRate !== undefined && { inflationRate: body.inflationRate }),
+                    ...(body.expectedReturn !== undefined && { expectedReturn: body.expectedReturn }),
+                    ...(body.annualSuperContrib !== undefined && { annualSuperContrib: body.annualSuperContrib }),
+                    ...(body.employerContribRate !== undefined && { employerContribRate: body.employerContribRate }),
+                },
+            });
+        } else {
+            settings = await prisma.fireSettings.create({
+                data: { profileId, ...body },
+            });
+        }
 
         return NextResponse.json(settings);
     } catch (error) {

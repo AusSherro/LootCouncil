@@ -107,28 +107,31 @@ export default function ReconciliationModeModal({ isOpen, onClose, onSuccess, ac
     const expectedBalance = (status?.clearedBalance || 0) + selectedTotal;
 
     async function handleMark() {
-        if (selectedIds.size === 0) return;
-
         setSubmitting(true);
         setError(null);
 
         try {
-            const res = await fetch('/api/reconcile', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    accountId,
-                    transactionIds: Array.from(selectedIds),
-                }),
-            });
+            // If there are selected transactions, mark them as reconciled
+            if (selectedIds.size > 0) {
+                const res = await fetch('/api/reconcile', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        accountId,
+                        action: 'reconcile',
+                        transactionIds: Array.from(selectedIds),
+                    }),
+                });
 
-            if (!res.ok) {
-                throw new Error('Failed to mark transactions as reconciled');
+                if (!res.ok) {
+                    throw new Error('Failed to mark transactions as reconciled');
+                }
+
+                fetchStatus();
+                fetchTransactions();
             }
 
             setStep('confirm');
-            fetchStatus();
-            fetchTransactions();
         } catch (err) {
             setError(err instanceof Error ? err.message : 'An error occurred');
         } finally {
@@ -142,10 +145,11 @@ export default function ReconciliationModeModal({ isOpen, onClose, onSuccess, ac
 
         try {
             const res = await fetch('/api/reconcile', {
-                method: 'PUT',
+                method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     accountId,
+                    action: 'complete',
                     statementBalance: statementBalance ? parseFloat(statementBalance) * 100 : undefined,
                 }),
             });
@@ -236,7 +240,8 @@ export default function ReconciliationModeModal({ isOpen, onClose, onSuccess, ac
                                 <div className="text-center py-8">
                                     <Check className="w-10 h-10 text-success mx-auto mb-2" />
                                     <p className="text-neutral">All cleared transactions are reconciled</p>
-                                    <p className="text-sm text-neutral/70">No new transactions to reconcile</p>
+                                    <p className="text-sm text-neutral/70 mb-4">No new transactions to reconcile</p>
+                                    <p className="text-sm text-neutral/70">You can still finalize to update the reconciled date and verify your statement balance.</p>
                                 </div>
                             ) : (
                                 <div className="space-y-1 max-h-[40vh] overflow-y-auto">
@@ -270,9 +275,13 @@ export default function ReconciliationModeModal({ isOpen, onClose, onSuccess, ac
                     {step === 'confirm' && (
                         <div className="text-center py-8">
                             <Check className="w-16 h-16 text-success mx-auto mb-4" />
-                            <h3 className="text-xl font-bold text-foreground mb-2">Transactions Marked</h3>
+                            <h3 className="text-xl font-bold text-foreground mb-2">
+                                {selectedIds.size > 0 ? 'Transactions Marked' : 'Ready to Finalize'}
+                            </h3>
                             <p className="text-neutral mb-6">
-                                {selectedIds.size} transactions marked as reconciled.
+                                {selectedIds.size > 0
+                                    ? `${selectedIds.size} transactions marked as reconciled.`
+                                    : 'No new transactions to reconcile. Enter your statement balance to verify.'}
                             </p>
 
                             <div className="max-w-sm mx-auto">
@@ -305,10 +314,12 @@ export default function ReconciliationModeModal({ isOpen, onClose, onSuccess, ac
                     {step === 'select' && (
                         <button
                             onClick={handleMark}
-                            disabled={submitting || selectedIds.size === 0}
+                            disabled={submitting}
                             className="btn btn-primary"
                         >
-                            {submitting ? 'Processing...' : `Reconcile ${selectedIds.size} Transactions`}
+                            {submitting ? 'Processing...' : transactions.length === 0 || selectedIds.size === 0
+                                ? 'Continue to Finalize'
+                                : `Reconcile ${selectedIds.size} Transactions`}
                         </button>
                     )}
                     {step === 'confirm' && (

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { withErrorHandler } from '@/lib/apiHandler';
+import { getProfileId } from '@/lib/profile';
 
 // Helper: Get the month string for a given offset from a base month
 function getMonthOffset(monthStr: string, offset: number): string {
@@ -101,6 +103,7 @@ function isHiddenCategoriesGroup(groupName: string): boolean {
 
 // GET budget for a specific month with proper envelope calculations
 export async function GET(request: NextRequest) {
+    const profileId = await getProfileId(request);
     const { searchParams } = new URL(request.url);
     const month = searchParams.get('month') || new Date().toISOString().slice(0, 7);
     const showHidden = searchParams.get('showHidden') === 'true';
@@ -108,7 +111,7 @@ export async function GET(request: NextRequest) {
     try {
         // Get all category groups with categories
         const categoryGroups = await prisma.categoryGroup.findMany({
-            where: showHidden ? {} : { isHidden: false },
+            where: showHidden ? { profileId } : { isHidden: false, profileId },
             include: {
                 categories: {
                     where: showHidden ? {} : { isHidden: false },
@@ -320,7 +323,7 @@ export async function GET(request: NextRequest) {
 
         // Calculate Ready to Assign
         // If we have a stored value from YNAB API sync, use it (most accurate)
-        const settings = await prisma.settings.findUnique({ where: { id: 'default' } });
+        const settings = await prisma.settings.findFirst({ where: { profileId } });
         let readyToAssign: number;
         
         if (settings && settings.toBeBudgeted !== undefined && settings.toBeBudgeted !== 0) {
@@ -329,7 +332,7 @@ export async function GET(request: NextRequest) {
         } else {
             // Fallback: Calculate from account balances - envelope totals
             const accounts = await prisma.account.findMany({
-                where: { onBudget: true, closed: false },
+                where: { onBudget: true, closed: false, profileId },
             });
             const totalBalance = accounts.reduce((sum, acc) => sum + acc.balance, 0);
             readyToAssign = totalBalance - totalAvailable;
@@ -337,7 +340,7 @@ export async function GET(request: NextRequest) {
 
         // Get account balance for display even if using YNAB ready to assign
         const accountsForDisplay = await prisma.account.findMany({
-            where: { onBudget: true, closed: false },
+            where: { onBudget: true, closed: false, profileId },
         });
         const totalBalance = accountsForDisplay.reduce((sum, acc) => sum + acc.balance, 0);
 
@@ -354,8 +357,7 @@ export async function GET(request: NextRequest) {
         });
     } catch (error) {
         console.error('Error fetching budget:', error);
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        return NextResponse.json({ error: 'Failed to fetch budget', details: errorMessage }, { status: 500 });
+        return NextResponse.json({ error: 'Failed to fetch budget' }, { status: 500 });
     }
 }
 
@@ -371,6 +373,7 @@ async function getPreviousMonthAvailable(categoryId: string, month: string): Pro
 // POST - Assign money to a category
 export async function POST(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         const body = await request.json();
         const { categoryId, month, amount } = body;
 
@@ -415,14 +418,14 @@ export async function POST(request: NextRequest) {
         });
 
         // Update Ready to Assign in settings
-        const settings = await prisma.settings.findUnique({ where: { id: 'default' } });
+        const settings = await prisma.settings.findFirst({ where: { profileId } });
         if (settings?.toBeBudgeted) {
             const difference = amountCents - oldAssigned;
             
             // Only update if there's an actual change
             if (difference !== 0) {
                 await prisma.settings.update({
-                    where: { id: 'default' },
+                    where: { id: settings.id },
                     data: { toBeBudgeted: Math.max(0, settings.toBeBudgeted - difference) },
                 });
             }
@@ -441,66 +444,61 @@ export async function POST(request: NextRequest) {
 
 // PUT - Recalculate all budget data from transactions (useful after import)
 // PERF-5 fix: Uses pre-filter + createMany instead of sequential upserts
-export async function PUT() {
-    try {
-        // Get all categories
-        const categories = await prisma.category.findMany({
-            select: { id: true },
+export const PUT = withErrorHandler(async () => {
+    // Get all categories
+    const categories = await prisma.category.findMany({
+        select: { id: true },
+    });
+
+    // Get all unique months from transactions
+    const transactions = await prisma.transaction.findMany({
+        where: { categoryId: { not: null } },
+        select: { date: true },
+    });
+
+    const months = new Set<string>();
+    transactions.forEach((t) => {
+        const m = t.date.toISOString().slice(0, 7);
+        months.add(m);
+    });
+
+    // Build all records upfront instead of sequential upserts
+    const records = categories.flatMap((cat) =>
+        Array.from(months).map((m) => ({
+            month: m,
+            categoryId: cat.id,
+            assigned: 0,
+            activity: 0,
+            available: 0,
+        }))
+    );
+
+    // Find which category×month combos already exist to avoid duplicates
+    const existingRecords = await prisma.monthlyBudget.findMany({
+        where: {
+            categoryId: { in: categories.map(c => c.id) },
+            month: { in: Array.from(months) },
+        },
+        select: { month: true, categoryId: true },
+    });
+    const existingKeys = new Set(existingRecords.map(r => `${r.month}|${r.categoryId}`));
+
+    // Filter to only new records
+    const newRecords = records.filter(r => !existingKeys.has(`${r.month}|${r.categoryId}`));
+
+    let created = 0;
+    if (newRecords.length > 0) {
+        const result = await prisma.monthlyBudget.createMany({
+            data: newRecords,
         });
-
-        // Get all unique months from transactions
-        const transactions = await prisma.transaction.findMany({
-            where: { categoryId: { not: null } },
-            select: { date: true },
-        });
-
-        const months = new Set<string>();
-        transactions.forEach((t) => {
-            const m = t.date.toISOString().slice(0, 7);
-            months.add(m);
-        });
-
-        // Build all records upfront instead of sequential upserts
-        const records = categories.flatMap((cat) =>
-            Array.from(months).map((m) => ({
-                month: m,
-                categoryId: cat.id,
-                assigned: 0,
-                activity: 0,
-                available: 0,
-            }))
-        );
-
-        // Find which category×month combos already exist to avoid duplicates
-        const existingRecords = await prisma.monthlyBudget.findMany({
-            where: {
-                categoryId: { in: categories.map(c => c.id) },
-                month: { in: Array.from(months) },
-            },
-            select: { month: true, categoryId: true },
-        });
-        const existingKeys = new Set(existingRecords.map(r => `${r.month}|${r.categoryId}`));
-
-        // Filter to only new records
-        const newRecords = records.filter(r => !existingKeys.has(`${r.month}|${r.categoryId}`));
-
-        let created = 0;
-        if (newRecords.length > 0) {
-            const result = await prisma.monthlyBudget.createMany({
-                data: newRecords,
-            });
-            created = result.count;
-        }
-
-        const totalProcessed = categories.length * months.size;
-        return NextResponse.json({
-            success: true,
-            message: `Processed ${categories.length} categories across ${months.size} months`,
-            records: totalProcessed,
-            created,
-        });
-    } catch (error) {
-        console.error('Error recalculating budget:', error);
-        return NextResponse.json({ error: 'Failed to recalculate budget' }, { status: 500 });
+        created = result.count;
     }
-}
+
+    const totalProcessed = categories.length * months.size;
+    return NextResponse.json({
+        success: true,
+        message: `Processed ${categories.length} categories across ${months.size} months`,
+        records: totalProcessed,
+        created,
+    });
+}, 'Recalculate budget');

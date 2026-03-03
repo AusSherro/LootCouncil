@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { getProfileId } from '@/lib/profile';
 
 // GET - List all scheduled transactions + upcoming bills
 export async function GET(request: NextRequest) {
+    const profileId = await getProfileId(request);
     const { searchParams } = new URL(request.url);
     const upcomingDays = parseInt(searchParams.get('upcomingDays') || '30');
 
     try {
         const scheduled = await prisma.scheduledTransaction.findMany({
-            where: { isActive: true },
+            where: { isActive: true, profileId },
             orderBy: { nextDueDate: 'asc' },
         });
 
@@ -81,6 +83,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
         }
 
+        const profileId = await getProfileId(request);
         const scheduled = await prisma.scheduledTransaction.create({
             data: {
                 name,
@@ -96,6 +99,7 @@ export async function POST(request: NextRequest) {
                 endDate: endDate ? new Date(endDate) : null,
                 autoCreate: autoCreate || false,
                 reminderDays: reminderDays ?? 3,
+                profileId,
             },
         });
 

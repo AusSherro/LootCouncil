@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { getProfileId } from '@/lib/profile';
 
 // GET - List transfers
 export async function GET(request: NextRequest) {
+    const profileId = await getProfileId(request);
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get('limit') || '50');
 
     try {
         const transfers = await prisma.transfer.findMany({
+            where: { profileId },
             orderBy: { date: 'desc' },
             take: limit,
         });
@@ -43,6 +46,7 @@ export async function GET(request: NextRequest) {
 // POST - Create a transfer between accounts
 export async function POST(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         const body = await request.json();
         const { sourceAccountId, destinationAccountId, amount, date, memo } = body;
 
@@ -89,6 +93,7 @@ export async function POST(request: NextRequest) {
                     memo: memo || null,
                     sourceAccountId,
                     destinationAccountId,
+                    profileId,
                 },
             });
 

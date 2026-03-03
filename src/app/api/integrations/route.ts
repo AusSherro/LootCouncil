@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { getProfileId } from '@/lib/profile';
 
 // GET all integrations (masks secrets)
-export async function GET() {
+export async function GET(request: NextRequest) {
+    const profileId = await getProfileId(request);
     try {
-        const integrations = await prisma.apiIntegration.findMany();
+        const integrations = await prisma.apiIntegration.findMany({
+            where: { profileId },
+        });
         
         // Return with masked secrets
         const masked = integrations.map(i => ({
@@ -25,6 +29,7 @@ export async function GET() {
 // POST create or update an integration
 export async function POST(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         const body = await request.json();
         const { provider, apiKey, apiSecret, enabled } = body;
         
@@ -32,22 +37,32 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Provider is required' }, { status: 400 });
         }
         
-        // Store credentials directly (local-only app, no internet exposure)
-        // The encryption was causing issues with the signature
-        const integration = await prisma.apiIntegration.upsert({
-            where: { provider },
-            update: {
-                ...(apiKey && { apiKey: apiKey }),
-                ...(apiSecret && { apiSecret: apiSecret }),
-                ...(typeof enabled === 'boolean' && { enabled }),
-            },
-            create: {
-                provider,
-                apiKey: apiKey || '',
-                apiSecret: apiSecret || '',
-                enabled: enabled ?? true,
-            },
+        // Find existing for this provider + profile
+        const existing = await prisma.apiIntegration.findFirst({
+            where: { provider, profileId },
         });
+
+        let integration;
+        if (existing) {
+            integration = await prisma.apiIntegration.update({
+                where: { id: existing.id },
+                data: {
+                    ...(apiKey && { apiKey }),
+                    ...(apiSecret && { apiSecret }),
+                    ...(typeof enabled === 'boolean' && { enabled }),
+                },
+            });
+        } else {
+            integration = await prisma.apiIntegration.create({
+                data: {
+                    provider,
+                    apiKey: apiKey || '',
+                    apiSecret: apiSecret || '',
+                    enabled: enabled ?? true,
+                    profileId,
+                },
+            });
+        }
         
         return NextResponse.json({ 
             success: true, 
@@ -66,6 +81,7 @@ export async function POST(request: NextRequest) {
 // DELETE an integration
 export async function DELETE(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         const { searchParams } = new URL(request.url);
         const provider = searchParams.get('provider');
         
@@ -73,9 +89,15 @@ export async function DELETE(request: NextRequest) {
             return NextResponse.json({ error: 'Provider is required' }, { status: 400 });
         }
         
-        await prisma.apiIntegration.delete({
-            where: { provider },
+        const existing = await prisma.apiIntegration.findFirst({
+            where: { provider, profileId },
         });
+        
+        if (existing) {
+            await prisma.apiIntegration.delete({
+                where: { id: existing.id },
+            });
+        }
         
         return NextResponse.json({ success: true });
     } catch (error) {

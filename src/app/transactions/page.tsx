@@ -1,7 +1,7 @@
 'use client';
 
 import { ScrollText, Plus, Search, Filter, Check, X, RefreshCw, Calendar, Upload, CheckSquare, Square, Trash2, Tag, Inbox } from 'lucide-react';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import TransactionForm from '@/components/TransactionForm';
 import ScheduledTransactions from '@/components/ScheduledTransactions';
 import CSVImportModal from '@/components/CSVImportModal';
@@ -10,6 +10,8 @@ import { useKeyboardShortcuts } from '@/lib/useKeyboardShortcuts';
 import { SkeletonTransactionList } from '@/components/Skeleton';
 import { InlineCategorySelect } from '@/components/InlineEdit';
 import { formatCurrency } from '@/lib/utils';
+import { useSettings } from '@/components/SettingsProvider';
+import { fetchJsonCached } from '@/lib/clientCache';
 
 interface Transaction {
     id: string;
@@ -58,6 +60,7 @@ function TransactionRow({
     selectedIndex,
     categories,
     onCategoryChange,
+    currency = 'AUD',
 }: { 
     transaction: Transaction; 
     onEdit: (t: Transaction) => void; 
@@ -67,6 +70,7 @@ function TransactionRow({
     selectedIndex?: number;
     categories?: Category[];
     onCategoryChange?: (transactionId: string, categoryId: string) => Promise<void>;
+    currency?: string;
 }) {
     const isInflow = transaction.amount > 0;
     const gridCols = showBalance 
@@ -104,7 +108,7 @@ function TransactionRow({
             </div>
             <div className="text-sm text-neutral truncate">{transaction.memo || '—'}</div>
             <div className={`text-right font-medium ${isInflow ? 'text-positive' : 'text-foreground'}`}>
-                {isInflow ? '+' : ''}{formatCurrency(transaction.amount, 'AUD', { useAbsolute: true })}
+                {isInflow ? '+' : ''}{formatCurrency(transaction.amount, currency, { useAbsolute: true })}
             </div>
             {showBalance && transaction.runningBalance !== undefined && (
                 <div className={`text-right font-medium ${transaction.runningBalance >= 0 ? 'text-foreground' : 'text-negative'}`}>
@@ -128,6 +132,8 @@ function TransactionRow({
 
 export default function TransactionsPage() {
     const { showToast } = useToast();
+    const { settings } = useSettings();
+    const currency = settings?.currency || 'AUD';
     const [activeTab, setActiveTab] = useState<'all' | 'scheduled'>('all');
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [loading, setLoading] = useState(true);
@@ -135,6 +141,8 @@ export default function TransactionsPage() {
     const [showImport, setShowImport] = useState(false);
     const [editTransaction, setEditTransaction] = useState<Transaction | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
+    const [debouncedSearch, setDebouncedSearch] = useState('');
+    const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [showFilters, setShowFilters] = useState(false);
     const [accounts, setAccounts] = useState<Account[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
@@ -153,6 +161,22 @@ export default function TransactionsPage() {
         cleared: 'all',
     });
     const [hideReconciliationAdjustments, setHideReconciliationAdjustments] = useState(true);
+
+    // Debounce search input by 300ms
+    useEffect(() => {
+        if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+        searchTimerRef.current = setTimeout(() => setDebouncedSearch(searchQuery), 300);
+        return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
+    }, [searchQuery]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('new') === '1') {
+            setShowForm(true);
+            window.history.replaceState({}, '', '/transactions');
+        }
+    }, []);
 
     function toggleSelect(id: string) {
         const newSet = new Set(selectedIds);
@@ -194,7 +218,7 @@ export default function TransactionsPage() {
             setShowBulkEdit(false);
             setBulkCategory('');
             setBulkCleared('');
-            fetchTransactions(filters.accountId || undefined);
+            fetchTransactions();
         } catch (err) {
             console.error('Bulk edit failed:', err);
             showToast(`Failed to update ${selectedIds.size} transactions. Please try again.`, 'error');
@@ -214,7 +238,7 @@ export default function TransactionsPage() {
             });
             if (!res.ok) throw new Error('Server returned an error');
             setSelectedIds(new Set());
-            fetchTransactions(filters.accountId || undefined);
+            fetchTransactions();
         } catch (err) {
             console.error('Bulk delete failed:', err);
             showToast(`Failed to delete ${selectedIds.size} transactions. Please try again.`, 'error');
@@ -222,11 +246,21 @@ export default function TransactionsPage() {
     }
     const [activeFiltersCount, setActiveFiltersCount] = useState(0);
 
-    const fetchTransactions = useCallback(async (accountId?: string) => {
+    const fetchTransactions = useCallback(async () => {
         setLoading(true);
         try {
             const params = new URLSearchParams({ limit: '100' });
-            if (accountId) params.set('accountId', accountId);
+
+            if (filters.accountId) params.set('accountId', filters.accountId);
+            if (filters.categoryId) params.set('categoryId', filters.categoryId);
+            if (filters.startDate) params.set('startDate', filters.startDate);
+            if (filters.endDate) params.set('endDate', filters.endDate);
+            if (filters.minAmount) params.set('minAmount', filters.minAmount);
+            if (filters.maxAmount) params.set('maxAmount', filters.maxAmount);
+            if (filters.cleared !== 'all') params.set('cleared', String(filters.cleared === 'cleared'));
+            if (debouncedSearch) params.set('q', debouncedSearch);
+            params.set('hideReconciliationAdjustments', String(hideReconciliationAdjustments));
+
             const res = await fetch(`/api/transactions?${params.toString()}`);
             const data = await res.json();
             setTransactions(data.transactions || []);
@@ -235,7 +269,7 @@ export default function TransactionsPage() {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [filters, debouncedSearch, hideReconciliationAdjustments]);
 
     // Inline category change handler
     const handleInlineCategoryChange = useCallback(async (transactionId: string, categoryId: string) => {
@@ -257,17 +291,37 @@ export default function TransactionsPage() {
     }, [categories]);
 
     useEffect(() => {
-        fetchTransactions(filters.accountId || undefined);
-        // Fetch accounts and categories for filters
-        fetch('/api/accounts').then(r => r.json()).then(d => setAccounts(d.accounts || []));
-        fetch('/api/categories').then(r => r.json()).then(d => {
-            const allCats: Category[] = [];
-            (d.categoryGroups || []).forEach((g: { categories: Category[] }) => {
-                allCats.push(...g.categories);
-            });
-            setCategories(allCats);
-        });
-    }, [fetchTransactions, filters.accountId]);
+        fetchTransactions();
+    }, [fetchTransactions]);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        async function fetchFilterMetadata() {
+            try {
+                const [accountsData, categoriesData] = await Promise.all([
+                    fetchJsonCached<{ accounts?: Account[] }>('/api/accounts', 300_000),
+                    fetchJsonCached<{ categoryGroups?: Array<{ categories: Category[] }> }>('/api/categories', 300_000),
+                ]);
+
+                if (cancelled) return;
+                setAccounts(accountsData.accounts || []);
+
+                const allCats: Category[] = [];
+                (categoriesData.categoryGroups || []).forEach((g) => {
+                    allCats.push(...g.categories);
+                });
+                setCategories(allCats);
+            } catch (err) {
+                console.error('Failed to fetch filter metadata:', err);
+            }
+        }
+
+        fetchFilterMetadata();
+        return () => {
+            cancelled = true;
+        };
+    }, []);
 
     // Calculate active filters count
     useEffect(() => {
@@ -282,48 +336,7 @@ export default function TransactionsPage() {
         setActiveFiltersCount(count);
     }, [filters]);
 
-    const filteredTransactions = transactions.filter(t => {
-        // Filter reconciliation adjustments if enabled
-        if (hideReconciliationAdjustments && t.payee?.toLowerCase().includes('reconciliation balance adjustment')) {
-            return false;
-        }
-        
-        // Text search
-        if (searchQuery) {
-            const query = searchQuery.toLowerCase();
-            const matches = 
-                t.payee?.toLowerCase().includes(query) ||
-                t.memo?.toLowerCase().includes(query) ||
-                t.category?.name.toLowerCase().includes(query);
-            if (!matches) return false;
-        }
-        
-        // Account filter
-        if (filters.accountId && t.account?.id !== filters.accountId) return false;
-        
-        // Category filter
-        if (filters.categoryId && t.category?.id !== filters.categoryId) return false;
-        
-        // Date range
-        if (filters.startDate && t.date < filters.startDate) return false;
-        if (filters.endDate && t.date > filters.endDate) return false;
-        
-        // Amount range
-        if (filters.minAmount) {
-            const min = parseFloat(filters.minAmount) * 100;
-            if (Math.abs(t.amount) < min) return false;
-        }
-        if (filters.maxAmount) {
-            const max = parseFloat(filters.maxAmount) * 100;
-            if (Math.abs(t.amount) > max) return false;
-        }
-        
-        // Cleared status
-        if (filters.cleared === 'cleared' && !t.cleared) return false;
-        if (filters.cleared === 'uncleared' && t.cleared) return false;
-        
-        return true;
-    });
+    const filteredTransactions = transactions;
 
     // Keyboard shortcuts
     useKeyboardShortcuts([
@@ -414,7 +427,7 @@ export default function TransactionsPage() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                    <button onClick={() => fetchTransactions(filters.accountId || undefined)} className="btn btn-ghost" disabled={loading}>
+                    <button onClick={() => fetchTransactions()} className="btn btn-ghost" disabled={loading}>
                         <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
                     </button>
                     <button onClick={() => setShowImport(true)} className="btn btn-secondary">
@@ -722,6 +735,7 @@ export default function TransactionsPage() {
                                     selectedIndex={keyboardIndex === index ? index : undefined}
                                     categories={categories}
                                     onCategoryChange={handleInlineCategoryChange}
+                                    currency={currency}
                                 />
                             ))
                         )}

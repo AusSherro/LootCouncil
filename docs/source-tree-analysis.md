@@ -1,6 +1,6 @@
 # Loot Council — Source Tree Analysis
 
-> **Generated:** 2026-02-12 | **Scan Level:** Quick
+> **Generated:** 2026-03-04 | **Scan Level:** Comprehensive
 
 ---
 
@@ -16,7 +16,8 @@ d:\Vibe Coding\Loot Council\
 │   ├── .github/
 │   │   └── agents/                # GitHub Copilot agent configs
 │   ├── prisma/                    # 🗃️ Database layer
-│   │   ├── schema.prisma          # Database schema (17 models)
+│   │   ├── schema.prisma          # Database schema (18 models)
+│   │   ├── seed-profile.ts        # Profile seeding script
 │   │   ├── loot-council.db        # SQLite database file
 │   │   └── migrations/            # Database migrations
 │   │       └── 20260202034301_init/  # Initial migration
@@ -27,7 +28,7 @@ d:\Vibe Coding\Loot Council\
 │   │   │   ├── page.tsx           # ⚡ Dashboard (home page)
 │   │   │   ├── globals.css        # 🎨 Theme variables, animations, base styles
 │   │   │   ├── favicon.ico        # App icon
-│   │   │   ├── api/               # 🔌 Backend API routes (46 files, 26 domains)
+│   │   │   ├── api/               # 🔌 Backend API routes (46 files, 28 domains)
 │   │   │   ├── budget/            # Budget page
 │   │   │   ├── transactions/      # Transactions page
 │   │   │   ├── accounts/          # Accounts page
@@ -37,7 +38,7 @@ d:\Vibe Coding\Loot Council\
 │   │   │   ├── assistant/         # AI assistant page
 │   │   │   └── settings/          # Settings page
 │   │   ├── components/            # 🧩 Reusable UI components (26 files)
-│   │   └── lib/                   # 🔧 Utilities & hooks (5 files)
+│   │   └── lib/                   # 🔧 Utilities & hooks (7 files)
 │   ├── .env                       # Environment variables
 │   ├── package.json               # Dependencies & scripts
 │   ├── next.config.ts             # Next.js configuration
@@ -65,7 +66,6 @@ api/
 ├── accounts/route.ts              # Account CRUD (GET, POST, PATCH, DELETE)
 ├── age-of-money/route.ts          # Age of Money calculation
 ├── ai/                            # AI-powered features
-│   ├── categorize/route.ts        # Auto-categorize transactions
 │   ├── chat/route.ts              # Financial advisor chat
 │   ├── insights/route.ts          # Spending insights
 │   └── optimize/route.ts          # Budget optimization suggestions
@@ -75,9 +75,9 @@ api/
 │   ├── route.ts                   # Budget CRUD (GET month data, PUT assignments)
 │   ├── auto-assign/route.ts       # Auto-fund goal categories
 │   ├── copy/route.ts              # Copy budget between months
-│   └── quick-actions/route.ts     # Quick budget actions
+│   ├── quick-actions/route.ts     # Quick budget actions
+│   └── transfer/route.ts          # Transfer funds between categories
 ├── categories/route.ts            # Category/group management
-├── exchange/route.ts              # Currency exchange rates (1hr cache)
 ├── export/route.ts                # JSON data backup export
 ├── fire/route.ts                  # FIRE calculator settings
 ├── import/                        # Data import
@@ -99,6 +99,7 @@ api/
 │   ├── route.ts                   # Payee list
 │   ├── manage/route.ts            # Merge, rename, delete
 │   └── similar/route.ts           # Find similar payees
+├── profiles/route.ts              # Profile CRUD (multi-profile)
 ├── quote/route.ts                 # Random financial quotes
 ├── reconcile/route.ts             # Account reconciliation
 ├── reports/
@@ -112,7 +113,7 @@ api/
 ├── splits/route.ts                # Split transaction management
 ├── templates/route.ts             # Budget template CRUD
 ├── transactions/                  # Transaction management
-│   ├── route.ts                   # Transaction CRUD (with rule matching)
+│   ├── route.ts                   # Transaction CRUD (with rule matching, server-side filtering)
 │   ├── [id]/route.ts              # Individual transaction operations
 │   └── bulk/route.ts              # Bulk edit/delete
 └── transfers/                     # Transfer management
@@ -139,7 +140,7 @@ app/
 
 ```
 components/
-├── Sidebar.tsx                    # Navigation (desktop sidebar + mobile hamburger)
+├── Sidebar.tsx                    # Navigation (desktop sidebar, shared nav items)
 ├── MobileNav.tsx                  # Bottom navigation for mobile
 ├── TransactionForm.tsx            # Add/edit transaction modal
 ├── SplitTransactionModal.tsx      # Split transaction editing
@@ -149,40 +150,43 @@ components/
 ├── PayeeManagement.tsx            # Payee CRUD UI
 ├── QuickTransferModal.tsx         # Quick account-to-account transfers
 ├── CreditCardPaymentModal.tsx     # Credit card payment workflow
-├── AddAssetModal.tsx              # Investment asset management
 ├── BudgetTemplatesModal.tsx       # Budget template management
+├── BudgetTransferModal.tsx        # Transfer funds between budget categories
+├── BudgetFlowBar.tsx              # Budget flow visualization (income/assigned/available)
 ├── CSVImportModal.tsx             # CSV file import wizard
 ├── ReconciliationModeModal.tsx    # Account reconciliation workflow
 ├── ScheduledTransactions.tsx      # Scheduled transaction list/management
 ├── TransactionRulesSettings.tsx   # Transaction rule management
 ├── ConfirmDialog.tsx              # Reusable confirmation dialog
 ├── InlineEdit.tsx                 # Inline text editing
-├── Sparkline.tsx                  # Mini sparkline charts
-├── LoadingSkeleton.tsx            # Loading state skeletons
-├── Skeleton.tsx                   # Base skeleton component
+├── Skeleton.tsx                   # Loading skeleton component
 ├── ErrorBoundary.tsx              # Error handling wrapper
 ├── KeyboardShortcutsProvider.tsx  # Global keyboard shortcut system
+├── ProfileProvider.tsx            # Multi-profile context provider
 ├── UndoToast.tsx                  # Undo/redo floating UI
 ├── SettingsProvider.tsx           # Settings context provider
 └── Toast.tsx                      # Toast notification component
 ```
 
-### `src/lib/` — Utilities (5 files)
+### `src/lib/` — Utilities (7 files)
 
 ```
 lib/
 ├── prisma.ts                      # Prisma client singleton
 ├── openai.ts                      # OpenAI client configuration
 ├── utils.ts                       # Helper functions (formatting, etc.)
-├── useKeyboardShortcuts.tsx       # Keyboard navigation hook
-└── useUndo.tsx                    # Undo/redo state management hook
+├── apiHandler.ts                  # Centralized API error handler wrapper
+├── clientCache.ts                 # Lightweight in-memory TTL cache for client fetches
+├── navigation.ts                  # Shared navigation items for Sidebar/MobileNav
+└── profile.ts                     # Profile ID resolution (cookie/query/fallback)
 ```
 
 ### `prisma/` — Database Layer
 
 ```
 prisma/
-├── schema.prisma                  # 17 database models
+├── schema.prisma                  # 18 database models (Profile + 17 data models)
+├── seed-profile.ts                # Profile seeding script
 ├── loot-council.db                # SQLite database file (local data)
 └── migrations/
     ├── migration_lock.toml
@@ -195,7 +199,7 @@ prisma/
 
 | Entry Point | File | Purpose |
 |-------------|------|---------|
-| App Root | `src/app/layout.tsx` | Root layout with providers (Settings, Keyboard, Undo) |
+| App Root | `src/app/layout.tsx` | Root layout with providers (Settings, Profile, Keyboard, Undo) |
 | Dashboard | `src/app/page.tsx` | Home page with financial summary |
 | API Gateway | `src/app/api/*/route.ts` | 46 API route handlers |
 | Database | `prisma/schema.prisma` | Schema definition (17 models) |

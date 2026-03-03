@@ -9,12 +9,6 @@ const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY || '',
 });
 
-export interface CategorizedTransaction {
-    cleanMerchant: string;
-    suggestedCategory: string;
-    confidence: number;
-}
-
 export interface SpendingInsight {
     type: 'warning' | 'success' | 'tip' | 'trend';
     title: string;
@@ -27,102 +21,6 @@ export interface BudgetRecommendation {
     currentAmount: number;
     suggestedAmount: number;
     reasoning: string;
-}
-
-// Categorize a single transaction
-export async function categorizeTransaction(
-    payee: string,
-    amount: number,
-    existingCategories: string[]
-): Promise<CategorizedTransaction> {
-    const prompt = `You are a financial categorization AI. Given a transaction, return a clean merchant name and suggested category.
-
-Transaction: "${payee}" for $${(Math.abs(amount) / 100).toFixed(2)}
-
-Available categories: ${existingCategories.join(', ')}
-
-Respond with ONLY valid JSON in this exact format:
-{"cleanMerchant": "Clean Name", "suggestedCategory": "Category Name", "confidence": 0.95}
-
-Rules:
-- cleanMerchant: Convert ugly bank text like "AMZN MKTP US*123ABC" to "Amazon"
-- suggestedCategory: Pick the most appropriate category from the list, or suggest a new one if none fit
-- confidence: 0.0-1.0 how sure you are`;
-
-    try {
-        const response = await openai.chat.completions.create({
-            model: 'gpt-4o-mini',
-            messages: [{ role: 'user', content: prompt }],
-            temperature: 0.3,
-            max_tokens: 150,
-        });
-
-        const content = response.choices[0]?.message?.content || '';
-        const jsonMatch = content.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-            return JSON.parse(jsonMatch[0]);
-        }
-        throw new Error('No valid JSON in response');
-    } catch (error) {
-        console.error('OpenAI categorization error:', error);
-        return {
-            cleanMerchant: payee,
-            suggestedCategory: 'Uncategorized',
-            confidence: 0,
-        };
-    }
-}
-
-// Batch categorize transactions
-export async function batchCategorizeTransactions(
-    transactions: { id: string; payee: string; amount: number }[],
-    existingCategories: string[]
-): Promise<Map<string, CategorizedTransaction>> {
-    const prompt = `You are a financial categorization AI. Categorize these transactions and clean up merchant names.
-
-Transactions:
-${transactions.map((t, i) => `${i + 1}. "${t.payee}" - $${(Math.abs(t.amount) / 100).toFixed(2)}`).join('\n')}
-
-Available categories: ${existingCategories.join(', ')}
-
-Respond with ONLY a JSON array in this exact format:
-[{"index": 1, "cleanMerchant": "Clean Name", "suggestedCategory": "Category", "confidence": 0.95}, ...]
-
-Rules:
-- cleanMerchant: Convert ugly bank text like "AMZN MKTP US*123ABC" to "Amazon"
-- suggestedCategory: Pick from available categories or suggest new ones
-- confidence: 0.0-1.0 how confident you are`;
-
-    try {
-        const response = await openai.chat.completions.create({
-            model: 'gpt-4o-mini',
-            messages: [{ role: 'user', content: prompt }],
-            temperature: 0.3,
-            max_tokens: 1000,
-        });
-
-        const content = response.choices[0]?.message?.content || '';
-        const jsonMatch = content.match(/\[[\s\S]*\]/);
-        if (jsonMatch) {
-            const results = JSON.parse(jsonMatch[0]) as Array<{ index: number } & CategorizedTransaction>;
-            const map = new Map<string, CategorizedTransaction>();
-            results.forEach((r) => {
-                const tx = transactions[r.index - 1];
-                if (tx) {
-                    map.set(tx.id, {
-                        cleanMerchant: r.cleanMerchant,
-                        suggestedCategory: r.suggestedCategory,
-                        confidence: r.confidence,
-                    });
-                }
-            });
-            return map;
-        }
-        throw new Error('No valid JSON array in response');
-    } catch (error) {
-        console.error('OpenAI batch categorization error:', error);
-        return new Map();
-    }
 }
 
 // Financial advisor chat
@@ -278,5 +176,3 @@ Amounts in cents. Only include categories that should change.`;
         return [];
     }
 }
-
-export default openai;

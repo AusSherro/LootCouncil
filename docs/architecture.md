@@ -1,12 +1,12 @@
 # Loot Council — Architecture Document
 
-> **Generated:** 2026-02-12 | **Scan Level:** Quick
+> **Generated:** 2026-03-04 | **Scan Level:** Comprehensive
 
 ---
 
 ## 1. Executive Summary
 
-Loot Council is a **local-first personal finance application** built as a monolithic Next.js 16 application. It uses the App Router with client-rendered pages and API routes that access a local SQLite database via Prisma ORM. The architecture prioritizes privacy (no cloud), simplicity (single process), and feature richness (budgeting, investments, FIRE planning, AI advisor).
+Loot Council is a **local-first personal finance application** built as a monolithic Next.js 16 application. It uses the App Router with client-rendered pages and API routes that access a local SQLite database via Prisma ORM. The architecture prioritizes privacy (no cloud), simplicity (single process), and feature richness (budgeting, investments, FIRE planning, AI advisor). A multi-profile system scopes all data per profile, allowing independent budgets on a single installation.
 
 ---
 
@@ -50,10 +50,12 @@ Loot Council is a **local-first personal finance application** built as a monoli
 | Data Layer | Local SQLite via Prisma | Privacy-first, no cloud dependency, zero infrastructure |
 | API Style | REST-like Next.js API routes | Simple, co-located with frontend, no separate backend |
 | State Management | React `useState` + `useEffect` | No global store (Redux/Zustand); page-level state |
-| Caching | None (per ISSUES.md) | No SWR/React Query; fresh fetch on every page visit |
+| Caching | Lightweight client cache | `src/lib/clientCache.ts` — in-memory TTL cache for dashboard & filter metadata |
 | Authentication | None | Local-first design; single user per installation |
+| Multi-Profile | Cookie/query param scoping | `Profile` model; `profileId` FK on all data models |
 | Styling | Tailwind CSS + CSS variables | Theme system via CSS custom properties |
-| AI Integration | Optional OpenAI API | Gracefully degrades without API key |
+| AI Integration | Optional OpenAI API | Gracefully degrades without API key; data consent required |
+| Error Handling | Centralized `withErrorHandler` | `src/lib/apiHandler.ts` wrapper for API routes |
 
 ---
 
@@ -96,15 +98,16 @@ User Action → React State → fetch() → API Route → Prisma → SQLite
                           (OpenAI, Yahoo, CoinGecko)
 ```
 
-### Model Count: 17 models across 7 domains
+### Model Count: 18 models across 8 domains
 
-1. **Core Budgeting** (4): Account, CategoryGroup, Category, MonthlyBudget
-2. **Transactions** (4): Transaction, SubTransaction, Payee, Transfer
-3. **Automation** (3): TransactionRule, ScheduledTransaction, BudgetTemplate + BudgetTemplateItem
-4. **Investments** (3): Asset, AssetLot, AllocationTarget
-5. **FIRE** (1): FireSettings
-6. **Configuration** (2): Settings, ApiIntegration
-7. **Currency** (1): ExchangeRate
+1. **Profiles** (1): Profile
+2. **Core Budgeting** (4): Account, CategoryGroup, Category, MonthlyBudget
+3. **Transactions** (4): Transaction, SubTransaction, Payee, Transfer
+4. **Automation** (3): TransactionRule, ScheduledTransaction, BudgetTemplate + BudgetTemplateItem
+5. **Investments** (3): Asset, AssetLot, AllocationTarget
+6. **FIRE** (1): FireSettings
+7. **Configuration** (2): Settings, ApiIntegration
+8. **Currency** (1): ExchangeRate
 
 See [Data Models](./data-models.md) for complete schema documentation.
 
@@ -113,21 +116,21 @@ See [Data Models](./data-models.md) for complete schema documentation.
 ## 5. API Architecture
 
 ### Design
-- **46 API route files** across **26 domains**
+- **46 API route files** across **28 domains**
 - Standard REST patterns (GET/POST/PUT/PATCH/DELETE)
-- No middleware (each route has its own try-catch)
+- Centralized error handling via `withErrorHandler` wrapper (`src/lib/apiHandler.ts`)
 - No authentication layer
 - No request validation framework (ad-hoc checks)
+- Profile-scoped queries via `getProfileId()` helper (`src/lib/profile.ts`)
 
 ### External Integrations
 
 | Service | Purpose | Auth | Caching |
 |---------|---------|------|---------|
-| OpenAI | AI chat, categorization, insights, optimization | API key in env | None |
+| OpenAI | AI chat, insights, optimization | API key in env | None |
 | Yahoo Finance | Stock/ETF symbol lookup & pricing | None (free API) | None |
 | CoinGecko | Crypto pricing & symbol lookup | None (free API) | None |
 | Binance | Crypto wallet sync | API key/secret in DB | None |
-| exchangerate-api | Currency conversion | None (free tier) | 1hr TTL in ExchangeRate table |
 | YNAB API | Budget import & delta sync | Bearer token (user-provided) | server_knowledge cursor |
 
 See [API Contracts](./api-contracts.md) for complete endpoint documentation.
@@ -140,19 +143,20 @@ See [API Contracts](./api-contracts.md) for complete endpoint documentation.
 
 | Page | Route | Key Features |
 |------|-------|--------------|
-| Dashboard | `/` | Summary cards, quick stats, sparklines |
-| Budget | `/budget` | Envelope view, category management, goals, templates |
-| Transactions | `/transactions` | List, filter, bulk ops, add/edit |
+| Dashboard | `/` | Summary cards, quick stats |
+| Budget | `/budget` | Envelope view, category management, goals, templates, budget transfers |
+| Transactions | `/transactions` | List, server-side filter, bulk ops, add/edit |
 | Accounts | `/accounts` | Account list, balances, reconciliation |
 | Reports | `/reports` | 5 chart types (spending, income, net worth, payee, trends) |
 | Investments | `/investments` | Portfolio, lots, allocation, live pricing |
 | FIRE | `/fire` | Calculator with interactive sliders |
-| Assistant | `/assistant` | AI chat interface |
-| Settings | `/settings` | Theme, import/export, rules, scheduled txns |
+| Assistant | `/assistant` | AI chat interface (with data consent) |
+| Settings | `/settings` | Theme, profiles, import/export, rules, scheduled txns |
 
 ### State Management
 - **No global state library** — Each page manages its own state via `useState`
 - **Settings context** — `SettingsProvider` wraps the app for theme/currency/format
+- **Profile context** — `ProfileProvider` wraps the app for multi-profile switching
 - **Keyboard context** — `KeyboardShortcutsProvider` for global shortcuts
 - **Undo system** — `useUndo` hook with action history stack
 
@@ -178,14 +182,14 @@ See [API Contracts](./api-contracts.md) for complete endpoint documentation.
 
 ### Local Development
 ```bash
-npm run dev          # Turbopack dev server (localhost:3000)
+npm run dev          # Turbopack dev server (localhost:3000, 127.0.0.1 only)
 npx prisma studio    # Database GUI (localhost:5555)
 ```
 
 ### Production Build
 ```bash
 npm run build        # Next.js production build
-npm run start        # Production server
+npm run start        # Production server (127.0.0.1 only)
 ```
 
 ### Launch Script

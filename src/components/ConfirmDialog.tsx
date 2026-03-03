@@ -72,6 +72,10 @@ export default function ConfirmDialog({
     return (
         <div 
             className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] animate-fade-in"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="confirm-dialog-title"
+            aria-describedby="confirm-dialog-message"
             onClick={(e) => {
                 if (e.target === e.currentTarget) onClose();
             }}
@@ -80,6 +84,7 @@ export default function ConfirmDialog({
                 {/* Close button */}
                 <button
                     onClick={onClose}
+                    aria-label="Close dialog"
                     className="absolute top-4 right-4 text-neutral hover:text-foreground"
                 >
                     <X className="w-5 h-5" />
@@ -91,10 +96,10 @@ export default function ConfirmDialog({
                 </div>
 
                 {/* Content */}
-                <h3 className="text-lg font-semibold text-foreground text-center mb-2">
+                <h3 id="confirm-dialog-title" className="text-lg font-semibold text-foreground text-center mb-2">
                     {title}
                 </h3>
-                <p className="text-neutral text-center mb-6">
+                <p id="confirm-dialog-message" className="text-neutral text-center mb-6">
                     {message}
                 </p>
 
@@ -171,20 +176,22 @@ export function useConfirmDialog() {
         setState(prev => ({ ...prev, isOpen: false }));
     }, []);
 
-    const Dialog = useCallback(() => (
-        <ConfirmDialog
-            isOpen={state.isOpen}
-            onClose={close}
-            onConfirm={() => {
-                state.onConfirm();
-                close();
-            }}
-            title={state.title}
-            message={state.message}
-            variant={state.variant}
-            confirmText={state.confirmText}
-        />
-    ), [state, close]);
+    const Dialog = function ConfirmDialogWrapper() {
+        return (
+            <ConfirmDialog
+                isOpen={state.isOpen}
+                onClose={close}
+                onConfirm={() => {
+                    state.onConfirm();
+                    close();
+                }}
+                title={state.title}
+                message={state.message}
+                variant={state.variant}
+                confirmText={state.confirmText}
+            />
+        );
+    };
 
     return { confirm, close, Dialog };
 }

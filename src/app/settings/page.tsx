@@ -1,8 +1,9 @@
 'use client';
 
-import { Settings as SettingsIcon, Upload, Download, Trash2, Database, Palette, Globe, Loader2, Key, RefreshCw, Link2, Zap } from 'lucide-react';
+import { Settings as SettingsIcon, Upload, Download, Trash2, Database, Palette, Globe, Loader2, Key, RefreshCw, Link2, Zap, UserPlus, Users, Pencil, X } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useSettings } from '@/components/SettingsProvider';
+import { useProfile } from '@/components/ProfileProvider';
 import TransactionRulesSettings from '@/components/TransactionRulesSettings';
 import PayeeManagement from '@/components/PayeeManagement';
 
@@ -22,8 +23,13 @@ interface Integration {
 
 export default function SettingsPage() {
   const { settings, loading, updateSettings } = useSettings();
+  const { profiles, activeProfile, createProfile, deleteProfile, renameProfile, switchProfile } = useProfile();
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [newProfileName, setNewProfileName] = useState('');
+  const [creatingProfile, setCreatingProfile] = useState(false);
+  const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
+  const [editingProfileName, setEditingProfileName] = useState('');
 
   // YNAB API State - initialize from localStorage
   const [ynabToken, setYnabToken] = useState(() => {
@@ -66,15 +72,7 @@ export default function SettingsPage() {
     }
   };
 
-  // Load integrations on mount
-  useEffect(() => {
-    // Fetching data on mount and setting state is a legitimate pattern
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchIntegrations();
-    fetchSyncStatus();
-  }, []);
-
-  const fetchSyncStatus = async () => {
+  async function fetchSyncStatus() {
     try {
       const res = await fetch('/api/import/ynab-api/sync');
       if (res.ok) {
@@ -84,7 +82,15 @@ export default function SettingsPage() {
     } catch (err) {
       console.error('Failed to fetch sync status:', err);
     }
-  };
+  }
+
+  // Load integrations on mount
+  useEffect(() => {
+    // Fetching data on mount and setting state is a legitimate pattern
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchIntegrations();
+    fetchSyncStatus();
+  }, []);
 
   const performDeltaSync = async () => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('ynab_token') : null;
@@ -317,6 +323,138 @@ export default function SettingsPage() {
         </div>
       </div>
 
+      {/* Profiles */}
+      <section className="card mb-6">
+        <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
+          <Users className="w-5 h-5 text-gold" />
+          Profiles
+        </h2>
+        <p className="text-sm text-neutral mb-4">
+          Each profile has independent budgets, accounts, transactions, and settings. Switch profiles from the sidebar.
+        </p>
+
+        {/* Existing profiles */}
+        <div className="space-y-2 mb-4">
+          {profiles.map((profile) => (
+            <div
+              key={profile.id}
+              className={`flex items-center gap-3 px-4 py-3 rounded-lg border transition-colors ${
+                profile.id === activeProfile?.id
+                  ? 'border-primary/50 bg-primary/5'
+                  : 'border-border bg-surface-light/30'
+              }`}
+            >
+              {editingProfileId === profile.id ? (
+                <>
+                  <input
+                    type="text"
+                    value={editingProfileName}
+                    onChange={(e) => setEditingProfileName(e.target.value)}
+                    className="input flex-1"
+                    autoFocus
+                    onKeyDown={async (e) => {
+                      if (e.key === 'Enter' && editingProfileName.trim()) {
+                        await renameProfile(profile.id, editingProfileName.trim());
+                        setEditingProfileId(null);
+                      } else if (e.key === 'Escape') {
+                        setEditingProfileId(null);
+                      }
+                    }}
+                  />
+                  <button
+                    onClick={async () => {
+                      if (editingProfileName.trim()) {
+                        await renameProfile(profile.id, editingProfileName.trim());
+                      }
+                      setEditingProfileId(null);
+                    }}
+                    className="text-primary hover:text-primary/80 text-sm font-medium"
+                  >
+                    Save
+                  </button>
+                  <button
+                    onClick={() => setEditingProfileId(null)}
+                    className="text-neutral hover:text-foreground"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span className="flex-1 font-medium text-foreground">{profile.name}</span>
+                  {profile.id === activeProfile?.id && (
+                    <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded">Active</span>
+                  )}
+                  {profile.id !== activeProfile?.id && (
+                    <button
+                      onClick={() => switchProfile(profile.id)}
+                      className="text-sm text-primary hover:text-primary/80 font-medium"
+                    >
+                      Switch
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      setEditingProfileId(profile.id);
+                      setEditingProfileName(profile.name);
+                    }}
+                    className="text-neutral hover:text-foreground"
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                  {profiles.length > 1 && (
+                    <button
+                      onClick={async () => {
+                        if (confirm(`Delete profile "${profile.name}"? All data for this profile will be permanently deleted.`)) {
+                          await deleteProfile(profile.id);
+                        }
+                      }}
+                      className="text-neutral hover:text-danger"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Create new profile */}
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={newProfileName}
+            onChange={(e) => setNewProfileName(e.target.value)}
+            placeholder="New profile name..."
+            className="input flex-1"
+            onKeyDown={async (e) => {
+              if (e.key === 'Enter' && newProfileName.trim() && !creatingProfile) {
+                setCreatingProfile(true);
+                await createProfile(newProfileName.trim());
+                setNewProfileName('');
+                setCreatingProfile(false);
+              }
+            }}
+          />
+          <button
+            onClick={async () => {
+              if (newProfileName.trim() && !creatingProfile) {
+                setCreatingProfile(true);
+                await createProfile(newProfileName.trim());
+                setNewProfileName('');
+                setCreatingProfile(false);
+              }
+            }}
+            disabled={!newProfileName.trim() || creatingProfile}
+            className="btn btn-primary"
+          >
+            {creatingProfile ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
+            Create Profile
+          </button>
+        </div>
+      </section>
+
       {/* General Settings */}
       <section className="card mb-6">
         <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
@@ -356,7 +494,21 @@ export default function SettingsPage() {
           <Palette className="w-5 h-5 text-gold" />
           Appearance
         </h2>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          <button
+            onClick={() => handleSettingChange('theme', 'finance')}
+            className={`p-4 rounded-xl border-2 transition-all group ${settings?.theme === 'finance'
+                ? 'border-[#2563eb] bg-[#2563eb]/10 shadow-lg shadow-[#2563eb]/10'
+                : 'border-border hover:border-[#2563eb]/50'
+              }`}
+          >
+            <div className="w-full h-16 rounded-lg bg-gradient-to-br from-[#f6f8fc] via-[#ffffff] to-[#eef2f7] mb-3 relative overflow-hidden border border-[#d8e1ec]">
+              <div className="absolute inset-0 bg-gradient-to-r from-[#2563eb]/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+              <div className="absolute bottom-2 right-2 w-3 h-3 rounded-full bg-[#2563eb]" />
+            </div>
+            <span className="text-sm font-semibold">Finance</span>
+            <p className="text-xs text-neutral mt-1">Clean & Professional</p>
+          </button>
           <button
             onClick={() => handleSettingChange('theme', 'dungeon')}
             className={`p-4 rounded-xl border-2 transition-all group ${settings?.theme === 'dungeon'

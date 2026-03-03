@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { getProfileId } from '@/lib/profile';
 
 const YAHOO_QUOTE_URL = 'https://query1.finance.yahoo.com/v8/finance/chart';
 
@@ -48,9 +49,11 @@ async function fetchQuote(symbol: string) {
 }
 
 // GET all assets
-export async function GET() {
+export async function GET(request: NextRequest) {
+    const profileId = await getProfileId(request);
     try {
         const assets = await prisma.asset.findMany({
+            where: { profileId },
             orderBy: { symbol: 'asc' },
         });
 
@@ -64,6 +67,7 @@ export async function GET() {
 // POST create new asset - auto-fetches name and price if not a manual asset
 export async function POST(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         const body = await request.json();
         const { quantity, costBasis, isManual } = body;
         let { symbol, name, assetClass, currentPrice, currency } = body;
@@ -99,7 +103,7 @@ export async function POST(request: NextRequest) {
 
         // Check if asset already exists
         const existing = await prisma.asset.findFirst({
-            where: { symbol },
+            where: { symbol, profileId },
         });
 
         if (existing) {
@@ -141,6 +145,7 @@ export async function POST(request: NextRequest) {
                 currency,
                 isManual: isManual || false,
                 lastUpdated: new Date(),
+                profileId,
             },
         });
 

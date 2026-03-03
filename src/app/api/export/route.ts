@@ -1,10 +1,12 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { getProfileId } from '@/lib/profile';
 
 // GET - Export all data as JSON
-export async function GET() {
+export async function GET(request: NextRequest) {
+    const profileId = await getProfileId(request);
     try {
-        // Fetch all data from the database
+        // Fetch all data for this profile
         const [
             accounts,
             categoryGroups,
@@ -18,20 +20,21 @@ export async function GET() {
             settings,
             apiIntegrations,
         ] = await Promise.all([
-            prisma.account.findMany(),
-            prisma.categoryGroup.findMany(),
-            prisma.category.findMany(),
+            prisma.account.findMany({ where: { profileId } }),
+            prisma.categoryGroup.findMany({ where: { profileId } }),
+            prisma.category.findMany({ where: { group: { profileId } } }),
             prisma.transaction.findMany({
+                where: { account: { profileId } },
                 orderBy: { date: 'desc' },
             }),
-            prisma.monthlyBudget.findMany(),
-            prisma.payee.findMany(),
-            prisma.transfer.findMany(),
-            prisma.asset.findMany(),
+            prisma.monthlyBudget.findMany({ where: { category: { group: { profileId } } } }),
+            prisma.payee.findMany({ where: { profileId } }),
+            prisma.transfer.findMany({ where: { profileId } }),
+            prisma.asset.findMany({ where: { profileId } }),
             prisma.exchangeRate.findMany(),
-            prisma.settings.findUnique({ where: { id: 'default' } }),
-            // Don't export API keys for security
+            prisma.settings.findFirst({ where: { profileId } }),
             prisma.apiIntegration.findMany({
+                where: { profileId },
                 select: { id: true, provider: true, enabled: true, lastSynced: true },
             }),
         ]);

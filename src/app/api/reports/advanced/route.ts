@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getProfileId } from '@/lib/profile';
 
 export async function GET(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         const { searchParams } = new URL(request.url);
         const reportType = searchParams.get('type') || 'income-expense';
         const startDate = searchParams.get('startDate');
@@ -29,6 +31,7 @@ export async function GET(request: NextRequest) {
             // Monthly income vs expense trends
             const transactions = await prisma.transaction.findMany({
                 where: {
+                    account: { profileId },
                     ...(dateFilter && { date: dateFilter }),
                 },
                 select: {
@@ -68,6 +71,7 @@ export async function GET(request: NextRequest) {
             // Spending grouped by payee
             const transactions = await prisma.transaction.findMany({
                 where: {
+                    account: { profileId },
                     ...(dateFilter && { date: dateFilter }),
                     amount: { lt: 0 },
                 },
@@ -102,6 +106,7 @@ export async function GET(request: NextRequest) {
 
             const transactions = await prisma.transaction.findMany({
                 where: {
+                    account: { profileId },
                     ...(dateFilter && { date: dateFilter }),
                     amount: { lt: 0 }, // Only expenses
                     ...(categoryId && { categoryId }),
@@ -185,6 +190,7 @@ export async function GET(request: NextRequest) {
             // Get actual spending per category per month
             const transactions = await prisma.transaction.findMany({
                 where: {
+                    account: { profileId },
                     ...(dateFilter && { date: dateFilter }),
                     amount: { lt: 0 },
                     categoryId: { not: null },
@@ -303,6 +309,7 @@ export async function GET(request: NextRequest) {
             // Net worth over time based on account balances
             // This is an approximation based on transaction history
             const accounts = await prisma.account.findMany({
+                where: { profileId },
                 select: { id: true, name: true, type: true, balance: true },
             });
 
@@ -318,6 +325,7 @@ export async function GET(request: NextRequest) {
 
             const transactions = await prisma.transaction.findMany({
                 where: {
+                    account: { profileId },
                     ...(dateFilter && { date: dateFilter }),
                 },
                 select: {

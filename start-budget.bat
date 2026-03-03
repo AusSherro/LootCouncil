@@ -1,4 +1,4 @@
 @echo off
-cd /d "%~dp0"
+pushd "d:\Vibe Coding\Loot Council\loot-council"
 start http://localhost:3000
-npm run start
+npx next dev --turbopack

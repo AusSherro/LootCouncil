@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { getProfileId } from '@/lib/profile';
 
 interface CategoryWithGoal {
     id: string;
@@ -55,16 +56,13 @@ function calculateMonthlyNeeded(
             
         case 'MF': // Monthly Funding - assign target each month
             // How much more to reach target this month?
-            const neededForMF = Math.max(0, category.goalTarget - currentAssigned);
+            // Use available (includes rollover) so we don't over-assign
+            const neededForMF = Math.max(0, category.goalTarget - currentAvailable);
             return neededForMF;
             
         case 'NEED': // Needed for Spending
-            // Use the goalUnderFunded if available (from YNAB)
-            if (category.goalUnderFunded !== null && category.goalUnderFunded > 0) {
-                return category.goalUnderFunded;
-            }
-            // Otherwise calculate based on target vs assigned
-            return Math.max(0, category.goalTarget - currentAssigned);
+            // Calculate dynamically from target vs available
+            return Math.max(0, category.goalTarget - currentAvailable);
             
         case 'DEBT': // Debt payoff - usually just minimum payment
             // Just fund what's underfunded
@@ -93,6 +91,7 @@ function isHiddenCategoriesGroup(groupName: string): boolean {
 // POST - Auto-assign money to categories with goals
 export async function POST(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         const body = await request.json();
         const { month } = body;
         
@@ -101,7 +100,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Calculate Ready to Assign the SAME way as the budget page
-        const settings = await prisma.settings.findUnique({ where: { id: 'default' } });
+        const settings = await prisma.settings.findFirst({ where: { profileId } });
         let readyToAssign: number;
         
         if (settings && settings.toBeBudgeted !== undefined && settings.toBeBudgeted !== 0) {
@@ -111,14 +110,14 @@ export async function POST(request: NextRequest) {
             // Fallback: Calculate from account balances - total available in envelopes
             // This matches the budget page calculation exactly
             const accounts = await prisma.account.findMany({
-                where: { onBudget: true },
+                where: { onBudget: true, profileId },
             });
             const activeAccounts = accounts.filter(acc => (acc as { closed?: boolean }).closed !== true);
             const totalBalance = activeAccounts.reduce((sum, acc) => sum + acc.balance, 0);
             
             // Get all category groups to identify inflow/hidden
             const categoryGroups = await prisma.categoryGroup.findMany({
-                where: { isHidden: false },
+                where: { isHidden: false, profileId },
                 include: {
                     categories: {
                         where: { isHidden: false },
@@ -355,6 +354,68 @@ export async function GET(request: NextRequest) {
         console.error('Auto-assign preview error:', error);
         return NextResponse.json(
             { error: 'Failed to preview auto-assign', details: String(error) },
+            { status: 500 }
+        );
+    }
+}
+
+// DELETE - Undo a previous auto-assign operation
+export async function DELETE(request: NextRequest) {
+    try {
+        const body = await request.json();
+        const { month, categories } = body as {
+            month: string;
+            categories: { categoryId: string; amount: number }[];
+        };
+
+        if (!month || !categories?.length) {
+            return NextResponse.json({ error: 'Month and categories required' }, { status: 400 });
+        }
+
+        let totalReversed = 0;
+
+        for (const { categoryId, amount } of categories) {
+            const existing = await prisma.monthlyBudget.findUnique({
+                where: { month_categoryId: { month, categoryId } },
+            });
+
+            if (!existing) continue;
+
+            const newAssigned = existing.assigned - amount;
+            const newAvailable = existing.available - amount;
+
+            await prisma.monthlyBudget.update({
+                where: { month_categoryId: { month, categoryId } },
+                data: {
+                    assigned: newAssigned,
+                    available: newAvailable,
+                },
+            });
+
+            totalReversed += amount;
+        }
+
+        // Restore Ready to Assign
+        if (totalReversed > 0) {
+            const settings = await prisma.settings.findUnique({ where: { id: 'default' } });
+            const currentToBeBudgeted = settings?.toBeBudgeted ?? 0;
+
+            await prisma.settings.upsert({
+                where: { id: 'default' },
+                create: { id: 'default', toBeBudgeted: currentToBeBudgeted + totalReversed },
+                update: { toBeBudgeted: currentToBeBudgeted + totalReversed },
+            });
+        }
+
+        return NextResponse.json({
+            success: true,
+            reversed: totalReversed,
+            message: `Reversed ${(totalReversed / 100).toFixed(2)} from ${categories.length} categories`,
+        });
+    } catch (error) {
+        console.error('Auto-assign undo error:', error);
+        return NextResponse.json(
+            { error: 'Failed to undo auto-assign', details: String(error) },
             { status: 500 }
         );
     }

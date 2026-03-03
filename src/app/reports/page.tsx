@@ -21,6 +21,7 @@ import {
 } from 'recharts';
 import Link from 'next/link';
 import { formatCurrency } from '@/lib/utils';
+import { useSettings } from '@/components/SettingsProvider';
 
 interface SpendingData {
     name: string;
@@ -93,8 +94,8 @@ const DATE_RANGE_PRESETS = [
     { label: 'All Time', months: 0 },
 ];
 
-function formatReportCurrency(cents: number): string {
-    return formatCurrency(cents, 'AUD', { useAbsolute: true });
+function formatReportCurrency(cents: number, currency = 'AUD'): string {
+    return formatCurrency(cents, currency, { useAbsolute: true });
 }
 
 const reportTabs = [
@@ -107,6 +108,8 @@ const reportTabs = [
 ];
 
 export default function ReportsPage() {
+    const { settings } = useSettings();
+    const currency = settings?.currency || 'AUD';
     const [activeTab, setActiveTab] = useState('spending');
     const [spendingData, setSpendingData] = useState<SpendingData[]>([]);
     const [incomeExpenseData, setIncomeExpenseData] = useState<IncomeExpenseData[]>([]);
@@ -604,7 +607,7 @@ export default function ReportsPage() {
                                                 border: '1px solid #2d2d3d',
                                                 borderRadius: '8px',
                                             }}
-                                            formatter={(value) => typeof value === 'number' ? formatReportCurrency(value) : ''}
+                                            formatter={(value) => typeof value === 'number' ? formatReportCurrency(value, currency) : ''}
                                         />
                                         <Legend />
                                     </PieChart>
@@ -617,11 +620,11 @@ export default function ReportsPage() {
                             <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-border">
                                 <div className="text-center">
                                     <p className="text-sm text-neutral">Filtered Spending</p>
-                                    <p className="text-2xl font-bold text-danger">{formatReportCurrency(filteredTotalSpending)}</p>
+                                    <p className="text-2xl font-bold text-danger">{formatReportCurrency(filteredTotalSpending, currency)}</p>
                                 </div>
                                 <div className="text-center">
                                     <p className="text-sm text-neutral">Total Income</p>
-                                    <p className="text-2xl font-bold text-success">{formatReportCurrency(totalIncome)}</p>
+                                    <p className="text-2xl font-bold text-success">{formatReportCurrency(totalIncome, currency)}</p>
                                 </div>
                             </div>
                         )}
@@ -655,7 +658,7 @@ export default function ReportsPage() {
                                             </div>
                                         </div>
                                         <span className="text-sm font-medium text-foreground w-24 text-right">
-                                            {formatReportCurrency(cat.value)}
+                                            {formatReportCurrency(cat.value, currency)}
                                         </span>
                                     </div>
                                 );

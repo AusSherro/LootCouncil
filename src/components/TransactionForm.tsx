@@ -106,21 +106,7 @@ export default function TransactionForm({ isOpen, onClose, onSuccess, defaultAcc
         }
     }, [accountId]);
 
-    useEffect(() => {
-        if (isOpen) {
-            setFetchError(null);
-            fetchAccounts();
-            fetchCategories();
-        }
-    }, [isOpen, fetchAccounts]);
-
-    useEffect(() => {
-        if (defaultAccountId) {
-            setAccountId(defaultAccountId);
-        }
-    }, [defaultAccountId]);
-
-    async function fetchCategories() {
+    const fetchCategories = useCallback(async () => {
         try {
             const res = await fetch('/api/categories');
             if (!res.ok) throw new Error('Failed to load categories');
@@ -130,7 +116,25 @@ export default function TransactionForm({ isOpen, onClose, onSuccess, defaultAcc
             console.error('Failed to fetch categories:', err);
             setFetchError('Failed to load accounts and categories. Please try again.');
         }
-    }
+    }, []);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        setFetchError(null);
+
+        if (accounts.length === 0) {
+            fetchAccounts();
+        }
+        if (categoryGroups.length === 0) {
+            fetchCategories();
+        }
+    }, [isOpen, accounts.length, categoryGroups.length, fetchAccounts, fetchCategories]);
+
+    useEffect(() => {
+        if (defaultAccountId) {
+            setAccountId(defaultAccountId);
+        }
+    }, [defaultAccountId]);
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();

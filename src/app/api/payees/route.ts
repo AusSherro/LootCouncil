@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { getProfileId } from '@/lib/profile';
 
 // GET - Search payees for autocomplete
 export async function GET(request: NextRequest) {
+    const profileId = await getProfileId(request);
     const { searchParams } = new URL(request.url);
     const query = searchParams.get('q') || '';
     const limit = parseInt(searchParams.get('limit') || '10');
@@ -14,6 +16,7 @@ export async function GET(request: NextRequest) {
             // Search by name (case-insensitive)
             payees = await prisma.payee.findMany({
                 where: {
+                    profileId,
                     name: {
                         contains: query,
                     },
@@ -25,7 +28,7 @@ export async function GET(request: NextRequest) {
             // Return most recently used payees (based on transactions)
             // First get recent unique payee names from transactions
             const recentTransactions = await prisma.transaction.findMany({
-                where: { payee: { not: null } },
+                where: { payee: { not: null }, account: { profileId } },
                 orderBy: { date: 'desc' },
                 select: { payee: true },
                 take: 100,
@@ -36,6 +39,7 @@ export async function GET(request: NextRequest) {
             // Get payee records for these names
             payees = await prisma.payee.findMany({
                 where: {
+                    profileId,
                     name: { in: recentPayeeNames as string[] },
                 },
                 take: limit,
@@ -45,6 +49,7 @@ export async function GET(request: NextRequest) {
             if (payees.length < limit) {
                 const morePayees = await prisma.payee.findMany({
                     where: {
+                        profileId,
                         id: { notIn: payees.map(p => p.id) },
                     },
                     orderBy: { name: 'asc' },

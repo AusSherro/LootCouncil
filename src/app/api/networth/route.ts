@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { getProfileId } from '@/lib/profile';
 
 const HOME_CURRENCY = 'AUD';
 
@@ -83,6 +84,7 @@ async function calculateAssetValueAtDate(
 
 // GET net worth history - calculates running account balances by month
 export async function GET(request: NextRequest) {
+    const profileId = await getProfileId(request);
     const { searchParams } = new URL(request.url);
     const months = parseInt(searchParams.get('months') || '12');
     const excludeAccountsParam = searchParams.get('excludeAccounts') || '';
@@ -95,6 +97,7 @@ export async function GET(request: NextRequest) {
         // Get all on-budget accounts (not excluded)
         const accounts = await prisma.account.findMany({
             where: { 
+                profileId,
                 onBudget: true,
                 id: { notIn: excludeAccountIds },
             },
@@ -119,6 +122,7 @@ export async function GET(request: NextRequest) {
         // Get all assets (not excluded)
         const allAssets = await prisma.asset.findMany({
             where: {
+                profileId,
                 id: { notIn: excludeAssetIds },
             },
         });
@@ -217,6 +221,7 @@ export async function GET(request: NextRequest) {
         // Current totals
         const currentAccounts = await prisma.account.findMany({
             where: { 
+                profileId,
                 onBudget: true,
                 id: { notIn: excludeAccountIds },
             },
@@ -226,11 +231,12 @@ export async function GET(request: NextRequest) {
 
         // Also return list of accounts and assets for the UI filter
         const allAccountsForFilter = await prisma.account.findMany({
-            where: { onBudget: true },
+            where: { onBudget: true, profileId },
             select: { id: true, name: true, type: true },
             orderBy: { name: 'asc' },
         });
         const allAssetsForFilter = await prisma.asset.findMany({
+            where: { profileId },
             select: { id: true, name: true, symbol: true, assetClass: true },
             orderBy: { name: 'asc' },
         });

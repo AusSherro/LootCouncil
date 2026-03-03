@@ -1,6 +1,6 @@
 # Loot Council — Development Guide
 
-> **Generated:** 2026-02-12 | **Scan Level:** Quick
+> **Generated:** 2026-03-04 | **Scan Level:** Comprehensive
 
 ---
 
@@ -80,7 +80,7 @@ BINANCE_API_SECRET="..."
 ```
 loot-council/
 ├── src/app/              # Pages + API routes (App Router)
-│   ├── api/              # 46 API route files (26 domains)
+│   ├── api/              # 46 API route files (28 domains)
 │   ├── budget/           # Budget page
 │   ├── transactions/     # Transactions page
 │   ├── accounts/         # Accounts page
@@ -90,7 +90,7 @@ loot-council/
 │   ├── assistant/        # AI assistant
 │   └── settings/         # Settings page
 ├── src/components/       # 26 React components
-├── src/lib/              # Utilities & hooks
+├── src/lib/              # Utilities, hooks & helpers (7 files)
 ├── prisma/               # Schema + SQLite database
 └── package.json          # Scripts & dependencies
 ```
@@ -114,20 +114,25 @@ loot-council/
 
 ### API Route Patterns
 ```typescript
-// GET with query params
-export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const param = searchParams.get('paramName');
-  const data = await prisma.model.findMany({ ... });
-  return NextResponse.json(data);
-}
+// Standard GET with error handler and profile scoping
+import { withErrorHandler } from '@/lib/apiHandler';
+import { getProfileId } from '@/lib/profile';
 
-// POST with body
-export async function POST(request: NextRequest) {
-  const body = await request.json();
-  const result = await prisma.model.create({ data: body });
-  return NextResponse.json(result);
-}
+export const GET = withErrorHandler(async (request: NextRequest) => {
+    const profileId = await getProfileId(request);
+    const { searchParams } = new URL(request.url);
+    const param = searchParams.get('paramName');
+    const data = await prisma.model.findMany({ where: { profileId } });
+    return NextResponse.json(data);
+}, 'Fetch data');
+
+// Standard POST with body
+export const POST = withErrorHandler(async (request: NextRequest) => {
+    const profileId = await getProfileId(request);
+    const body = await request.json();
+    const result = await prisma.model.create({ data: { ...body, profileId } });
+    return NextResponse.json(result);
+}, 'Create record');
 ```
 
 ### Styling Rules
@@ -193,7 +198,7 @@ start-budget.bat    # Opens browser + starts server
 ### Production Notes
 - SQLite database file (`loot-council.db`) must be in `prisma/` directory
 - `better-sqlite3` is externalized from webpack bundling (see `next.config.ts`)
-- Server binds to `localhost:3000` by default
+- Server binds to `localhost:3000` (127.0.0.1 only) by default
 - No Docker or container configuration exists
 
 ---
