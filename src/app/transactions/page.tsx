@@ -80,7 +80,7 @@ function TransactionRow({
     return (
         <div 
             onClick={() => onEdit(transaction)}
-            className={`table-row ${gridCols} group cursor-pointer hover:bg-background-tertiary transition-colors ${isSelected ? 'bg-gold/10' : ''} ${selectedIndex !== undefined && selectedIndex >= 0 ? 'ring-1 ring-gold' : ''}`}>
+            className={`table-row table-row-zebra ${gridCols} group cursor-pointer transition-colors ${isSelected ? 'bg-gold/10' : ''} ${selectedIndex !== undefined && selectedIndex >= 0 ? 'ring-1 ring-gold' : ''}`}>
             <div className="flex items-center justify-center" onClick={(e) => { e.stopPropagation(); onToggleSelect?.(transaction.id); }}>
                 {isSelected ? (
                     <CheckSquare className="w-4 h-4 text-gold" />

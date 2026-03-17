@@ -6,7 +6,7 @@
 
 ## Overview
 
-The application has **26 React components** in `src/components/`, all client-side (`'use client'`). Components follow a consistent pattern of modals, forms, and context providers with no component library — all custom-built with Tailwind CSS.
+The application has **31 React components** in `src/components/`, all client-side (`'use client'`). Components follow a consistent pattern of modals, forms, and context providers with no component library — all custom-built with Tailwind CSS.
 
 ---
 
@@ -30,6 +30,7 @@ The application has **26 React components** in `src/components/`, all client-sid
 | CreditCardPaymentModal | `CreditCardPaymentModal.tsx` | Credit card payment workflow |
 | BudgetTemplatesModal | `BudgetTemplatesModal.tsx` | Budget template save/load management |
 | BudgetTransferModal | `BudgetTransferModal.tsx` | Transfer funds between budget categories |
+| ForecastModal | `ForecastModal.tsx` | Budget forecast with projected balance chart |
 | CSVImportModal | `CSVImportModal.tsx` | CSV file import wizard with column mapping |
 | ReconciliationModeModal | `ReconciliationModeModal.tsx` | Account reconciliation workflow |
 | ConfirmDialog | `ConfirmDialog.tsx` | Reusable confirmation dialog (via `useConfirmDialog` hook) |
@@ -40,7 +41,10 @@ The application has **26 React components** in `src/components/`, all client-sid
 |-----------|------|-------------|
 | GoalProgress | `GoalProgress.tsx` | Goal progress bar with percentage and remaining |
 | BudgetFlowBar | `BudgetFlowBar.tsx` | Budget flow visualization (income → assigned → available) |
-| Skeleton | `Skeleton.tsx` | Loading skeleton animation component |
+| AnimatedNumber | `AnimatedNumber.tsx` | Smooth animated number transitions |
+| StatusPill | `StatusPill.tsx` | Reusable status badge component |
+| GoldCoinSpinner | `GoldCoinSpinner.tsx` | Themed loading spinner |
+| ChartTooltip | `ChartTooltip.tsx` | Reusable Recharts tooltip with currency formatting |
 
 ### Input Components
 

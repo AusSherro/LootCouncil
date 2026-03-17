@@ -1,27 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
-
-function getMonthOffset(monthStr: string, offset: number): string {
-    const [year, month] = monthStr.split('-').map(Number);
-    const date = new Date(year, month - 1 + offset);
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-}
-
-async function calculateActivity(categoryId: string, month: string): Promise<number> {
-    const startDate = new Date(`${month}-01T00:00:00.000Z`);
-    const endDate = new Date(startDate);
-    endDate.setMonth(endDate.getMonth() + 1);
-
-    const result = await prisma.transaction.aggregate({
-        where: {
-            categoryId,
-            date: { gte: startDate, lt: endDate },
-        },
-        _sum: { amount: true },
-    });
-    return result._sum.amount || 0;
-}
+import { getMonthOffset, calculateActivity } from '@/lib/budgetHelpers';
 
 async function getPreviousMonthAvailable(categoryId: string, month: string): Promise<number> {
     const prevMonth = getMonthOffset(month, -1);
@@ -90,14 +70,7 @@ export async function POST(request: NextRequest) {
                 update: { assigned: newAssigned, activity, available },
             });
 
-            // Update Ready to Assign: unassigning money adds it back to RTA
-            const settings = await prisma.settings.findFirst({ where: { profileId } });
-            if (settings?.toBeBudgeted !== undefined) {
-                await prisma.settings.update({
-                    where: { id: settings.id },
-                    data: { toBeBudgeted: settings.toBeBudgeted + amountCents },
-                });
-            }
+            // RTA auto-adjusts since it's calculated from account balances - envelope totals
 
             return NextResponse.json({
                 success: true,
@@ -130,14 +103,7 @@ export async function POST(request: NextRequest) {
                 update: { assigned: newAssigned, activity, available },
             });
 
-            // Update Ready to Assign: assigning money reduces RTA
-            const settings = await prisma.settings.findFirst({ where: { profileId } });
-            if (settings?.toBeBudgeted !== undefined) {
-                await prisma.settings.update({
-                    where: { id: settings.id },
-                    data: { toBeBudgeted: settings.toBeBudgeted - amountCents },
-                });
-            }
+            // RTA auto-adjusts since it's calculated from account balances - envelope totals
 
             return NextResponse.json({
                 success: true,

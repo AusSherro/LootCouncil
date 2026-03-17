@@ -2,6 +2,7 @@
 
 import { BarChart3, Calendar, ChevronLeft, ChevronRight, TrendingUp, EyeOff, Eye, Filter, X } from 'lucide-react';
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import GoldCoinSpinner from '@/components/GoldCoinSpinner';
 import {
     ResponsiveContainer,
     PieChart,
@@ -149,6 +150,7 @@ export default function ReportsPage() {
     const [availableAssets, setAvailableAssets] = useState<NetWorthFilterItem[]>([]);
     const [excludedAccounts, setExcludedAccounts] = useState<Set<string>>(new Set());
     const [excludedAssets, setExcludedAssets] = useState<Set<string>>(new Set());
+    const [excludeSuper, setExcludeSuper] = useState(false);
     const [showNetWorthFilter, setShowNetWorthFilter] = useState(false);
 
     const getMonthRange = useCallback((date: Date) => {
@@ -277,7 +279,7 @@ export default function ReportsPage() {
             const monthsParam = netWorthMonths === 0 ? 0 : netWorthMonths;
             const excludeAccountsParam = Array.from(excludedAccounts).join(',');
             const excludeAssetsParam = Array.from(excludedAssets).join(',');
-            const url = `/api/networth?months=${monthsParam}&excludeAccounts=${excludeAccountsParam}&excludeAssets=${excludeAssetsParam}`;
+            const url = `/api/networth?months=${monthsParam}&excludeAccounts=${excludeAccountsParam}&excludeAssets=${excludeAssetsParam}${excludeSuper ? '&excludeAssetClass=super' : ''}`;
             const res = await fetch(url);
             const data = await res.json();
             setNetWorthData(data.history || []);
@@ -293,7 +295,7 @@ export default function ReportsPage() {
         } finally {
             setLoading(false);
         }
-    }, [netWorthMonths, excludedAccounts, excludedAssets, availableAccounts.length, availableAssets.length]);
+    }, [netWorthMonths, excludedAccounts, excludedAssets, excludeSuper, availableAccounts.length, availableAssets.length]);
 
     const fetchPayeeData = useCallback(async () => {
         setLoading(true);
@@ -603,9 +605,12 @@ export default function ReportsPage() {
                                         </Pie>
                                         <Tooltip
                                             contentStyle={{
-                                                backgroundColor: '#1a1a24',
-                                                border: '1px solid #2d2d3d',
-                                                borderRadius: '8px',
+                                                backgroundColor: 'var(--background-secondary)',
+                                                border: '1px solid var(--gold-dark)',
+                                                borderRadius: '12px',
+                                                backdropFilter: 'blur(16px)',
+                                                boxShadow: '0 0 24px rgba(212, 168, 70, 0.08), 0 12px 32px -8px rgba(0, 0, 0, 0.5)',
+                                                padding: '10px 14px',
                                             }}
                                             formatter={(value) => typeof value === 'number' ? formatReportCurrency(value, currency) : ''}
                                         />
@@ -756,15 +761,18 @@ export default function ReportsPage() {
                                         />
                                         <Tooltip
                                             contentStyle={{
-                                                backgroundColor: '#1a1a24',
-                                                border: '1px solid #2d2d3d',
-                                                borderRadius: '8px',
+                                                backgroundColor: 'var(--background-secondary)',
+                                                border: '1px solid var(--gold-dark)',
+                                                borderRadius: '12px',
+                                                backdropFilter: 'blur(16px)',
+                                                boxShadow: '0 0 24px rgba(212, 168, 70, 0.08), 0 12px 32px -8px rgba(0, 0, 0, 0.5)',
+                                                padding: '10px 14px',
                                             }}
                                             formatter={(value) => typeof value === 'number' ? [`$${value.toFixed(2)}`, ''] : ''}
                                         />
                                         <Legend />
-                                        <Bar dataKey="income" name="Income" fill="#4ade80" radius={[4, 4, 0, 0]} />
-                                        <Bar dataKey="expense" name="Expense" fill="#f87171" radius={[4, 4, 0, 0]} />
+                                        <Bar dataKey="income" name="Income" fill="var(--success)" radius={[4, 4, 0, 0]} />
+                                        <Bar dataKey="expense" name="Expense" fill="var(--danger)" radius={[4, 4, 0, 0]} />
                                     </BarChart>
                                 </ResponsiveContainer>
                             </div>
@@ -888,15 +896,18 @@ export default function ReportsPage() {
                                         />
                                         <Tooltip
                                             contentStyle={{
-                                                backgroundColor: '#1a1a24',
-                                                border: '1px solid #2d2d3d',
-                                                borderRadius: '8px',
+                                                backgroundColor: 'var(--background-secondary)',
+                                                border: '1px solid var(--gold-dark)',
+                                                borderRadius: '12px',
+                                                backdropFilter: 'blur(16px)',
+                                                boxShadow: '0 0 24px rgba(212, 168, 70, 0.08), 0 12px 32px -8px rgba(0, 0, 0, 0.5)',
+                                                padding: '10px 14px',
                                             }}
                                             formatter={(value) => typeof value === 'number' ? [`$${value.toFixed(2)}`, ''] : ''}
                                         />
                                         <Legend />
-                                        <Bar dataKey="budgeted" name="Budgeted" fill="#4fc3f7" radius={[4, 4, 0, 0]} />
-                                        <Bar dataKey="actual" name="Actual" fill="#f87171" radius={[4, 4, 0, 0]} />
+                                        <Bar dataKey="budgeted" name="Budgeted" fill="var(--info)" radius={[4, 4, 0, 0]} />
+                                        <Bar dataKey="actual" name="Actual" fill="var(--danger)" radius={[4, 4, 0, 0]} />
                                     </BarChart>
                                 </ResponsiveContainer>
                             </div>
@@ -946,7 +957,7 @@ export default function ReportsPage() {
                     <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center gap-3">
                             <TrendingUp className="w-6 h-6 text-gold" />
-                            <h2 className="text-lg font-semibold text-foreground">Net Worth Over Time</h2>
+                            <h2 className="text-lg font-semibold text-foreground">Net Worth Over Time{excludeSuper && ' (ex. Super)'}</h2>
                             {(excludedAccounts.size > 0 || excludedAssets.size > 0) && (
                                 <span className="text-xs text-warning bg-warning/10 px-2 py-1 rounded">
                                     {excludedAccounts.size + excludedAssets.size} excluded
@@ -954,6 +965,14 @@ export default function ReportsPage() {
                             )}
                         </div>
                         <div className="flex items-center gap-2">
+                            {/* Exclude Super toggle */}
+                            <button
+                                onClick={() => setExcludeSuper(!excludeSuper)}
+                                className={`btn btn-ghost ${excludeSuper ? 'text-gold' : ''}`}
+                                title={excludeSuper ? 'Super excluded from net worth' : 'Super included in net worth'}
+                            >
+                                {excludeSuper ? 'Include Super' : 'Exclude Super'}
+                            </button>
                             {/* Filter button */}
                             <button
                                 onClick={() => setShowNetWorthFilter(!showNetWorthFilter)}
@@ -1100,25 +1119,59 @@ export default function ReportsPage() {
                                             <stop offset="5%" stopColor="#d4a846" stopOpacity={0.3} />
                                             <stop offset="95%" stopColor="#d4a846" stopOpacity={0} />
                                         </linearGradient>
+                                        <linearGradient id="accountGradient" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor="#60a5fa" stopOpacity={0.2} />
+                                            <stop offset="95%" stopColor="#60a5fa" stopOpacity={0} />
+                                        </linearGradient>
+                                        <linearGradient id="assetGradient" x1="0" y1="0" x2="0" y2="1">
+                                            <stop offset="5%" stopColor="#34d399" stopOpacity={0.2} />
+                                            <stop offset="95%" stopColor="#34d399" stopOpacity={0} />
+                                        </linearGradient>
                                     </defs>
                                     <CartesianGrid strokeDasharray="3 3" stroke="#2d2d3d" />
                                     <XAxis dataKey="month" stroke="#94a3b8" fontSize={12} />
                                     <YAxis
                                         stroke="#94a3b8"
                                         fontSize={12}
-                                        tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
+                                        tickFormatter={(value) => {
+                                            if (Math.abs(value) >= 1000) return `$${(value / 1000).toFixed(0)}k`;
+                                            return `$${value.toFixed(0)}`;
+                                        }}
                                     />
                                     <Tooltip
                                         contentStyle={{
-                                            backgroundColor: '#1a1a24',
-                                            border: '1px solid #2d2d3d',
-                                            borderRadius: '8px',
+                                            backgroundColor: 'var(--background-secondary)',
+                                            border: '1px solid var(--gold-dark)',
+                                            borderRadius: '12px',
+                                            backdropFilter: 'blur(16px)',
+                                            boxShadow: '0 0 24px rgba(212, 168, 70, 0.08), 0 12px 32px -8px rgba(0, 0, 0, 0.5)',
+                                            padding: '10px 14px',
                                         }}
                                         formatter={(value, name) => {
                                             if (typeof value !== 'number') return ['', ''];
-                                            const label = name === 'netWorth' ? 'Net Worth' : String(name);
-                                            return [`$${value.toLocaleString('en-AU', { minimumFractionDigits: 2 })}`, label];
+                                            const labels: Record<string, string> = {
+                                                netWorth: 'Net Worth',
+                                                accountBalance: 'Accounts',
+                                                assetValue: 'Assets',
+                                            };
+                                            return [`$${value.toLocaleString('en-AU', { minimumFractionDigits: 2 })}`, labels[name as string] || String(name)];
                                         }}
+                                    />
+                                    <Area
+                                        type="monotone"
+                                        dataKey="accountBalance"
+                                        stroke="#60a5fa"
+                                        strokeWidth={1}
+                                        fill="url(#accountGradient)"
+                                        strokeDasharray="4 2"
+                                    />
+                                    <Area
+                                        type="monotone"
+                                        dataKey="assetValue"
+                                        stroke="#34d399"
+                                        strokeWidth={1}
+                                        fill="url(#assetGradient)"
+                                        strokeDasharray="4 2"
                                     />
                                     <Area
                                         type="monotone"
@@ -1190,9 +1243,12 @@ export default function ReportsPage() {
                                         <YAxis type="category" dataKey="payee" stroke="#94a3b8" fontSize={11} width={120} />
                                         <Tooltip
                                             contentStyle={{
-                                                backgroundColor: '#1a1a24',
-                                                border: '1px solid #2d2d3d',
-                                                borderRadius: '8px',
+                                                backgroundColor: 'var(--background-secondary)',
+                                                border: '1px solid var(--gold-dark)',
+                                                borderRadius: '12px',
+                                                backdropFilter: 'blur(16px)',
+                                                boxShadow: '0 0 24px rgba(212, 168, 70, 0.08), 0 12px 32px -8px rgba(0, 0, 0, 0.5)',
+                                                padding: '10px 14px',
                                             }}
                                             formatter={(value, name) => [typeof value === 'number' ? `$${value.toFixed(2)}` : value, name === 'total' ? 'Total Spent' : name]}
                                         />
@@ -1286,9 +1342,12 @@ export default function ReportsPage() {
                                         <YAxis stroke="#94a3b8" fontSize={12} tickFormatter={(value) => `$${value}`} />
                                         <Tooltip
                                             contentStyle={{
-                                                backgroundColor: '#1a1a24',
-                                                border: '1px solid #2d2d3d',
-                                                borderRadius: '8px',
+                                                backgroundColor: 'var(--background-secondary)',
+                                                border: '1px solid var(--gold-dark)',
+                                                borderRadius: '12px',
+                                                backdropFilter: 'blur(16px)',
+                                                boxShadow: '0 0 24px rgba(212, 168, 70, 0.08), 0 12px 32px -8px rgba(0, 0, 0, 0.5)',
+                                                padding: '10px 14px',
                                             }}
                                             formatter={(value) => typeof value === 'number' ? [`$${value.toFixed(2)}`, ''] : ''}
                                         />

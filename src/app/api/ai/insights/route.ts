@@ -1,9 +1,10 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { generateInsights } from '@/lib/openai';
+import { getProfileId } from '@/lib/profile';
 
 // GET - Generate spending insights
-export async function GET() {
+export async function GET(request: NextRequest) {
     try {        // Check if OpenAI API key is configured
         if (!process.env.OPENAI_API_KEY) {
             return NextResponse.json({ 
@@ -20,11 +21,13 @@ export async function GET() {
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
         const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
         const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
+        const profileId = await getProfileId(request);
 
         // Get current month transactions
         const currentMonthTx = await prisma.transaction.findMany({
             where: {
                 date: { gte: startOfMonth },
+                account: { profileId },
             },
             include: { category: true },
         });
@@ -33,6 +36,7 @@ export async function GET() {
         const lastMonthTx = await prisma.transaction.findMany({
             where: {
                 date: { gte: startOfLastMonth, lte: endOfLastMonth },
+                account: { profileId },
             },
             include: { category: true },
         });

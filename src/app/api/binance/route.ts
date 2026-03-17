@@ -30,8 +30,6 @@ async function fetchBinanceAccount(apiKey: string, apiSecret: string) {
     const queryString = `timestamp=${timestamp}&recvWindow=${recvWindow}`;
     const signature = signRequest(queryString, apiSecret);
 
-    console.log('Binance API call - timestamp:', timestamp, 'key length:', apiKey.length, 'secret length:', apiSecret.length);
-
     const response = await fetch(
         `${BINANCE_API_URL}/api/v3/account?${queryString}&signature=${signature}`,
         {

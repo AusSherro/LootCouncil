@@ -102,9 +102,9 @@
 ## Code Quality
 
 - [x] **CQ-1: Hardcoded 'AUD' Currency**
-  - **File:** `src/app/page.tsx`
-  - **Problem:** Dashboard hardcodes `'AUD'` in `formatDashboardCurrency()` despite configurable currency in Settings.
-  - **Fix:** Read currency from settings context.
+  - **Files:** `src/app/page.tsx`, `src/components/GoalProgress.tsx`, `src/components/InlineEdit.tsx`, `src/components/BudgetTemplatesModal.tsx`, `src/components/SplitTransactionModal.tsx`
+  - **Problem:** Dashboard and multiple components hardcode `'AUD'` despite configurable currency in Settings.
+  - **Fix:** All components now read currency from `useSettings()` context.
   - **Priority:** Medium
 
 - [x] **CQ-2: `useConfirmDialog` — Component Identity Re-renders**
@@ -117,6 +117,18 @@
   - **File:** `src/app/api/budget/route.ts`
   - **Problem:** Standalone `calculateSpendingTrend()` function defined but never called.
   - **Fix:** Remove dead code.
+  - **Priority:** Low
+
+- [x] **CQ-3b: Dead Code — `calculateAvailable`**
+  - **File:** `src/app/api/budget/route.ts`
+  - **Problem:** `calculateAvailable()` marked `@deprecated`, ~40 lines of unused code with unnecessary DB queries.
+  - **Fix:** Removed entirely.
+  - **Priority:** Low
+
+- [x] **CQ-3c: Dead Code — `useListNavigation`**
+  - **File:** `src/lib/useKeyboardShortcuts.tsx`
+  - **Problem:** `useListNavigation()` exported but never imported anywhere in the codebase.
+  - **Fix:** Removed entirely.
   - **Priority:** Low
 
 - [x] **CQ-4: Mixed Delete Confirmation Patterns**
@@ -148,6 +160,36 @@
   - **Problem:** API routes validate inputs with ad-hoc `if (!field)` checks.
   - **Fix:** Adopt Zod for declarative request validation across all routes.
   - **Priority:** Medium — prevents invalid data, better error messages
+
+- [x] **CQ-9: Duplicated Helper Functions Across API Routes**
+  - **Files:** `budget/route.ts`, `budget/auto-assign/route.ts`, `budget/transfer/route.ts`, `transactions/route.ts`, `rules/route.ts`, `investments/route.ts`, `networth/route.ts`, `budget/page.tsx`
+  - **Problem:** 7 sets of identical functions copy-pasted across routes: `getMonthOffset`, `calculateActivity`, `isInflowGroup`, `isHiddenCategoriesGroup`, `getExchangeRate`, `matchesRule/isMatch`.
+  - **Fix:** Extracted to shared libs: `src/lib/budgetUtils.ts` (pure, client-safe), `src/lib/budgetHelpers.ts` (server-only w/ DB), `src/lib/exchangeRate.ts`, `src/lib/ruleEngine.ts`. All routes now import from shared source.
+  - **Priority:** Medium — reduces maintenance burden, ensures consistent behavior
+
+- [x] **CQ-10: Inconsistent ReDoS Protection**
+  - **Files:** `src/app/api/transactions/route.ts`, `src/app/api/rules/route.ts`
+  - **Problem:** Both files had regex ReDoS guards but with different detection patterns.
+  - **Fix:** Unified into single `matchesRule()` in `src/lib/ruleEngine.ts` with combined detection pattern.
+  - **Priority:** Medium — correctness + consistency
+
+- [x] **CQ-11: Duplicate OpenAI Client Instance**
+  - **File:** `src/app/api/payees/similar/route.ts`
+  - **Problem:** Created its own `new OpenAI()` client instead of using the shared one from `src/lib/openai.ts`.
+  - **Fix:** Added `getOpenAIClient()` export to `src/lib/openai.ts`, payees/similar now imports it.
+  - **Priority:** Low
+
+- [x] **CQ-12: 39 Debug console.log Statements**
+  - **Files:** `binance/route.ts`, `investments/route.ts`, `investments/prices/route.ts`, `import/ynab-api/route.ts`, `import/ynab-api/sync/route.ts`
+  - **Problem:** 39 `console.log()` debug statements left in production code. One in `binance/route.ts` logged API key metadata.
+  - **Fix:** Removed all 39 statements.
+  - **Priority:** Medium — debug noise + security (API key logging)
+
+- [x] **CQ-13: Missing Profile Filtering in API Routes**
+  - **Files:** `payees/manage/route.ts`, `transfers/match/route.ts`, `ai/chat/route.ts`, `ai/insights/route.ts`
+  - **Problem:** Routes operated on all data regardless of active profile.
+  - **Fix:** Added `getProfileId()` and `account: { profileId }` filtering to all affected queries.
+  - **Priority:** Medium — data isolation between profiles
 
 ---
 

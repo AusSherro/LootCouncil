@@ -2,104 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { withErrorHandler } from '@/lib/apiHandler';
 import { getProfileId } from '@/lib/profile';
-
-// Helper: Get the month string for a given offset from a base month
-function getMonthOffset(monthStr: string, offset: number): string {
-    const [year, month] = monthStr.split('-').map(Number);
-    const date = new Date(year, month - 1 + offset);
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-}
-
-// Calculate activity from transactions for a category in a given month
-async function calculateActivity(categoryId: string, month: string): Promise<number> {
-    const startDate = new Date(`${month}-01T00:00:00.000Z`);
-    const endDate = new Date(startDate);
-    endDate.setMonth(endDate.getMonth() + 1);
-
-    const result = await prisma.transaction.aggregate({
-        where: {
-            categoryId,
-            date: {
-                gte: startDate,
-                lt: endDate,
-            },
-        },
-        _sum: { amount: true },
-    });
-
-    return result._sum.amount || 0;
-}
-
-/** @deprecated No longer called by GET handler. GET uses batched in-memory calculation.
- * Kept for reference — POST handler uses getPreviousMonthAvailable() instead. */
-async function calculateAvailable(categoryId: string, upToMonth: string): Promise<number> {
-    // First check if we have YNAB-imported available value for this month
-    const monthlyBudget = await prisma.monthlyBudget.findUnique({
-        where: {
-            month_categoryId: { month: upToMonth, categoryId },
-        },
-    });
-    
-    // If we have a stored record from YNAB import, use its available value (even if 0)
-    if (monthlyBudget) {
-        return monthlyBudget.available;
-    }
-
-    // If no record for this month, check for most recent month's data
-    const mostRecent = await prisma.monthlyBudget.findFirst({
-        where: {
-            categoryId,
-            month: { lte: upToMonth },
-        },
-        orderBy: { month: 'desc' },
-    });
-
-    if (mostRecent) {
-        return mostRecent.available;
-    }
-
-    // No YNAB data exists - calculate from scratch (for manually created categories)
-    const budgets = await prisma.monthlyBudget.findMany({
-        where: {
-            categoryId,
-            month: { lte: upToMonth },
-        },
-        orderBy: { month: 'asc' },
-    });
-
-    // Get all transactions for this category up to end of the month
-    const endDate = new Date(`${upToMonth}-01T00:00:00.000Z`);
-    endDate.setMonth(endDate.getMonth() + 1);
-
-    const transactions = await prisma.transaction.findMany({
-        where: {
-            categoryId,
-            date: { lt: endDate },
-        },
-        select: { amount: true },
-    });
-
-    // Total activity (all transactions for this category ever, up to this month)
-    const totalActivity = transactions.reduce((sum, t) => sum + t.amount, 0);
-
-    // Total assigned (all budgets for this category ever, up to this month)
-    const totalAssigned = budgets.reduce((sum, b) => sum + b.assigned, 0);
-
-    // Available = Total Assigned + Total Activity (activity is typically negative for spending)
-    return totalAssigned + totalActivity;
-}
-
-// Check if a category group is an "Inflow" type (should be excluded from envelope calculations)
-function isInflowGroup(groupName: string): boolean {
-    const lowerName = groupName.toLowerCase();
-    return lowerName === 'inflow' || lowerName.includes('ready to assign');
-}
-
-// Check if a category group is the YNAB "Hidden Categories" system group
-function isHiddenCategoriesGroup(groupName: string): boolean {
-    const lowerName = groupName.toLowerCase();
-    return lowerName === 'hidden categories';
-}
+import { getMonthOffset, calculateActivity, calculateReadyToAssign, isInflowGroup, isHiddenCategoriesGroup } from '@/lib/budgetHelpers';
 
 // GET budget for a specific month with proper envelope calculations
 export async function GET(request: NextRequest) {
@@ -321,28 +224,14 @@ export async function GET(request: NextRequest) {
             }
         }
 
-        // Calculate Ready to Assign
-        // If we have a stored value from YNAB API sync, use it (most accurate)
-        const settings = await prisma.settings.findFirst({ where: { profileId } });
-        let readyToAssign: number;
-        
-        if (settings && settings.toBeBudgeted !== undefined && settings.toBeBudgeted !== 0) {
-            // Use YNAB's authoritative value
-            readyToAssign = settings.toBeBudgeted;
-        } else {
-            // Fallback: Calculate from account balances - envelope totals
-            const accounts = await prisma.account.findMany({
-                where: { onBudget: true, closed: false, profileId },
-            });
-            const totalBalance = accounts.reduce((sum, acc) => sum + acc.balance, 0);
-            readyToAssign = totalBalance - totalAvailable;
-        }
-
-        // Get account balance for display even if using YNAB ready to assign
-        const accountsForDisplay = await prisma.account.findMany({
+        // Always calculate RTA from account balances - envelope totals (YNAB-style)
+        // This ensures uncategorized transactions and reconciliation adjustments
+        // naturally reduce RTA, and RTA can go negative when overspent
+        const accounts = await prisma.account.findMany({
             where: { onBudget: true, closed: false, profileId },
         });
-        const totalBalance = accountsForDisplay.reduce((sum, acc) => sum + acc.balance, 0);
+        const totalBalance = accounts.reduce((sum, acc) => sum + acc.balance, 0);
+        const readyToAssign = totalBalance - totalAvailable;
 
         return NextResponse.json({
             month,
@@ -417,19 +306,9 @@ export async function POST(request: NextRequest) {
             },
         });
 
-        // Update Ready to Assign in settings
-        const settings = await prisma.settings.findFirst({ where: { profileId } });
-        if (settings?.toBeBudgeted) {
-            const difference = amountCents - oldAssigned;
-            
-            // Only update if there's an actual change
-            if (difference !== 0) {
-                await prisma.settings.update({
-                    where: { id: settings.id },
-                    data: { toBeBudgeted: Math.max(0, settings.toBeBudgeted - difference) },
-                });
-            }
-        }
+        // RTA is now always calculated from account balances - envelope totals
+        // No need to update settings.toBeBudgeted; the change in available
+        // naturally reduces RTA on next fetch
 
         return NextResponse.json({
             ...budget,

@@ -6,7 +6,6 @@ const yahooFinance = new YahooFinance();
 
 // Fetch live prices for assets
 export async function POST(request: NextRequest) {
-    console.log('=== POST /api/investments/prices called ===');
     try {
         let symbols: string[] | undefined;
         let assetClass: string | undefined;
@@ -51,10 +50,6 @@ export async function POST(request: NextRequest) {
         const cryptoAssets = assetsToUpdate.filter(a => a.assetClass === 'crypto');
         const stockAssets = assetsToUpdate.filter(a => ['stock', 'etf'].includes(a.assetClass));
         
-        console.log('Assets to update:', assetsToUpdate.map(a => ({ symbol: a.symbol, class: a.assetClass })));
-        console.log('Stock assets:', stockAssets.map(a => a.symbol));
-        console.log('Crypto assets:', cryptoAssets.map(a => a.symbol));
-
         // Fetch crypto prices from CoinGecko
         if (cryptoAssets.length > 0) {
             const cryptoPrices = await fetchCryptoPrices(cryptoAssets.map(a => a.symbol));
@@ -97,8 +92,6 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        console.log('Updated prices:', updated);
-        
         return NextResponse.json({ 
             message: `Updated ${updated.length} asset prices`,
             updated 
@@ -180,8 +173,6 @@ async function fetchYahooPrice(symbol: string): Promise<YahooData> {
         }
         // For US stocks like MSFT, AAPL, GOOGL - use as-is (no suffix)
 
-        console.log(`Fetching Yahoo data for ${symbol} (yahooSymbol: ${yahooSymbol})`);
-        
         const quote = await yahooFinance.quote(yahooSymbol);
         
         if (!quote) {
@@ -192,9 +183,7 @@ async function fetchYahooPrice(symbol: string): Promise<YahooData> {
         const price = quote.regularMarketPrice || null;
         // trailingAnnualDividendYield is a decimal (e.g., 0.0076 for 0.76%)
         const dividendYield = quote.trailingAnnualDividendYield || 0;
-        
-        console.log(`Yahoo data for ${symbol}: price=${price}, dividendYield=${dividendYield}`);
-        
+
         return { price, dividendYield };
     } catch (error) {
         console.error(`Yahoo fetch error for ${symbol}:`, error);

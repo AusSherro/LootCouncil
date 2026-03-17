@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Wallet, ChevronDown, Check, User } from 'lucide-react';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { navigation, settingsItem } from '@/lib/navigation';
 import { useProfile } from '@/components/ProfileProvider';
 
@@ -12,6 +12,34 @@ export default function Sidebar() {
     const { profiles, activeProfile, switchProfile } = useProfile();
     const [showProfileMenu, setShowProfileMenu] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
+    const navRef = useRef<HTMLElement>(null);
+    const [indicatorY, setIndicatorY] = useState<number | null>(null);
+
+    // Compute active nav index for the sliding indicator
+    const activeIndex = useMemo(() => {
+        const idx = navigation.findIndex(
+            (item) => pathname === item.href || pathname?.startsWith(item.href + '/')
+        );
+        if (idx >= 0) return idx;
+        if (pathname === settingsItem.href) return navigation.length; // settings is after nav
+        return -1;
+    }, [pathname]);
+
+    // Position the indicator
+    useEffect(() => {
+        if (!navRef.current || activeIndex < 0) {
+            setIndicatorY(null);
+            return;
+        }
+        const navEl = navRef.current;
+        const links = navEl.querySelectorAll<HTMLElement>('[data-nav-item]');
+        const target = links[activeIndex];
+        if (target) {
+            const navRect = navEl.getBoundingClientRect();
+            const targetRect = target.getBoundingClientRect();
+            setIndicatorY(targetRect.top - navRect.top + (targetRect.height - 32) / 2);
+        }
+    }, [activeIndex]);
 
     // Close menu when clicking outside
     useEffect(() => {
@@ -25,14 +53,17 @@ export default function Sidebar() {
     }, []);
 
     return (
-        <aside className="hidden lg:flex w-64 bg-background-secondary border-r border-border flex-col">
+        <aside className="hidden lg:flex w-64 bg-background-secondary border-r border-border flex-col relative overflow-hidden">
+            {/* Subtle gradient shimmer at top */}
+            <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-[color:var(--gold)]/[0.03] to-transparent pointer-events-none" />
+
             {/* Logo */}
-            <Link href="/" className="h-16 flex items-center gap-3 px-5 border-b border-border hover:bg-background-tertiary/50 transition-colors">
-                <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center">
+            <Link href="/" className="h-16 flex items-center gap-3 px-5 border-b border-border hover:bg-background-tertiary/50 transition-colors relative z-10">
+                <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center shadow-[0_0_16px_var(--gold-glow)]">
                     <Wallet className="w-5 h-5 text-primary-foreground" />
                 </div>
                 <div>
-                    <h1 className="font-semibold text-lg text-foreground">Loot Council</h1>
+                    <h1 className="font-semibold text-lg text-gold-gradient bg-gradient-to-r from-[color:var(--gold-light)] to-[color:var(--gold)] bg-clip-text text-transparent">Loot Council</h1>
                     <p className="text-xs text-neutral">Personal Finance</p>
                 </div>
             </Link>
@@ -79,7 +110,15 @@ export default function Sidebar() {
             </div>
 
             {/* Navigation */}
-            <nav className="flex-1 p-3 space-y-1">
+            <nav className="flex-1 p-3 space-y-1 relative" ref={navRef}>
+                {/* Sliding active indicator */}
+                {indicatorY !== null && (
+                    <div
+                        className="sidebar-active-indicator"
+                        style={{ transform: `translateY(${indicatorY}px)` }}
+                    />
+                )}
+
                 {navigation.map((item) => {
                     const isActive = pathname === item.href || pathname?.startsWith(item.href + '/');
                     const Icon = item.icon;
@@ -88,39 +127,41 @@ export default function Sidebar() {
                         <Link
                             key={item.name}
                             href={item.href}
-                            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
+                            data-nav-item
+                            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all ${
                                 isActive
-                                    ? 'bg-primary/10 text-primary'
+                                    ? 'bg-primary/10 text-primary font-semibold'
                                     : 'text-neutral hover:text-foreground hover:bg-background-tertiary/50'
                             }`}
                         >
                             <Icon className={`w-5 h-5 ${isActive ? 'text-primary' : ''}`} />
-                            <span className="font-medium text-sm">{item.name}</span>
+                            <span className="text-sm">{item.name}</span>
                         </Link>
                     );
                 })}
-            </nav>
 
-            {/* Settings */}
-            <div className="p-3 border-t border-border">
-                {(() => {
-                    const Icon = settingsItem.icon;
-                    const isActive = pathname === settingsItem.href;
-                    return (
-                        <Link
-                            href={settingsItem.href}
-                            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
-                                isActive
-                                    ? 'bg-primary/10 text-primary'
-                                    : 'text-neutral hover:text-foreground hover:bg-background-tertiary/50'
-                            }`}
-                        >
-                            <Icon className={`w-5 h-5 ${isActive ? 'text-primary' : ''}`} />
-                            <span className="font-medium text-sm">{settingsItem.name}</span>
-                        </Link>
-                    );
-                })()}
-            </div>
+                {/* Settings — last nav item for indicator tracking */}
+                <div className="pt-2 mt-2 border-t border-border">
+                    {(() => {
+                        const Icon = settingsItem.icon;
+                        const isActive = pathname === settingsItem.href;
+                        return (
+                            <Link
+                                href={settingsItem.href}
+                                data-nav-item
+                                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all ${
+                                    isActive
+                                        ? 'bg-primary/10 text-primary font-semibold'
+                                        : 'text-neutral hover:text-foreground hover:bg-background-tertiary/50'
+                                }`}
+                            >
+                                <Icon className={`w-5 h-5 ${isActive ? 'text-primary' : ''}`} />
+                                <span className="text-sm">{settingsItem.name}</span>
+                            </Link>
+                        );
+                    })()}
+                </div>
+            </nav>
         </aside>
     );
 }

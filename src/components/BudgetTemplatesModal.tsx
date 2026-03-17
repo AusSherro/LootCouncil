@@ -3,6 +3,7 @@
 import { FileCheck2, Trash2, X, Copy, PlayCircle, AlertCircle } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { formatCurrency } from '@/lib/utils';
+import { useSettings } from '@/components/SettingsProvider';
 
 interface TemplateItem {
     id: string;
@@ -34,6 +35,8 @@ export default function BudgetTemplatesModal({ isOpen, onClose, onApply, current
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
+    const { settings } = useSettings();
+    const currency = settings?.currency || 'AUD';
 
     // Create template form
     const [showCreate, setShowCreate] = useState(false);
@@ -187,7 +190,7 @@ export default function BudgetTemplatesModal({ isOpen, onClose, onApply, current
                             <div>
                                 <h3 className="font-medium text-foreground">Save Current Budget as Template</h3>
                                 <p className="text-sm text-neutral">
-                                    {currentBudgets.filter(b => b.budgeted !== 0).length} categories • {formatCurrency(totalCurrentBudgeted, 'AUD', { useAbsolute: true })} total
+                                    {currentBudgets.filter(b => b.budgeted !== 0).length} categories • {formatCurrency(totalCurrentBudgeted, currency, { useAbsolute: true })} total
                                 </p>
                             </div>
                             {!showCreate && (
@@ -263,7 +266,7 @@ export default function BudgetTemplatesModal({ isOpen, onClose, onApply, current
                                             <div className="text-sm text-neutral mt-1">
                                                 {template.items.length} categories • {formatCurrency(
                                                     template.items.reduce((sum, i) => sum + i.amount, 0),
-                                                    'AUD',
+                                                    currency,
                                                     { useAbsolute: true }
                                                 )}
                                             </div>

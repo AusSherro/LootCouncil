@@ -142,14 +142,12 @@ export async function POST(request: NextRequest) {
     // ==========================================
     // 1. Delta sync ACCOUNTS
     // ==========================================
-    console.log(`[Delta Sync] Fetching accounts delta (knowledge: ${lastKnowledge})`);
     const accountsData = await ynabFetch(
       `/budgets/${budgetId}/accounts?last_knowledge_of_server=${lastKnowledge}`,
       token
     );
     const deltaAccounts = accountsData.data.accounts as YNABDeltaAccount[];
     newServerKnowledge = Math.max(newServerKnowledge, accountsData.data.server_knowledge);
-    console.log(`[Delta Sync] Got ${deltaAccounts.length} changed accounts`);
 
     for (const acc of deltaAccounts) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -231,7 +229,6 @@ export async function POST(request: NextRequest) {
     // ==========================================
     // 2. Delta sync CATEGORY GROUPS
     // ==========================================
-    console.log(`[Delta Sync] Fetching category groups delta`);
     const groupsData = await ynabFetch(
       `/budgets/${budgetId}/categories?last_knowledge_of_server=${lastKnowledge}`,
       token
@@ -379,14 +376,12 @@ export async function POST(request: NextRequest) {
     // ==========================================
     // 3. Delta sync PAYEES
     // ==========================================
-    console.log(`[Delta Sync] Fetching payees delta`);
     const payeesData = await ynabFetch(
       `/budgets/${budgetId}/payees?last_knowledge_of_server=${lastKnowledge}`,
       token
     );
     const deltaPayees = payeesData.data.payees as YNABDeltaPayee[];
     newServerKnowledge = Math.max(newServerKnowledge, payeesData.data.server_knowledge);
-    console.log(`[Delta Sync] Got ${deltaPayees.length} changed payees`);
 
     const payeeNameMap = new Map<string, string>(); // ynabId -> name
 
@@ -448,14 +443,12 @@ export async function POST(request: NextRequest) {
     // ==========================================
     // 4. Delta sync TRANSACTIONS
     // ==========================================
-    console.log(`[Delta Sync] Fetching transactions delta (knowledge: ${lastKnowledge})`);
     const txData = await ynabFetch(
       `/budgets/${budgetId}/transactions?last_knowledge_of_server=${lastKnowledge}`,
       token
     );
     const deltaTransactions = txData.data.transactions as YNABDeltaTransaction[];
     newServerKnowledge = Math.max(newServerKnowledge, txData.data.server_knowledge);
-    console.log(`[Delta Sync] Got ${deltaTransactions.length} changed transactions`);
 
     for (const tx of deltaTransactions) {
       const accountId = accountMap.get(tx.account_id);
@@ -553,7 +546,6 @@ export async function POST(request: NextRequest) {
     // ==========================================
     // 5. Refresh current month's budget data
     // ==========================================
-    console.log(`[Delta Sync] Refreshing current month budget data`);
     const currentMonth = new Date().toISOString().slice(0, 7);
     // Also refresh previous month (in case of late edits)
     const prevDate = new Date();
@@ -618,9 +610,6 @@ export async function POST(request: NextRequest) {
         ynabServerKnowledge: newServerKnowledge,
       },
     });
-
-    console.log(`[Delta Sync] Complete. New server_knowledge: ${newServerKnowledge}`);
-    console.log(`[Delta Sync] Stats:`, JSON.stringify(stats));
 
     return NextResponse.json({
       success: true,

@@ -38,8 +38,13 @@ export async function GET(request: NextRequest) {
             orderBy: { date: 'asc' },
         });
 
-        // Calculate balances
-        const clearedBalance = unreconciledCleared.reduce((sum, t) => sum + t.amount, 0) + account.clearedBalance;
+        // Calculate balances - sum all cleared transactions directly
+        // to avoid double-counting issues with imported data
+        const allCleared = await prisma.transaction.aggregate({
+            where: { accountId, cleared: true },
+            _sum: { amount: true },
+        });
+        const clearedBalance = allCleared._sum.amount || 0;
         const pendingBalance = pending.reduce((sum, t) => sum + t.amount, 0);
 
         return NextResponse.json({
@@ -106,17 +111,18 @@ export async function POST(request: NextRequest) {
                 return NextResponse.json({ error: 'Account not found' }, { status: 404 });
             }
 
-            // Get current cleared balance
-            const currentCleared = await prisma.transaction.aggregate({
-                where: { accountId, cleared: true, isReconciled: false },
+            // Calculate what cleared transactions actually sum to.
+            // This avoids the old bug where oldClearedBalance + unreconciled
+            // could double-count imported transactions.
+            const clearedSum = await prisma.transaction.aggregate({
+                where: { accountId, cleared: true },
                 _sum: { amount: true },
             });
-
-            const calculatedCleared = account.clearedBalance + (currentCleared._sum.amount || 0);
-            const difference = statementBalance - calculatedCleared;
+            const actualCleared = clearedSum._sum.amount || 0;
+            const difference = statementBalance - actualCleared;
 
             if (difference !== 0) {
-                // Create adjustment transaction
+                // Create adjustment transaction to bridge bank vs computed gap
                 await prisma.transaction.create({
                     data: {
                         date: new Date(),

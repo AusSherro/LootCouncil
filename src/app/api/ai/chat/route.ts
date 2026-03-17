@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { chatWithAdvisor } from '@/lib/openai';
+import { getProfileId } from '@/lib/profile';
 
 // POST - Chat with financial advisor
 export async function POST(request: NextRequest) {
@@ -23,15 +24,17 @@ export async function POST(request: NextRequest) {
         // Gather context for the AI
         const now = new Date();
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const profileId = await getProfileId(request);
 
         // Get accounts for net worth
-        const accounts = await prisma.account.findMany();
+        const accounts = await prisma.account.findMany({ where: { profileId } });
         const netWorth = accounts.reduce((sum, a) => sum + a.balance, 0);
 
         // Get this month's transactions
         const monthlyTransactions = await prisma.transaction.findMany({
             where: {
                 date: { gte: startOfMonth },
+                account: { profileId },
             },
             include: { category: true },
         });

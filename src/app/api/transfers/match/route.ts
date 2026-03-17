@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { getProfileId } from '@/lib/profile';
 
 // GET - Find potential transfer matches
 export async function GET(request: NextRequest) {
@@ -10,11 +11,13 @@ export async function GET(request: NextRequest) {
     try {
         // Find all unmatched potential transfers
         if (findUnmatched) {
+            const profileId = await getProfileId(request);
             // Get all transactions that could be transfers (no category, not already matched)
             const potentialTransfers = await prisma.transaction.findMany({
                 where: {
                     transferId: null,
                     categoryId: null,
+                    account: { profileId },
                 },
                 include: { account: true },
                 orderBy: { date: 'desc' },

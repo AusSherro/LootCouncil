@@ -1,14 +1,16 @@
 'use client';
 
-import { PiggyBank, ChevronRight, ChevronLeft, ChevronDown, Plus, RefreshCw, Eye, EyeOff, MoreHorizontal, Edit3, X, GripVertical, Target, FileCheck2, Copy, AlertTriangle, Clock, Calculator, Zap, Search, LayoutGrid, List, DollarSign, ArrowDownUp } from 'lucide-react';
+import { PiggyBank, ChevronRight, ChevronLeft, ChevronDown, Plus, RefreshCw, Eye, EyeOff, MoreHorizontal, Edit3, X, GripVertical, Target, FileCheck2, Copy, AlertTriangle, Clock, Calculator, Zap, Search, LayoutGrid, List, DollarSign, ArrowDownUp, TrendingUp } from 'lucide-react';
 import { useState, useEffect, useCallback } from 'react';
 import GoalProgress from '@/components/GoalProgress';
 import GoalEditorModal from '@/components/GoalEditorModal';
 import BudgetTemplatesModal from '@/components/BudgetTemplatesModal';
 import BudgetFlowBar from '@/components/BudgetFlowBar';
 import BudgetTransferModal from '@/components/BudgetTransferModal';
+import ForecastModal from '@/components/ForecastModal';
 import { useToast } from '@/components/Toast';
 import { formatCurrency } from '@/lib/utils';
+import GoldCoinSpinner from '@/components/GoldCoinSpinner';
 import {
     DndContext,
     closestCenter,
@@ -71,11 +73,7 @@ function formatMonth(monthStr: string): string {
     return date.toLocaleDateString('en-AU', { month: 'long', year: 'numeric' });
 }
 
-function getMonthOffset(monthStr: string, offset: number): string {
-    const [year, month] = monthStr.split('-').map(Number);
-    const date = new Date(year, month - 1 + offset);
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-}
+import { getMonthOffset } from '@/lib/budgetUtils';
 
 interface CategoryRowProps {
     category: Category;
@@ -648,6 +646,7 @@ export default function BudgetPage() {
     const [fundingUnderfunded, setFundingUnderfunded] = useState(false);
     const [showTransferModal, setShowTransferModal] = useState(false);
     const [transferFromId, setTransferFromId] = useState<string | undefined>();
+    const [showForecastModal, setShowForecastModal] = useState(false);
 
     const sensors = useSensors(
         useSensor(PointerSensor, {
@@ -1050,6 +1049,16 @@ export default function BudgetPage() {
                         <span className="hidden xl:inline whitespace-nowrap">{copyingBudget ? 'Copying...' : 'Copy Last Month'}</span>
                     </button>
 
+                    {/* Forecast */}
+                    <button
+                        onClick={() => setShowForecastModal(true)}
+                        className="flex items-center justify-center gap-2 h-9 px-3 rounded-lg text-sm bg-gold/20 text-gold hover:bg-gold/30 transition-colors"
+                        title="Can you afford it? Forecast your budget"
+                    >
+                        <TrendingUp className="w-4 h-4 shrink-0" />
+                        <span className="hidden xl:inline whitespace-nowrap">Forecast</span>
+                    </button>
+
                     {/* Move Money */}
                     <button
                         onClick={() => { setTransferFromId(undefined); setShowTransferModal(true); }}
@@ -1154,8 +1163,8 @@ export default function BudgetPage() {
                 <div className="card p-0 rounded-t-none">
                     {loading ? (
                         <div className="p-8 text-center">
-                            <RefreshCw className="w-8 h-8 text-gold mx-auto animate-spin" />
-                            <p className="text-neutral mt-2">Loading budget...</p>
+                            <GoldCoinSpinner size="md" className="mx-auto" />
+                            <p className="text-neutral mt-3">Loading budget...</p>
                         </div>
                     ) : (budgetData?.groups.length ?? 0) === 0 ? (
                         <div className="p-8 text-center">
@@ -1266,6 +1275,22 @@ export default function BudgetPage() {
                 ) || []}
                 readyToAssign={budgetData?.totals?.readyToAssign ?? 0}
                 preselectedFromId={transferFromId}
+            />
+
+            {/* Forecast Modal */}
+            <ForecastModal
+                isOpen={showForecastModal}
+                onClose={() => setShowForecastModal(false)}
+                currentMonth={currentMonth}
+                categories={budgetData?.groups.filter(g => !g.isInflow).flatMap(g =>
+                    g.categories.map(c => ({
+                        id: c.id,
+                        name: c.name,
+                        groupName: g.name,
+                        goalType: c.goalType,
+                        goalAmount: c.goalAmount,
+                    }))
+                ) || []}
             />
 
             {/* Add Category FAB */}

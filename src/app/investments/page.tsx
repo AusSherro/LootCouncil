@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import { useSettings } from '@/components/SettingsProvider';
+import GoldCoinSpinner from '@/components/GoldCoinSpinner';
 import {
     ResponsiveContainer,
     AreaChart,
@@ -88,7 +89,7 @@ interface AllocationData {
 }
 
 interface NetWorthData {
-    history: Array<{ month: string; netWorth: number }>;
+    history: Array<{ month: string; netWorth: number; accountBalance?: number; assetValue?: number }>;
     currentNetWorth: number;
     accountBalance: number;
     assetValue: number;
@@ -145,7 +146,7 @@ export default function InvestmentsPage() {
             const [investRes, allocRes, netWorthRes] = await Promise.all([
                 fetch('/api/investments'),
                 fetch('/api/investments/allocations'),
-                fetch('/api/networth?months=12'),
+                fetch(`/api/networth?months=12${excludeSuperFromNetWorth ? '&excludeAssetClass=super' : ''}`),
             ]);
             
             const investData = await investRes.json();
@@ -160,7 +161,7 @@ export default function InvestmentsPage() {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [excludeSuperFromNetWorth]);
 
     useEffect(() => {
         fetchData();
@@ -212,7 +213,7 @@ export default function InvestmentsPage() {
     if (loading) {
         return (
             <div className="p-6 flex items-center justify-center min-h-screen">
-                <RefreshCw className="w-8 h-8 text-gold animate-spin" />
+                <GoldCoinSpinner size="lg" />
             </div>
         );
     }
@@ -221,13 +222,15 @@ export default function InvestmentsPage() {
     const chartData = netWorthData?.history || [];
     const currentNetWorth = netWorthData?.currentNetWorth || 0;
 
-    // Calculate Super value separately
+    // Calculate Super value separately (from investment data, which always includes everything)
     const superValue = data?.assets
         .filter(a => a.assetClass === 'super')
         .reduce((sum, a) => sum + (a.currentValueAUD ?? a.currentValue ?? 0), 0) || 0;
     
-    // Calculate investments value excluding Super (for net worth breakdown)
-    const investmentsExSuper = (netWorthData?.assetValue || 0) - superValue;
+    // When super is excluded via API, assetValue already excludes it — no double subtraction
+    const investmentsExSuper = excludeSuperFromNetWorth
+        ? (netWorthData?.assetValue || 0)
+        : (netWorthData?.assetValue || 0) - superValue;
 
     // Calculate tradeable return (exclude manual assets and Binance-synced crypto)
     const tradeableAssets = data?.assets.filter(a => !a.isManual && !a.symbol.endsWith('-BINANCE')) || [];
@@ -329,7 +332,7 @@ export default function InvestmentsPage() {
                         Net Worth {excludeSuperFromNetWorth && '(ex. Super)'} (AUD)
                     </p>
                     <p className="text-2xl font-bold text-gold">
-                        {fmt(excludeSuperFromNetWorth ? currentNetWorth - superValue : currentNetWorth)}
+                        {fmt(currentNetWorth)}
                     </p>
                     {netWorthData && (
                         <p className="text-xs text-neutral mt-1">
@@ -411,7 +414,7 @@ export default function InvestmentsPage() {
             {activeTab === 'overview' && (
                 <div className="space-y-6">
                     <div className="card">
-                        <h3 className="text-lg font-semibold text-foreground mb-4">Net Worth Over Time</h3>
+                        <h3 className="text-lg font-semibold text-foreground mb-4">Net Worth Over Time{excludeSuperFromNetWorth && ' (ex. Super)'}</h3>
                         {chartData.length === 0 ? (
                             <div className="h-64 flex items-center justify-center border border-dashed border-border rounded-lg">
                                 <p className="text-neutral">Add transactions or holdings to see your net worth chart</p>
@@ -425,22 +428,60 @@ export default function InvestmentsPage() {
                                                 <stop offset="5%" stopColor="#d4a846" stopOpacity={0.3} />
                                                 <stop offset="95%" stopColor="#d4a846" stopOpacity={0} />
                                             </linearGradient>
+                                            <linearGradient id="accountGradientInv" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor="#60a5fa" stopOpacity={0.15} />
+                                                <stop offset="95%" stopColor="#60a5fa" stopOpacity={0} />
+                                            </linearGradient>
+                                            <linearGradient id="assetGradientInv" x1="0" y1="0" x2="0" y2="1">
+                                                <stop offset="5%" stopColor="#34d399" stopOpacity={0.15} />
+                                                <stop offset="95%" stopColor="#34d399" stopOpacity={0} />
+                                            </linearGradient>
                                         </defs>
                                         <CartesianGrid strokeDasharray="3 3" stroke="#2d2d3d" />
                                         <XAxis dataKey="month" stroke="#94a3b8" fontSize={12} />
                                         <YAxis
                                             stroke="#94a3b8"
                                             fontSize={12}
-                                            tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
+                                            tickFormatter={(value) => {
+                                                if (Math.abs(value) >= 1000) return `$${(value / 1000).toFixed(0)}k`;
+                                                return `$${value.toFixed(0)}`;
+                                            }}
                                         />
                                         <Tooltip
                                             contentStyle={{
-                                                backgroundColor: '#1a1a24',
-                                                border: '1px solid #2d2d3d',
-                                                borderRadius: '8px',
+                                                backgroundColor: 'var(--background-secondary)',
+                                                border: '1px solid var(--gold-dark)',
+                                                borderRadius: '12px',
+                                                backdropFilter: 'blur(16px)',
+                                                boxShadow: '0 0 24px rgba(212, 168, 70, 0.08), 0 12px 32px -8px rgba(0, 0, 0, 0.5)',
+                                                padding: '10px 14px',
                                             }}
-                                            labelStyle={{ color: '#e8e6e3' }}
-                                            formatter={(value) => typeof value === 'number' ? [fmt(value * 100), 'Net Worth'] : ''}
+                                            labelStyle={{ color: 'var(--foreground)' }}
+                                            formatter={(value, name) => {
+                                                if (typeof value !== 'number') return ['', ''];
+                                                const labels: Record<string, string> = {
+                                                    netWorth: 'Net Worth',
+                                                    accountBalance: 'Accounts',
+                                                    assetValue: 'Assets',
+                                                };
+                                                return [fmt(value * 100), labels[name as string] || String(name)];
+                                            }}
+                                        />
+                                        <Area
+                                            type="monotone"
+                                            dataKey="accountBalance"
+                                            stroke="#60a5fa"
+                                            strokeWidth={1}
+                                            fill="url(#accountGradientInv)"
+                                            strokeDasharray="4 2"
+                                        />
+                                        <Area
+                                            type="monotone"
+                                            dataKey="assetValue"
+                                            stroke="#34d399"
+                                            strokeWidth={1}
+                                            fill="url(#assetGradientInv)"
+                                            strokeDasharray="4 2"
                                         />
                                         <Area
                                             type="monotone"

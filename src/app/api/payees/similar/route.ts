@@ -1,10 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import OpenAI from 'openai';
-
-// Reuse the shared OpenAI client pattern
-const openai = process.env.OPENAI_API_KEY ? new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-}) : null;
+import { getOpenAIClient } from '@/lib/openai';
 
 interface SimilarGroup {
     payees: string[];
@@ -110,6 +105,7 @@ function findSimilarPayeesLocal(payees: string[]): SimilarGroup[] {
 
 // Find similar payees using AI
 async function findSimilarPayeesAI(payees: string[]): Promise<SimilarGroup[]> {
+    const openai = getOpenAIClient();
     if (!openai) {
         return findSimilarPayeesLocal(payees);
     }

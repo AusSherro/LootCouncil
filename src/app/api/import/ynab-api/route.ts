@@ -215,24 +215,13 @@ export async function POST(request: NextRequest) {
         // Then import categories from the flat list
         // YNAB returns categories at budget.categories (flat list) with category_group_id
         const allCategories = budget.categories as YNABCategory[];
-        console.log(`Found ${allCategories?.length || 0} categories to import`);
-        
-        // Log first few categories to debug
-        if (allCategories && allCategories.length > 0) {
-            console.log('First 3 categories:', allCategories.slice(0, 3).map(c => ({
-                id: c.id,
-                name: c.name,
-                group: c.category_group_id
-            })));
-        }
-        
+
         // Group categories by their group for sort ordering
         const catsByGroup = new Map<string, number>();
         
         for (const cat of allCategories || []) {
             const groupId = categoryGroupMap.get(cat.category_group_id);
             if (!groupId) {
-                console.log(`Skipping category ${cat.name} - no group found for ${cat.category_group_id}`);
                 continue;
             }
 
@@ -262,7 +251,6 @@ export async function POST(request: NextRequest) {
                         ynabId: cat.id,
                     },
                 });
-                console.log(`Mapped existing category: ${cat.name} (YNAB: ${cat.id} -> DB: ${existingCat.id})`);
             } else {
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const created = await (prisma.category as any).create({
@@ -282,7 +270,6 @@ export async function POST(request: NextRequest) {
                 });
                 categoryMap.set(cat.id, created.id);
                 categoryCount++;
-                console.log(`Created category: ${cat.name} (YNAB: ${cat.id} -> DB: ${created.id})`);
             }
         }
 
@@ -302,7 +289,6 @@ export async function POST(request: NextRequest) {
             if (payeesData.data?.server_knowledge) {
                 serverKnowledge = Math.max(serverKnowledge, payeesData.data.server_knowledge);
             }
-            console.log(`Found ${payees.length} payees to import`);
 
             for (const payee of payees) {
                 if (payee.deleted) continue;
@@ -342,12 +328,10 @@ export async function POST(request: NextRequest) {
                     payeeCount++;
                 }
             }
-            console.log(`Imported ${payeeCount} new payees, ${payeeNameMap.size} names mapped`);
         }
 
         // 4. Import ALL Transactions using dedicated endpoint
         // The budget.transactions only includes recent transactions, so we use the transactions endpoint
-        console.log('Fetching ALL transactions from YNAB...');
         const transactionsRes = await fetch(
             `${YNAB_API_BASE}/budgets/${budgetId}/transactions`,
             { headers: { Authorization: `Bearer ${token}` } }
@@ -363,7 +347,6 @@ export async function POST(request: NextRequest) {
         if (transactionsRes.ok) {
             const transactionsData = await transactionsRes.json();
             const allTransactions = transactionsData.data.transactions as YNABTransaction[];
-            console.log(`YNAB returned ${allTransactions.length} total transactions`);
 
             for (const tx of allTransactions) {
                 const accountId = accountMap.get(tx.account_id);
@@ -415,7 +398,6 @@ export async function POST(request: NextRequest) {
                     });
                 }
             }
-            console.log(`Imported ${transactionCount} new transactions`);
         } else {
             console.error('Failed to fetch transactions:', await transactionsRes.text());
         }
@@ -434,14 +416,8 @@ export async function POST(request: NextRequest) {
             const monthsData = await monthsRes.json();
             const months = monthsData.data.months as { month: string }[];
 
-            console.log(`YNAB returned ${months.length} months total`);
-            console.log('First 5 months from YNAB:', months.slice(0, 5).map(m => m.month));
-            console.log('Last 5 months from YNAB:', months.slice(-5).map(m => m.month));
-
             // Import ALL months from YNAB, not just recent ones
             const sortedMonths = [...months].sort((a, b) => b.month.localeCompare(a.month));
-            console.log(`Importing ALL ${sortedMonths.length} months of budget data`);
-            console.log(`Category map has ${categoryMap.size} entries`);
 
             const unmatchedCategories = new Set<string>();
             const matchedCategories = new Set<string>();
@@ -457,19 +433,6 @@ export async function POST(request: NextRequest) {
                 const monthDetail = await monthDetailRes.json();
                 const monthData = monthDetail.data.month as YNABBudgetMonth;
                 const monthStr = monthData.month.slice(0, 7); // "2026-02-01" -> "2026-02"
-                
-                // Log first month's categories for debugging
-                if (monthInfo === sortedMonths[0] && monthData.categories?.length > 0) {
-                    console.log(`First month (${monthStr}) has ${monthData.categories.length} categories`);
-                    console.log('First 5 month categories with budget data:', monthData.categories.slice(0, 5).map(c => ({
-                        id: c.id,
-                        name: c.name,
-                        budgeted: c.budgeted,
-                        activity: c.activity,
-                        balance: c.balance,
-                        budgetedDollars: c.budgeted / 1000,
-                    })));
-                }
 
                 for (const cat of monthData.categories) {
                     const categoryId = categoryMap.get(cat.id);
@@ -477,7 +440,6 @@ export async function POST(request: NextRequest) {
                         // This is expected for internal categories like "Ready to Assign"
                         if (!unmatchedCategories.has(cat.id)) {
                             unmatchedCategories.add(cat.id);
-                            console.log(`Month category not found in map: ${cat.name} (id: ${cat.id})`);
                         }
                         continue;
                     }
@@ -519,8 +481,6 @@ export async function POST(request: NextRequest) {
                     monthlyUpdates++;
                 }
             }
-            console.log(`Created/updated ${monthlyUpdates} monthly budget records`);
-            console.log(`Matched ${matchedCategories.size} unique categories, unmatched: ${unmatchedCategories.size}`);
             matchedCategoryCount = matchedCategories.size;
             unmatchedCategoryCount = unmatchedCategories.size;
         }

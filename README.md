@@ -98,6 +98,7 @@ Most budgeting apps want your data in their cloud and a monthly subscription fee
 - **Spending Goal** — Plan expected spending
 - **Debt Payoff** — Track debt reduction
 - Visual progress bars & overspending alerts
+- **Budget Forecast** — "Can I afford it?" projections with chart
 
 </td>
 <td width="50%" valign="top">

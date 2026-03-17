@@ -324,11 +324,15 @@ export default function SettingsPage() {
       </div>
 
       {/* Profiles */}
-      <section className="card mb-6">
-        <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
-          <Users className="w-5 h-5 text-gold" />
-          Profiles
-        </h2>
+      <section className="settings-section mb-6">
+        <div className="settings-section-header">
+          <div className="settings-icon"><Users className="w-5 h-5" /></div>
+          <div>
+            <h2 className="text-base font-semibold text-foreground">Profiles</h2>
+            <p className="text-xs text-neutral">Manage user profiles</p>
+          </div>
+        </div>
+        <div className="settings-section-body">
         <p className="text-sm text-neutral mb-4">
           Each profile has independent budgets, accounts, transactions, and settings. Switch profiles from the sidebar.
         </p>
@@ -453,15 +457,20 @@ export default function SettingsPage() {
             Create Profile
           </button>
         </div>
+        </div>
       </section>
 
       {/* General Settings */}
-      <section className="card mb-6">
-        <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
-          <Globe className="w-5 h-5 text-gold" />
-          General
+      <section className="settings-section mb-6">
+        <div className="settings-section-header">
+          <div className="settings-icon"><Globe className="w-5 h-5" /></div>
+          <div className="flex-1">
+            <h2 className="text-base font-semibold text-foreground">General</h2>
+            <p className="text-xs text-neutral">Currency & budget name</p>
+          </div>
           {saving && <Loader2 className="w-4 h-4 text-gold animate-spin" />}
-        </h2>
+        </div>
+        <div className="settings-section-body">
         <div className="space-y-4">
           <div>
             <label className="block text-sm text-neutral mb-1">Budget Name</label>
@@ -486,15 +495,20 @@ export default function SettingsPage() {
             </select>
           </div>
         </div>
+        </div>
       </section>
 
       {/* Theme Settings */}
-      <section className="card mb-6">
-        <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
-          <Palette className="w-5 h-5 text-gold" />
-          Appearance
-        </h2>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+      <section className="settings-section mb-6">
+        <div className="settings-section-header">
+          <div className="settings-icon"><Palette className="w-5 h-5" /></div>
+          <div>
+            <h2 className="text-base font-semibold text-foreground">Appearance</h2>
+            <p className="text-xs text-neutral">Choose your theme</p>
+          </div>
+        </div>
+        <div className="settings-section-body">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
           <button
             onClick={() => handleSettingChange('theme', 'finance')}
             className={`p-4 rounded-xl border-2 transition-all group ${settings?.theme === 'finance'
@@ -579,15 +593,35 @@ export default function SettingsPage() {
             <span className="text-sm font-semibold">Royal</span>
             <p className="text-xs text-neutral mt-1">Purple Reign</p>
           </button>
+          <button
+            onClick={() => handleSettingChange('theme', 'kawaii')}
+            className={`p-4 rounded-xl border-2 transition-all group ${settings?.theme === 'kawaii'
+                ? 'border-[#ff6b9d] bg-[#ff6b9d]/10 shadow-lg shadow-[#ff6b9d]/10'
+                : 'border-border hover:border-[#ff6b9d]/50'
+              }`}
+          >
+            <div className="w-full h-16 rounded-lg bg-gradient-to-br from-[#1a0a12] via-[#2a1420] to-[#3d1a2a] mb-3 relative overflow-hidden">
+              <div className="absolute inset-0 bg-gradient-to-r from-[#ff6b9d]/20 to-[#ffa0c4]/10 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <div className="absolute bottom-2 right-2 w-3 h-3 rounded-full bg-[#ff6b9d]" />
+              <span className="absolute bottom-1.5 left-2 text-xs opacity-60">🐱</span>
+            </div>
+            <span className="text-sm font-semibold">Kawaii</span>
+            <p className="text-xs text-neutral mt-1">Super Cute ✿</p>
+          </button>
+        </div>
         </div>
       </section>
 
       {/* Exchange Integrations */}
-      <section className="card mb-6">
-        <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
-          <Link2 className="w-5 h-5 text-gold" />
-          Exchange Integrations
-        </h2>
+      <section className="settings-section mb-6">
+        <div className="settings-section-header">
+          <div className="settings-icon"><Link2 className="w-5 h-5" /></div>
+          <div>
+            <h2 className="text-base font-semibold text-foreground">Exchange Integrations</h2>
+            <p className="text-xs text-neutral">Connect external accounts</p>
+          </div>
+        </div>
+        <div className="settings-section-body">
 
         {/* Binance */}
         <div className="p-4 bg-surface-light/30 rounded-lg border border-gold/20">
@@ -674,6 +708,7 @@ export default function SettingsPage() {
             </p>
           )}
         </div>
+        </div>
       </section>
 
       {/* Transaction Rules */}
@@ -683,11 +718,15 @@ export default function SettingsPage() {
       <PayeeManagement />
 
       {/* Import/Export */}
-      <section className="card mb-6">
-        <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
-          <Database className="w-5 h-5 text-gold" />
-          Data Management
-        </h2>
+      <section className="settings-section mb-6">
+        <div className="settings-section-header">
+          <div className="settings-icon"><Database className="w-5 h-5" /></div>
+          <div>
+            <h2 className="text-base font-semibold text-foreground">Data Management</h2>
+            <p className="text-xs text-neutral">Import, export & backup</p>
+          </div>
+        </div>
+        <div className="settings-section-body">
 
         {/* YNAB Delta Sync */}
         {syncStatus?.hasSynced && (
@@ -953,6 +992,7 @@ export default function SettingsPage() {
               </button>
             </div>
           </div>
+        </div>
         </div>
       </section>
     </div>

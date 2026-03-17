@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { Check, ChevronDown } from 'lucide-react';
+import { useSettings } from '@/components/SettingsProvider';
 
 interface Category {
     id: string;
@@ -187,6 +188,8 @@ export function InlineAmountEdit({ value, onSave, isInflow, className = '' }: In
     const [editValue, setEditValue] = useState((Math.abs(value) / 100).toFixed(2));
     const [saving, setSaving] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
+    const { settings } = useSettings();
+    const currency = settings?.currency || 'AUD';
 
     useEffect(() => {
         if (isEditing) {
@@ -198,7 +201,7 @@ export function InlineAmountEdit({ value, onSave, isInflow, className = '' }: In
     function formatDisplay(cents: number): string {
         const formatted = new Intl.NumberFormat('en-AU', {
             style: 'currency',
-            currency: 'AUD',
+            currency,
         }).format(Math.abs(cents) / 100);
         return cents < 0 ? `-${formatted}` : formatted;
     }

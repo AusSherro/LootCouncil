@@ -1,11 +1,13 @@
 'use client';
 
-import { Coins, Plus, ArrowUpRight, ArrowDownLeft, RefreshCw, X, Lock, MoreVertical, Archive, ArrowRightLeft, CreditCard, ChevronDown, ChevronRight, AlertTriangle } from 'lucide-react';
+import { Coins, Plus, ArrowUpRight, ArrowDownLeft, RefreshCw, X, Lock, MoreVertical, Archive, ArrowRightLeft, CreditCard, ChevronDown, ChevronRight, AlertTriangle, Landmark } from 'lucide-react';
 import { useState, useEffect, useCallback } from 'react';
 import QuickTransferModal from '@/components/QuickTransferModal';
 import ReconciliationModeModal from '@/components/ReconciliationModeModal';
 import CreditCardPaymentModal from '@/components/CreditCardPaymentModal';
+import TransactionForm from '@/components/TransactionForm';
 import { formatCurrency } from '@/lib/utils';
+import GoldCoinSpinner from '@/components/GoldCoinSpinner';
 
 interface Account {
     id: string;
@@ -18,11 +20,13 @@ interface Account {
     lastReconciled?: string;
 }
 
-function AccountCard({ account, onReconcile, onClose, onReopen }: { 
+function AccountCard({ account, onReconcile, onClose, onReopen, onDeposit, onTransfer }: { 
     account: Account; 
     onReconcile: (account: Account) => void;
     onClose: (id: string) => void;
     onReopen: (id: string) => void;
+    onDeposit: (account: Account) => void;
+    onTransfer: (account: Account) => void;
 }) {
     const [showMenu, setShowMenu] = useState(false);
     const isNegative = account.balance < 0;
@@ -111,14 +115,30 @@ function AccountCard({ account, onReconcile, onClose, onReopen }: {
                 ) : (
                     <span className="text-xs text-success">All cleared</span>
                 )}
-                {!account.closed && (
-                    <button
-                        onClick={(e) => { e.stopPropagation(); onReconcile(account); }}
-                        className="text-xs px-3 py-1 bg-background-tertiary hover:bg-gold/20 text-neutral hover:text-gold rounded transition-colors"
-                    >
-                        Reconcile
-                    </button>
-                )}
+                <div className="flex items-center gap-2">
+                    {!account.closed && (
+                        <>
+                            <button
+                                onClick={(e) => { e.stopPropagation(); onDeposit(account); }}
+                                className="text-xs px-3 py-1 bg-background-tertiary hover:bg-success/20 text-neutral hover:text-success rounded transition-colors"
+                            >
+                                Deposit
+                            </button>
+                            <button
+                                onClick={(e) => { e.stopPropagation(); onTransfer(account); }}
+                                className="text-xs px-3 py-1 bg-background-tertiary hover:bg-gold/20 text-neutral hover:text-gold rounded transition-colors"
+                            >
+                                Transfer
+                            </button>
+                            <button
+                                onClick={(e) => { e.stopPropagation(); onReconcile(account); }}
+                                className="text-xs px-3 py-1 bg-background-tertiary hover:bg-gold/20 text-neutral hover:text-gold rounded transition-colors"
+                            >
+                                Reconcile
+                            </button>
+                        </>
+                    )}
+                </div>
             </div>
         </div>
     );
@@ -129,6 +149,9 @@ export default function AccountsPage() {
     const [loading, setLoading] = useState(true);
     const [showAddForm, setShowAddForm] = useState(false);
     const [showTransferModal, setShowTransferModal] = useState(false);
+    const [transferSourceAccount, setTransferSourceAccount] = useState<string | undefined>(undefined);
+    const [showDepositModal, setShowDepositModal] = useState(false);
+    const [depositAccountId, setDepositAccountId] = useState<string | undefined>(undefined);
     const [reconcileAccount, setReconcileAccount] = useState<Account | null>(null);
     const [showCreditCard, setShowCreditCard] = useState(false);
     const [showClosedAccounts, setShowClosedAccounts] = useState(false);
@@ -236,7 +259,11 @@ export default function AccountsPage() {
                         <CreditCard className="w-5 h-5" />
                         Credit Cards
                     </button>
-                    <button onClick={() => setShowTransferModal(true)} className="btn btn-secondary">
+                    <button onClick={() => { setDepositAccountId(undefined); setShowDepositModal(true); }} className="btn btn-secondary">
+                        <Landmark className="w-5 h-5" />
+                        Deposit
+                    </button>
+                    <button onClick={() => { setTransferSourceAccount(undefined); setShowTransferModal(true); }} className="btn btn-secondary">
                         <ArrowRightLeft className="w-5 h-5" />
                         Transfer
                     </button>
@@ -275,8 +302,8 @@ export default function AccountsPage() {
             {/* Accounts Grid */}
             {loading ? (
                 <div className="card text-center py-12">
-                    <RefreshCw className="w-8 h-8 text-gold mx-auto animate-spin" />
-                    <p className="text-neutral mt-2">Loading accounts...</p>
+                    <GoldCoinSpinner size="md" className="mx-auto" />
+                    <p className="text-neutral mt-3">Loading accounts...</p>
                 </div>
             ) : accounts.length === 0 ? (
                 <div className="card text-center py-12">
@@ -302,6 +329,8 @@ export default function AccountsPage() {
                                 onReconcile={setReconcileAccount}
                                 onClose={handleCloseAccount}
                                 onReopen={handleReopenAccount}
+                                onDeposit={(a) => { setDepositAccountId(a.id); setShowDepositModal(true); }}
+                                onTransfer={(a) => { setTransferSourceAccount(a.id); setShowTransferModal(true); }}
                             />
                         ))}
                     </div>
@@ -333,6 +362,8 @@ export default function AccountsPage() {
                                                     onReconcile={setReconcileAccount}
                                                     onClose={handleCloseAccount}
                                                     onReopen={handleReopenAccount}
+                                                    onDeposit={(a) => { setDepositAccountId(a.id); setShowDepositModal(true); }}
+                                                    onTransfer={(a) => { setTransferSourceAccount(a.id); setShowTransferModal(true); }}
                                                 />
                                             ))}
                                         </div>
@@ -371,6 +402,8 @@ export default function AccountsPage() {
                                                         onReconcile={setReconcileAccount}
                                                         onClose={handleCloseAccount}
                                                         onReopen={handleReopenAccount}
+                                                        onDeposit={(a) => { setDepositAccountId(a.id); setShowDepositModal(true); }}
+                                                        onTransfer={(a) => { setTransferSourceAccount(a.id); setShowTransferModal(true); }}
                                                     />
                                                 ))}
                                             </div>
@@ -444,8 +477,18 @@ export default function AccountsPage() {
             {/* Quick Transfer Modal */}
             <QuickTransferModal
                 isOpen={showTransferModal}
-                onClose={() => setShowTransferModal(false)}
+                onClose={() => { setShowTransferModal(false); setTransferSourceAccount(undefined); }}
                 onSuccess={fetchAccounts}
+                defaultSourceAccountId={transferSourceAccount}
+            />
+
+            {/* Deposit Modal (TransactionForm in Inflow mode) */}
+            <TransactionForm
+                isOpen={showDepositModal}
+                onClose={() => { setShowDepositModal(false); setDepositAccountId(undefined); }}
+                onSuccess={fetchAccounts}
+                defaultAccountId={depositAccountId}
+                defaultIsInflow
             />
 
             {/* Advanced Reconciliation Modal */}

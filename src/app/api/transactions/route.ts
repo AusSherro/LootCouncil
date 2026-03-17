@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import prisma from '@/lib/prisma';
 import { withErrorHandler } from '@/lib/apiHandler';
 import { getProfileId } from '@/lib/profile';
+import { matchesRule } from '@/lib/ruleEngine';
 
 // GET all transactions
 export const GET = withErrorHandler(async (request: NextRequest) => {
@@ -223,36 +224,6 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
     return NextResponse.json(transaction, { status: 201 });
 }, 'Create transaction');
-
-// Helper function for rule matching
-function matchesRule(value: string, matchType: string, matchValue: string): boolean {
-    const lowerValue = value.toLowerCase();
-    const lowerMatch = matchValue.toLowerCase();
-
-    switch (matchType) {
-        case 'equals':
-            return lowerValue === lowerMatch;
-        case 'contains':
-            return lowerValue.includes(lowerMatch);
-        case 'startsWith':
-            return lowerValue.startsWith(lowerMatch);
-        case 'endsWith':
-            return lowerValue.endsWith(lowerMatch);
-        case 'regex':
-            try {
-                // Guard against ReDoS: reject overly long or catastrophic patterns
-                if (matchValue.length > 200) return false;
-                // Detect nested quantifiers like (a+)+, (a*)*  — classic ReDoS vectors
-                if (/([+*?}])\s*\)\s*[+*?{]/.test(matchValue)) return false;
-                const regex = new RegExp(matchValue, 'i');
-                return regex.test(value);
-            } catch {
-                return false;
-            }
-        default:
-            return false;
-    }
-}
 
 // PUT update transaction
 export const PUT = withErrorHandler(async (request: NextRequest) => {

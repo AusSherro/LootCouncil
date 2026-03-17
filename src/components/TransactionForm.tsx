@@ -42,9 +42,10 @@ interface TransactionFormProps {
     onSuccess: () => void;
     defaultAccountId?: string;
     editTransaction?: Transaction | null;
+    defaultIsInflow?: boolean;
 }
 
-export default function TransactionForm({ isOpen, onClose, onSuccess, defaultAccountId, editTransaction }: TransactionFormProps) {
+export default function TransactionForm({ isOpen, onClose, onSuccess, defaultAccountId, editTransaction, defaultIsInflow }: TransactionFormProps) {
     const [accounts, setAccounts] = useState<Account[]>([]);
     const [categoryGroups, setCategoryGroups] = useState<CategoryGroup[]>([]);
     const [loading, setLoading] = useState(false);
@@ -83,22 +84,23 @@ export default function TransactionForm({ isOpen, onClose, onSuccess, defaultAcc
             setDate(new Date().toISOString().split('T')[0]);
             setPayee('');
             setAmount('');
-            setIsOutflow(true);
+            setIsOutflow(defaultIsInflow ? false : true);
             setAccountId(defaultAccountId || '');
             setCategoryId('');
             setMemo('');
             setCleared(false);
         }
-    }, [editTransaction, isOpen, defaultAccountId]);
+    }, [editTransaction, isOpen, defaultAccountId, defaultIsInflow]);
 
     const fetchAccounts = useCallback(async () => {
         try {
             const res = await fetch('/api/accounts');
             if (!res.ok) throw new Error('Failed to load accounts');
             const data = await res.json();
-            setAccounts(data.accounts || []);
-            if (!accountId && data.accounts?.length > 0) {
-                setAccountId(data.accounts[0].id);
+            const openAccounts = (data.accounts || []).filter((a: Account & { closed?: boolean }) => !a.closed);
+            setAccounts(openAccounts);
+            if (!accountId && openAccounts.length > 0) {
+                setAccountId(openAccounts[0].id);
             }
         } catch (err) {
             console.error('Failed to fetch accounts:', err);

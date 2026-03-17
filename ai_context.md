@@ -120,12 +120,18 @@ src/
 │   └── Toast.tsx               # Toast notification component
 ├── lib/
 │   ├── prisma.ts               # Prisma client singleton
-│   ├── openai.ts               # OpenAI client
+│   ├── openai.ts               # OpenAI client + getOpenAIClient() accessor
 │   ├── utils.ts                # Helper functions
 │   ├── apiHandler.ts           # Centralized API error handler
 │   ├── clientCache.ts          # Lightweight in-memory TTL cache
 │   ├── navigation.ts           # Shared nav items (Sidebar/MobileNav)
-│   └── profile.ts              # Profile ID resolution (cookie/query/fallback)
+│   ├── profile.ts              # Profile ID resolution (cookie/query/fallback)
+│   ├── budgetUtils.ts          # Pure budget helpers (client+server safe)
+│   ├── budgetHelpers.ts        # Budget helpers w/ DB access (server-only, re-exports budgetUtils)
+│   ├── exchangeRate.ts         # Shared exchange rate fetcher w/ 1hr cache
+│   ├── ruleEngine.ts           # Shared rule matching w/ unified ReDoS protection
+│   ├── useUndo.tsx             # Undo/redo provider and hooks
+│   └── useKeyboardShortcuts.tsx # Keyboard shortcut hook
 └── generated/prisma/           # Generated Prisma client
 ```
 
@@ -248,6 +254,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 | **Shared Navigation** | Sidebar/MobileNav use shared nav config |
 | **AI Data Consent** | Consent modal before sending data to OpenAI |
 | **Global New Txn Shortcut** | Press N anywhere to add a new transaction |
+| **Shared Lib Helpers** | Deduplicated budget/exchange/rule helpers into lib/ |
+| **Profile-Scoped AI** | AI chat & insights filter by active profile |
 
 ### 🚧 Planned Features
 

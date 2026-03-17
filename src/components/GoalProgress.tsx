@@ -1,6 +1,7 @@
 'use client';
 
 import { formatCurrency } from '@/lib/utils';
+import { useSettings } from '@/components/SettingsProvider';
 
 interface GoalProgressProps {
     goalType: string | null;
@@ -14,16 +15,29 @@ interface GoalProgressProps {
     assigned: number; // cents
 }
 
-function formatGoalCurrency(cents: number): string {
-    // Show cents when there's a fractional dollar amount
-    const hasCents = cents % 100 !== 0;
-    return formatCurrency(cents, 'AUD', {
-        minimumFractionDigits: hasCents ? 2 : 0,
-        maximumFractionDigits: hasCents ? 2 : 0,
-        useAbsolute: true,
-        showSign: cents < 0,
-    });
-}
+export default function GoalProgress({
+    goalType,
+    goalTarget,
+    goalDueDate,
+    goalPercentageComplete,
+    goalUnderFunded,
+    goalOverallFunded,
+    goalOverallLeft,
+    available,
+    assigned,
+}: GoalProgressProps) {
+    const { settings } = useSettings();
+    const currency = settings?.currency || 'AUD';
+
+    function formatGoalCurrency(cents: number): string {
+        const hasCents = cents % 100 !== 0;
+        return formatCurrency(cents, currency, {
+            minimumFractionDigits: hasCents ? 2 : 0,
+            maximumFractionDigits: hasCents ? 2 : 0,
+            useAbsolute: true,
+            showSign: cents < 0,
+        });
+    }
 
 function getGoalLabel(goalType: string | null): string {
     switch (goalType) {
@@ -44,17 +58,6 @@ function getProgressColor(percentage: number, isUnderFunded: boolean): string {
     return 'bg-danger';
 }
 
-export default function GoalProgress({
-    goalType,
-    goalTarget,
-    goalDueDate,
-    goalPercentageComplete,
-    goalUnderFunded,
-    goalOverallFunded,
-    goalOverallLeft,
-    available,
-    assigned,
-}: GoalProgressProps) {
     if (!goalType) return null;
 
     const percentage = goalPercentageComplete ?? 0;

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
+import { matchesRule } from '@/lib/ruleEngine';
 
 // GET - List all transaction rules
 export async function GET(request: NextRequest) {
@@ -131,7 +132,7 @@ async function applyRules(payee: string | null, memo: string | null, amount: num
                 break;
         }
 
-        if (isMatch(valueToMatch, rule.matchType, rule.matchValue)) {
+        if (matchesRule(valueToMatch, rule.matchType, rule.matchValue)) {
             // Found a matching rule
             return {
                 matched: true,
@@ -147,32 +148,4 @@ async function applyRules(payee: string | null, memo: string | null, amount: num
     }
 
     return { matched: false };
-}
-
-function isMatch(value: string, matchType: string, matchValue: string): boolean {
-    const lowerValue = value.toLowerCase();
-    const lowerMatch = matchValue.toLowerCase();
-
-    switch (matchType) {
-        case 'equals':
-            return lowerValue === lowerMatch;
-        case 'contains':
-            return lowerValue.includes(lowerMatch);
-        case 'startsWith':
-            return lowerValue.startsWith(lowerMatch);
-        case 'endsWith':
-            return lowerValue.endsWith(lowerMatch);
-        case 'regex':
-            try {
-                // ReDoS protection: reject overly long or dangerous patterns
-                if (matchValue.length > 200) return false;
-                if (/([+*])\1|(\([^)]*[+*][^)]*\))[+*]/.test(matchValue)) return false;
-                const regex = new RegExp(matchValue, 'i');
-                return regex.test(value);
-            } catch {
-                return false;
-            }
-        default:
-            return false;
-    }
 }

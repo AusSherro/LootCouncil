@@ -22,6 +22,7 @@ import ScheduledTransactions from '@/components/ScheduledTransactions';
 import { SkeletonDashboard } from '@/components/Skeleton';
 import { formatCurrency } from '@/lib/utils';
 import { fetchJsonCached, clearCachedJson } from '@/lib/clientCache';
+import AnimatedNumber from '@/components/AnimatedNumber';
 
 interface DashboardData {
     netWorth: number;
@@ -193,7 +194,7 @@ export default function HomePage() {
             {/* Main Stats Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                 {/* Net Worth Card - Featured */}
-                <div className="lg:col-span-2 card">
+                <div className="lg:col-span-2 card-hero">
                     <div className="flex items-center gap-2 mb-2">
                         <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
                             <TrendingUp className="w-5 h-5 text-primary" />
@@ -202,7 +203,10 @@ export default function HomePage() {
                     </div>
                     <div className="flex items-end gap-3 mb-4">
                         <p className="text-3xl font-bold text-foreground">
-                            {formatDashboardCurrency(data?.netWorth || 0, currency)}
+                            <AnimatedNumber
+                                value={data?.netWorth || 0}
+                                formatFn={(v) => formatDashboardCurrency(Math.round(v), currency)}
+                            />
                         </p>
                         {data?.netWorthChange !== 0 && (
                             <div className={`flex items-center gap-1 px-2 py-0.5 rounded text-sm font-medium ${
@@ -220,13 +224,23 @@ export default function HomePage() {
                         )}
                     </div>
                     <div className="grid grid-cols-2 gap-3">
-                        <div className="p-3 rounded-lg bg-background-tertiary/50">
+                        <div className="card-inset">
                             <p className="text-xs text-neutral mb-1">Cash & Accounts</p>
-                            <p className="text-base font-medium text-foreground">{formatDashboardCurrency(data?.accountsTotal || 0, currency)}</p>
+                            <p className="text-base font-medium text-foreground">
+                                <AnimatedNumber
+                                    value={data?.accountsTotal || 0}
+                                    formatFn={(v) => formatDashboardCurrency(Math.round(v), currency)}
+                                />
+                            </p>
                         </div>
-                        <div className="p-3 rounded-lg bg-background-tertiary/50">
+                        <div className="card-inset">
                             <p className="text-xs text-neutral mb-1">Investments</p>
-                            <p className="text-base font-medium text-foreground">{formatDashboardCurrency(data?.assetsTotal || 0, currency)}</p>
+                            <p className="text-base font-medium text-foreground">
+                                <AnimatedNumber
+                                    value={data?.assetsTotal || 0}
+                                    formatFn={(v) => formatDashboardCurrency(Math.round(v), currency)}
+                                />
+                            </p>
                         </div>
                     </div>
                 </div>
@@ -242,7 +256,10 @@ export default function HomePage() {
                     <p className={`text-2xl font-bold ${
                         (data?.readyToAssign || 0) >= 0 ? 'text-success' : 'text-danger'
                     }`}>
-                        {formatDashboardCurrency(data?.readyToAssign || 0, currency)}
+                        <AnimatedNumber
+                            value={data?.readyToAssign || 0}
+                            formatFn={(v) => formatDashboardCurrency(Math.round(v), currency)}
+                        />
                     </p>
                     <Link href="/budget" className="flex items-center gap-1 text-sm text-neutral hover:text-primary mt-2 transition-colors">
                         Go to Budget

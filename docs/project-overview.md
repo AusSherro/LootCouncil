@@ -52,7 +52,7 @@ The application is a full-stack monolith built with **Next.js 16** (App Router),
 
 ### Core Modules
 
-1. **Budgeting** — Zero-based envelope budgeting with category groups, monthly allocations, goals, rollover, templates, quick actions, auto-assign, budget transfers between categories
+1. **Budgeting** — Zero-based envelope budgeting with category groups, monthly allocations, goals, rollover, templates, quick actions, auto-assign, budget transfers between categories, budget forecasting ("Can I afford it?")
 2. **Transactions** — Full CRUD with splits, transfers, reconciliation, bulk operations, scheduled recurring, auto-categorization rules, server-side filtering
 3. **Accounts** — Checking, savings, credit, investment accounts with linked credit card payment tracking
 4. **Investments** — Multi-asset portfolio (stocks, ETFs, crypto, property, super) with lots, CGT, dividends, allocation targets, live pricing

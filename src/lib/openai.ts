@@ -9,6 +9,12 @@ const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY || '',
 });
 
+/** Get the shared OpenAI client instance, or null if API key is not configured */
+export function getOpenAIClient(): OpenAI | null {
+    if (!process.env.OPENAI_API_KEY) return null;
+    return openai;
+}
+
 export interface SpendingInsight {
     type: 'warning' | 'success' | 'tip' | 'trend';
     title: string;

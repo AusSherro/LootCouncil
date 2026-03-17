@@ -28,7 +28,7 @@ d:\Vibe Coding\Loot Council\
 │   │   │   ├── page.tsx           # ⚡ Dashboard (home page)
 │   │   │   ├── globals.css        # 🎨 Theme variables, animations, base styles
 │   │   │   ├── favicon.ico        # App icon
-│   │   │   ├── api/               # 🔌 Backend API routes (46 files, 28 domains)
+│   │   │   ├── api/               # 🔌 Backend API routes (47 files, 29 domains)
 │   │   │   ├── budget/            # Budget page
 │   │   │   ├── transactions/      # Transactions page
 │   │   │   ├── accounts/          # Accounts page
@@ -75,6 +75,7 @@ api/
 │   ├── route.ts                   # Budget CRUD (GET month data, PUT assignments)
 │   ├── auto-assign/route.ts       # Auto-fund goal categories
 │   ├── copy/route.ts              # Copy budget between months
+│   ├── forecast/route.ts          # Budget forecast projections ("Can I afford it?")
 │   ├── quick-actions/route.ts     # Quick budget actions
 │   └── transfer/route.ts          # Transfer funds between categories
 ├── categories/route.ts            # Category/group management

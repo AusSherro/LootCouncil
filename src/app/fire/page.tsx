@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import { useSettings } from '@/components/SettingsProvider';
+import GoldCoinSpinner from '@/components/GoldCoinSpinner';
 
 interface FIREData {
     settings: {
@@ -117,7 +118,7 @@ export default function FIREPage() {
     if (loading) {
         return (
             <div className="p-6 flex items-center justify-center min-h-screen">
-                <RefreshCw className="w-8 h-8 text-gold animate-spin" />
+                <GoldCoinSpinner size="lg" />
             </div>
         );
     }

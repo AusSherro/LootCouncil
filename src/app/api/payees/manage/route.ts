@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getProfileId } from '@/lib/profile';
 
 // GET - Get all unique payees with transaction counts and totals
-export async function GET() {
+export async function GET(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         const transactions = await prisma.transaction.findMany({
             where: {
                 payee: { not: null },
+                account: { profileId },
             },
             select: {
                 payee: true,
@@ -48,8 +51,9 @@ export async function POST(request: NextRequest) {
                 return NextResponse.json({ error: 'Missing payee names' }, { status: 400 });
             }
 
+            const profileId = await getProfileId(request);
             const result = await prisma.transaction.updateMany({
-                where: { payee: fromPayee },
+                where: { payee: fromPayee, account: { profileId } },
                 data: { payee: toPayee },
             });
 
@@ -63,8 +67,9 @@ export async function POST(request: NextRequest) {
                 return NextResponse.json({ error: 'Missing payee names' }, { status: 400 });
             }
 
+            const profileId = await getProfileId(request);
             const result = await prisma.transaction.updateMany({
-                where: { payee: fromPayee },
+                where: { payee: fromPayee, account: { profileId } },
                 data: { payee: newName },
             });
 

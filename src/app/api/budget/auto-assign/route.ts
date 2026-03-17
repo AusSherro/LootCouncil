@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
+import { calculateReadyToAssign } from '@/lib/budgetHelpers';
 
 interface CategoryWithGoal {
     id: string;
@@ -76,18 +77,6 @@ function calculateMonthlyNeeded(
     }
 }
 
-// Helper: Check if a category group is an "Inflow" type
-function isInflowGroup(groupName: string): boolean {
-    const lowerName = groupName.toLowerCase();
-    return lowerName === 'inflow' || lowerName.includes('ready to assign');
-}
-
-// Helper: Check if a category group is the YNAB "Hidden Categories" system group
-function isHiddenCategoriesGroup(groupName: string): boolean {
-    const lowerName = groupName.toLowerCase();
-    return lowerName === 'hidden categories';
-}
-
 // POST - Auto-assign money to categories with goals
 export async function POST(request: NextRequest) {
     try {
@@ -99,50 +88,8 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Month required (YYYY-MM format)' }, { status: 400 });
         }
 
-        // Calculate Ready to Assign the SAME way as the budget page
-        const settings = await prisma.settings.findFirst({ where: { profileId } });
-        let readyToAssign: number;
-        
-        if (settings && settings.toBeBudgeted !== undefined && settings.toBeBudgeted !== 0) {
-            // Use YNAB's authoritative value
-            readyToAssign = settings.toBeBudgeted;
-        } else {
-            // Fallback: Calculate from account balances - total available in envelopes
-            // This matches the budget page calculation exactly
-            const accounts = await prisma.account.findMany({
-                where: { onBudget: true, profileId },
-            });
-            const activeAccounts = accounts.filter(acc => (acc as { closed?: boolean }).closed !== true);
-            const totalBalance = activeAccounts.reduce((sum, acc) => sum + acc.balance, 0);
-            
-            // Get all category groups to identify inflow/hidden
-            const categoryGroups = await prisma.categoryGroup.findMany({
-                where: { isHidden: false, profileId },
-                include: {
-                    categories: {
-                        where: { isHidden: false },
-                        include: {
-                            monthlyData: {
-                                where: { month },
-                                take: 1,
-                            },
-                        },
-                    },
-                },
-            });
-            
-            // Sum available from non-inflow, non-hidden categories
-            let totalAvailable = 0;
-            for (const group of categoryGroups) {
-                if (isInflowGroup(group.name) || isHiddenCategoriesGroup(group.name)) continue;
-                for (const cat of group.categories) {
-                    const available = cat.monthlyData[0]?.available ?? 0;
-                    totalAvailable += available;
-                }
-            }
-            
-            readyToAssign = totalBalance - totalAvailable;
-        }
+        // Always calculate RTA from account balances - envelope totals
+        const readyToAssign = await calculateReadyToAssign(profileId, month);
         
         if (readyToAssign <= 0) {
             return NextResponse.json({
@@ -234,17 +181,7 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        // Update Ready to Assign in settings
-        await prisma.settings.upsert({
-            where: { id: 'default' },
-            create: { 
-                id: 'default',
-                toBeBudgeted: readyToAssign - totalAssigned,
-            },
-            update: {
-                toBeBudgeted: readyToAssign - totalAssigned,
-            },
-        });
+        // RTA is now always calculated — no need to store it
 
         return NextResponse.json({
             success: true,
@@ -272,9 +209,9 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: 'Month required' }, { status: 400 });
         }
 
-        // Get current Ready to Assign
-        const settings = await prisma.settings.findUnique({ where: { id: 'default' } });
-        const readyToAssign = settings?.toBeBudgeted ?? 0;
+        // Always calculate RTA from account balances - envelope totals
+        const profileId = await getProfileId(request);
+        const readyToAssign = await calculateReadyToAssign(profileId, month);
         
         // Get all categories with goals
         const categories = await prisma.category.findMany({
@@ -395,17 +332,8 @@ export async function DELETE(request: NextRequest) {
             totalReversed += amount;
         }
 
-        // Restore Ready to Assign
-        if (totalReversed > 0) {
-            const settings = await prisma.settings.findUnique({ where: { id: 'default' } });
-            const currentToBeBudgeted = settings?.toBeBudgeted ?? 0;
-
-            await prisma.settings.upsert({
-                where: { id: 'default' },
-                create: { id: 'default', toBeBudgeted: currentToBeBudgeted + totalReversed },
-                update: { toBeBudgeted: currentToBeBudgeted + totalReversed },
-            });
-        }
+        // RTA is now always calculated from account balances - envelope totals
+        // Reversing envelope available above is sufficient; RTA auto-adjusts on next fetch
 
         return NextResponse.json({
             success: true,

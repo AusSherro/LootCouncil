@@ -3,6 +3,7 @@
 import { X, Plus, Trash2, Split, AlertCircle } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { formatCurrency } from '@/lib/utils';
+import { useSettings } from '@/components/SettingsProvider';
 
 interface Category {
     id: string;
@@ -33,6 +34,8 @@ export default function SplitTransactionModal({ isOpen, onClose, onSuccess, tran
     ]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const { settings } = useSettings();
+    const currency = settings?.currency || 'AUD';
 
     useEffect(() => {
         if (isOpen) {
@@ -138,7 +141,7 @@ export default function SplitTransactionModal({ isOpen, onClose, onSuccess, tran
                         </div>
                         <div>
                             <h2 className="text-xl font-bold text-foreground">Split Transaction</h2>
-                            <p className="text-sm text-neutral">{transactionPayee || 'Unknown Payee'} • {formatCurrency(transactionAmount, 'AUD', { useAbsolute: true })}</p>
+                            <p className="text-sm text-neutral">{transactionPayee || 'Unknown Payee'} • {formatCurrency(transactionAmount, currency, { useAbsolute: true })}</p>
                         </div>
                     </div>
                     <button onClick={onClose} className="text-neutral hover:text-foreground transition-colors">
@@ -158,16 +161,16 @@ export default function SplitTransactionModal({ isOpen, onClose, onSuccess, tran
                     <div className="flex items-center justify-between p-3 bg-background-tertiary rounded-lg">
                         <div>
                             <span className="text-neutral">Total:</span>
-                            <span className="ml-2 font-medium text-foreground">{formatCurrency(transactionAmount, 'AUD', { useAbsolute: true })}</span>
+                            <span className="ml-2 font-medium text-foreground">{formatCurrency(transactionAmount, currency, { useAbsolute: true })}</span>
                         </div>
                         <div>
                             <span className="text-neutral">Assigned:</span>
-                            <span className="ml-2 font-medium text-foreground">{formatCurrency(totalSplitAmount, 'AUD', { useAbsolute: true })}</span>
+                            <span className="ml-2 font-medium text-foreground">{formatCurrency(totalSplitAmount, currency, { useAbsolute: true })}</span>
                         </div>
                         <div>
                             <span className="text-neutral">Remaining:</span>
                             <span className={`ml-2 font-medium ${remaining === 0 ? 'text-positive' : 'text-warning'}`}>
-                                {formatCurrency(remaining, 'AUD', { useAbsolute: true })}
+                                {formatCurrency(remaining, currency, { useAbsolute: true })}
                             </span>
                         </div>
                         <button onClick={distributeEvenly} className="btn btn-ghost text-sm">
