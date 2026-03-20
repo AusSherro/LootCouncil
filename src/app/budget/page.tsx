@@ -1,6 +1,6 @@
 'use client';
 
-import { PiggyBank, ChevronRight, ChevronLeft, ChevronDown, Plus, RefreshCw, Eye, EyeOff, MoreHorizontal, Edit3, X, GripVertical, Target, FileCheck2, Copy, AlertTriangle, Clock, Calculator, Zap, Search, LayoutGrid, List, DollarSign, ArrowDownUp, TrendingUp } from 'lucide-react';
+import { PiggyBank, ChevronRight, ChevronLeft, ChevronDown, Plus, Eye, EyeOff, MoreHorizontal, Edit3, X, GripVertical, Target, FileCheck2, Copy, AlertTriangle, Clock, Calculator, Zap, Search, LayoutGrid, List, DollarSign, ArrowDownUp, TrendingUp } from 'lucide-react';
 import { useState, useEffect, useCallback } from 'react';
 import GoalProgress from '@/components/GoalProgress';
 import GoalEditorModal from '@/components/GoalEditorModal';
@@ -176,10 +176,10 @@ function CategoryRow({ category, month, onUpdate, onHide, onRename, onGoalClick,
         <div 
             ref={setNodeRef}
             style={style}
-            className={`grid grid-cols-[24px_1fr_120px_120px_140px_40px] items-center border-b border-border/50 group hover:bg-background-tertiary/50 ${isHidden ? 'opacity-50' : ''} ${compactClass}`}
+            className={`grid grid-cols-[1fr_90px_90px] lg:grid-cols-[24px_1fr_120px_120px_140px_40px] items-center border-b border-border/50 group hover:bg-background-tertiary/50 ${isHidden ? 'opacity-50' : ''} ${compactClass}`}
         >
             <div 
-                className="flex items-center justify-center cursor-grab active:cursor-grabbing"
+                className="hidden lg:flex items-center justify-center cursor-grab active:cursor-grabbing"
                 {...attributes}
                 {...listeners}
             >
@@ -307,7 +307,7 @@ function CategoryRow({ category, month, onUpdate, onHide, onRename, onGoalClick,
                     </div>
                 )}
             </div>
-            <div className={`text-right tabular-nums ${category.activity < 0 ? 'text-danger' : 'text-neutral'}`}>
+            <div className={`hidden lg:block text-right tabular-nums ${category.activity < 0 ? 'text-danger' : 'text-neutral'}`}>
                 {formatCurrency(category.activity)}
             </div>
             <div className={`text-right font-medium ${availableColor} flex items-center justify-end gap-1`}>
@@ -318,7 +318,7 @@ function CategoryRow({ category, month, onUpdate, onHide, onRename, onGoalClick,
                 )}
                 {formatCurrency(category.available)}
             </div>
-            <div className="relative">
+            <div className="relative hidden lg:block">
                 <button
                     onClick={() => setShowMenu(!showMenu)}
                     className="opacity-0 group-hover:opacity-100 p-1 hover:bg-background-tertiary rounded"
@@ -422,10 +422,10 @@ function CategoryGroupSection({ group, month, onUpdate, onHideCategory, onHideGr
     return (
         <div ref={setNodeRef} style={style} className={`${isCompact ? 'mb-1' : 'mb-2'} ${group.isHidden ? 'opacity-50' : ''}`}>
             <div 
-                className={`grid grid-cols-[24px_1fr_120px_120px_140px_40px] items-center bg-background-tertiary sticky top-0 z-10 group cursor-pointer hover:bg-background-tertiary/80 ${compactClass}`}
+                className={`grid grid-cols-[1fr_90px_90px] lg:grid-cols-[24px_1fr_120px_120px_140px_40px] items-center bg-background-tertiary sticky top-0 z-10 group cursor-pointer hover:bg-background-tertiary/80 ${compactClass}`}
             >
                 <div 
-                    className="flex items-center justify-center cursor-grab active:cursor-grabbing"
+                    className="hidden lg:flex items-center justify-center cursor-grab active:cursor-grabbing"
                     {...attributes}
                     {...listeners}
                 >
@@ -468,9 +468,9 @@ function CategoryGroupSection({ group, month, onUpdate, onHideCategory, onHideGr
                     {group.isInflow && <span className="text-xs bg-info/20 text-info px-2 py-0.5 rounded">Inflow</span>}
                 </div>
                 <div className="text-right">{formatCurrency(totalAssigned)}</div>
-                <div className="text-right">{formatCurrency(totalActivity)}</div>
+                <div className="hidden lg:block text-right">{formatCurrency(totalActivity)}</div>
                 <div className={`text-right font-medium ${availableColor}`}>{formatCurrency(totalAvailable)}</div>
-                <div className="relative" onClick={(e) => e.stopPropagation()}>
+                <div className="relative hidden lg:block" onClick={(e) => e.stopPropagation()}>
                     <button
                         onClick={() => setShowMenu(!showMenu)}
                         className="opacity-0 group-hover:opacity-100 p-1 hover:bg-background-tertiary rounded"
@@ -565,11 +565,11 @@ function CreateModal({ isOpen, onClose, groups, onCreated }: CreateModalProps) {
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70]" onClick={onClose}>
-            <div className="bg-background-secondary rounded-xl p-6 w-96 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] animate-fade-in" onClick={onClose}>
+            <div className="bg-background-secondary rounded-xl p-6 w-96 shadow-xl animate-scale-in" onClick={(e) => e.stopPropagation()}>
                 <div className="flex items-center justify-between mb-4">
                     <h3 className="text-lg font-semibold text-foreground">Create New</h3>
-                    <button onClick={onClose} className="text-neutral hover:text-foreground">
+                    <button onClick={onClose} aria-label="Close" className="text-neutral hover:text-foreground">
                         <X className="w-5 h-5" />
                     </button>
                 </div>
@@ -985,21 +985,36 @@ export default function BudgetPage() {
     }
 
     return (
-        <div className="p-6 animate-fade-in">
+        <div className="p-4 lg:p-8 animate-slide-up">
             {/* Header */}
-            <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-gold/20 flex items-center justify-center">
-                        <PiggyBank className="w-7 h-7 text-gold" />
+            <div className="flex flex-col gap-4 mb-6 lg:mb-8">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3 lg:gap-4">
+                        <div className="w-10 h-10 lg:w-11 lg:h-11 rounded-xl bg-gold/12 flex items-center justify-center">
+                            <PiggyBank className="w-5 h-5 lg:w-6 lg:h-6 text-gold" />
+                        </div>
+                        <div>
+                            <h1 className="text-xl lg:text-2xl font-semibold text-foreground">Budget</h1>
+                            <p className="text-neutral text-sm">{formatMonth(currentMonth)}</p>
+                        </div>
                     </div>
-                    <div>
-                        <h1 className="text-2xl font-bold text-foreground">Budget</h1>
-                        <p className="text-neutral">{formatMonth(currentMonth)}</p>
+
+                    {/* Month Navigation — always visible */}
+                    <div className="flex items-center gap-1">
+                        <button onClick={prevMonth} aria-label="Previous month" className="flex items-center justify-center h-9 w-9 rounded-lg bg-background-tertiary text-neutral hover:text-foreground transition-colors">
+                            <ChevronLeft className="w-4 h-4" />
+                        </button>
+                        <span className="hidden sm:flex items-center justify-center h-9 px-3 bg-background-tertiary rounded-lg font-medium text-sm min-w-[140px]">
+                            {formatMonth(currentMonth)}
+                        </span>
+                        <button onClick={nextMonth} aria-label="Next month" className="flex items-center justify-center h-9 w-9 rounded-lg bg-background-tertiary text-neutral hover:text-foreground transition-colors">
+                            <ChevronRight className="w-4 h-4" />
+                        </button>
                     </div>
                 </div>
 
-                {/* Controls */}
-                <div className="flex items-center gap-2">
+                {/* Controls — wrap on mobile */}
+                <div className="flex flex-wrap items-center gap-2">
                     {/* Search */}
                     <div className="relative">
                         <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-neutral" />
@@ -1100,19 +1115,6 @@ export default function BudgetPage() {
                     >
                         {showHidden ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
                     </button>
-
-                    {/* Month Navigation */}
-                    <div className="flex items-center gap-1">
-                        <button onClick={prevMonth} className="flex items-center justify-center h-9 w-9 rounded-lg bg-background-tertiary text-neutral hover:text-foreground transition-colors">
-                            <ChevronLeft className="w-4 h-4" />
-                        </button>
-                        <span className="flex items-center justify-center h-9 px-3 bg-background-tertiary rounded-lg font-medium text-sm min-w-[140px]">
-                            {formatMonth(currentMonth)}
-                        </span>
-                        <button onClick={nextMonth} className="flex items-center justify-center h-9 w-9 rounded-lg bg-background-tertiary text-neutral hover:text-foreground transition-colors">
-                            <ChevronRight className="w-4 h-4" />
-                        </button>
-                    </div>
                 </div>
             </div>
 
@@ -1144,13 +1146,13 @@ export default function BudgetPage() {
             })()}
 
             {/* Category Table Header */}
-            <div className={`grid grid-cols-[24px_1fr_120px_120px_140px_40px] items-center bg-background-tertiary font-medium text-neutral uppercase tracking-wide rounded-t-lg ${isCompact ? 'py-1 text-[10px]' : 'py-2 text-xs'}`}>
-                <div></div>
-                <div>CATEGORY</div>
+            <div className={`grid grid-cols-[1fr_90px_90px] lg:grid-cols-[24px_1fr_120px_120px_140px_40px] items-center bg-background-tertiary font-medium text-neutral tracking-wide rounded-t-lg ${isCompact ? 'py-1 text-[10px]' : 'py-2 text-xs'}`}>
+                <div className="hidden lg:block"></div>
+                <div className="pl-3 lg:pl-0">CATEGORY</div>
                 <div className="text-right">ASSIGNED</div>
-                <div className="text-right">ACTIVITY</div>
+                <div className="hidden lg:block text-right">ACTIVITY</div>
                 <div className="text-right">AVAILABLE</div>
-                <div></div>
+                <div className="hidden lg:block"></div>
             </div>
 
             {/* Category Groups */}
@@ -1168,9 +1170,9 @@ export default function BudgetPage() {
                         </div>
                     ) : (budgetData?.groups.length ?? 0) === 0 ? (
                         <div className="p-8 text-center">
-                            <PiggyBank className="w-12 h-12 text-neutral mx-auto mb-4" />
-                            <h3 className="text-lg font-semibold text-foreground mb-2">No categories yet</h3>
-                            <p className="text-neutral mb-4">Import from YNAB or create categories to start budgeting</p>
+                            <PiggyBank className="w-12 h-12 text-neutral mx-auto mb-4 opacity-60" />
+                            <h3 className="text-lg font-semibold text-foreground mb-2">Ready to start budgeting</h3>
+                            <p className="text-neutral mb-4">Import from YNAB or create your first category group</p>
                         </div>
                     ) : (
                         <SortableContext 
@@ -1203,17 +1205,17 @@ export default function BudgetPage() {
                     
                     {/* Budget Summary Footer */}
                     {!loading && budgetData && budgetData.groups.length > 0 && (
-                        <div className="table-row grid-cols-[24px_1fr_120px_120px_140px_40px] bg-background-tertiary border-t border-border font-medium">
-                            <div></div>
-                            <div className="text-neutral">Total</div>
+                        <div className="table-row grid-cols-[1fr_90px_90px] lg:grid-cols-[24px_1fr_120px_120px_140px_40px] bg-background-tertiary border-t border-border font-medium">
+                            <div className="hidden lg:block"></div>
+                            <div className="text-neutral pl-3 lg:pl-0">Total</div>
                             <div className="text-right text-foreground">{formatCurrency(budgetData.totals.assigned)}</div>
-                            <div className={`text-right ${budgetData.totals.activity < 0 ? 'text-danger' : 'text-neutral'}`}>
+                            <div className={`hidden lg:block text-right ${budgetData.totals.activity < 0 ? 'text-danger' : 'text-neutral'}`}>
                                 {formatCurrency(budgetData.totals.activity)}
                             </div>
                             <div className={`text-right ${budgetData.totals.available < 0 ? 'text-danger' : budgetData.totals.available > 0 ? 'text-positive' : 'text-neutral'}`}>
                                 {formatCurrency(budgetData.totals.available)}
                             </div>
-                            <div></div>
+                            <div className="hidden lg:block"></div>
                         </div>
                     )}
                 </div>
@@ -1296,7 +1298,7 @@ export default function BudgetPage() {
             {/* Add Category FAB */}
             <button
                 onClick={() => setShowCreateModal(true)}
-                className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-gold text-background flex items-center justify-center shadow-lg hover:bg-gold-light transition-all animate-pulse-gold"
+                className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-gold text-background flex items-center justify-center shadow-lg hover:bg-gold-light transition-colors"
             >
                 <Plus className="w-6 h-6" />
             </button>

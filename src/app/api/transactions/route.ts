@@ -13,8 +13,8 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     const categoryId = searchParams.get('categoryId');
     const cleared = searchParams.get('cleared');
     const query = searchParams.get('q');
-    const limit = parseInt(searchParams.get('limit') || '100');
-    const offset = parseInt(searchParams.get('offset') || '0');
+    const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '100'), 1), 500);
+    const offset = Math.max(parseInt(searchParams.get('offset') || '0'), 0);
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
     const minAmount = searchParams.get('minAmount');
@@ -158,6 +158,17 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
             { error: 'Missing required fields: date, amount, accountId' },
             { status: 400 }
         );
+    }
+
+    // Validate input lengths and types
+    if (typeof amount !== 'number' || !isFinite(amount) || Math.abs(amount) > 999999999) {
+        return NextResponse.json({ error: 'Invalid amount' }, { status: 400 });
+    }
+    if (payee && (typeof payee !== 'string' || payee.length > 200)) {
+        return NextResponse.json({ error: 'Payee too long (max 200 characters)' }, { status: 400 });
+    }
+    if (memo && (typeof memo !== 'string' || memo.length > 500)) {
+        return NextResponse.json({ error: 'Memo too long (max 500 characters)' }, { status: 400 });
     }
 
     // Apply transaction rules if requested and no category set

@@ -1,6 +1,6 @@
 'use client';
 
-import { Coins, Plus, ArrowUpRight, ArrowDownLeft, RefreshCw, X, Lock, MoreVertical, Archive, ArrowRightLeft, CreditCard, ChevronDown, ChevronRight, AlertTriangle, Landmark } from 'lucide-react';
+import { Coins, Plus, ArrowUpRight, ArrowDownLeft, RefreshCw, Lock, MoreVertical, Archive, ArrowRightLeft, CreditCard, ChevronDown, ChevronRight, AlertTriangle, Landmark } from 'lucide-react';
 import { useState, useEffect, useCallback } from 'react';
 import QuickTransferModal from '@/components/QuickTransferModal';
 import ReconciliationModeModal from '@/components/ReconciliationModeModal';
@@ -238,15 +238,15 @@ export default function AccountsPage() {
         .reduce((sum, a) => sum + a.balance, 0);
 
     return (
-        <div className="p-6 animate-fade-in">
+        <div className="p-6 lg:p-8 animate-fade-in">
             {/* Header */}
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center justify-between mb-8">
                 <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-gold/20 flex items-center justify-center">
-                        <Coins className="w-7 h-7 text-gold" />
+                    <div className="w-11 h-11 rounded-xl bg-gold/12 flex items-center justify-center">
+                        <Coins className="w-6 h-6 text-gold" />
                     </div>
                     <div>
-                        <h1 className="text-2xl font-bold text-foreground">Accounts</h1>
+                        <h1 className="text-2xl font-semibold text-foreground">Accounts</h1>
                         <p className="text-neutral">Manage your accounts</p>
                     </div>
                 </div>

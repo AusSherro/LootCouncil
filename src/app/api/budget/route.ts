@@ -132,13 +132,13 @@ export async function GET(request: NextRequest) {
                 const activity = activityMap.get(cat.id) || 0;
 
                 // Batched available calculation (CRIT-1 fix — no per-category DB queries)
+                // Always compute dynamically: rollover + assigned + activity
+                // (stored budget.available is stale if transactions changed since last assign)
                 let available: number;
-                if (budget) {
-                    // Tier 1: Current month record (already loaded via include)
-                    available = budget.available;
-                } else if (fallbackAvailableMap.has(cat.id)) {
-                    // Tier 2: Most recent prior month fallback
-                    available = fallbackAvailableMap.get(cat.id)!;
+                if (budget || fallbackAvailableMap.has(cat.id)) {
+                    // Tier 1/2: rollover from prior month + this month's assigned + activity
+                    const rollover = fallbackAvailableMap.get(cat.id) ?? 0;
+                    available = rollover + assigned + activity;
                 } else {
                     // Tier 3: No MonthlyBudget history — mark for batch calculation
                     tier3CategoryIds.push(cat.id);

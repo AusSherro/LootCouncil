@@ -419,12 +419,12 @@ function ScheduledTransactionModal({ isOpen, onClose, onSave, accounts, categori
 
     return (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] animate-fade-in" onClick={onClose}>
-            <div className="bg-background-secondary border border-border rounded-xl w-full max-w-lg mx-4 p-6 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="bg-background-secondary border border-border rounded-xl w-full max-w-lg mx-4 p-6 max-h-[90vh] overflow-y-auto animate-scale-in" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center justify-between mb-4">
                     <h2 className="text-lg font-semibold text-foreground">
                         {editItem ? 'Edit Scheduled Transaction' : 'New Scheduled Transaction'}
                     </h2>
-                    <button onClick={onClose} className="text-neutral hover:text-foreground">
+                    <button onClick={onClose} className="text-neutral hover:text-foreground" aria-label="Close">
                         <X className="w-5 h-5" />
                     </button>
                 </div>

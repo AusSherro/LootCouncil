@@ -145,8 +145,17 @@ export default function TransactionForm({ isOpen, onClose, onSuccess, defaultAcc
 
         try {
             const numAmount = parseFloat(amount);
-            if (isNaN(numAmount)) {
-                throw new Error('Invalid amount');
+            if (isNaN(numAmount) || numAmount <= 0) {
+                throw new Error('Amount must be a positive number');
+            }
+            if (numAmount > 999999999) {
+                throw new Error('Amount is too large');
+            }
+            if (payee && payee.length > 200) {
+                throw new Error('Payee name is too long (max 200 characters)');
+            }
+            if (memo && memo.length > 500) {
+                throw new Error('Memo is too long (max 500 characters)');
             }
 
             const url = isEditing ? `/api/transactions?id=${editTransaction.id}` : '/api/transactions';
@@ -219,13 +228,13 @@ export default function TransactionForm({ isOpen, onClose, onSuccess, defaultAcc
 
     return (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] animate-fade-in">
-            <div className="bg-background-secondary border border-border rounded-xl w-full max-w-lg mx-4 shadow-lg">
+            <div className="bg-background-secondary border border-border rounded-xl w-full max-w-lg mx-4 shadow-lg animate-scale-in">
                 {/* Header */}
                 <div className="flex items-center justify-between p-4 border-b border-border">
                     <h2 className="text-lg font-semibold text-foreground">
                         {isEditing ? 'Edit Transaction' : 'Add Transaction'}
                     </h2>
-                    <button onClick={onClose} className="p-1 hover:bg-background-tertiary rounded-lg transition-colors">
+                    <button onClick={onClose} className="p-1 hover:bg-background-tertiary rounded-lg transition-colors" aria-label="Close transaction form">
                         <X className="w-5 h-5 text-neutral" />
                     </button>
                 </div>
@@ -267,11 +276,14 @@ export default function TransactionForm({ isOpen, onClose, onSuccess, defaultAcc
                                 <input
                                     type="number"
                                     step="0.01"
+                                    min="0"
+                                    max="999999999"
                                     value={amount}
                                     onChange={(e) => setAmount(e.target.value)}
                                     placeholder="0.00"
                                     className="input pl-10"
                                     required
+                                    aria-label="Transaction amount"
                                 />
                             </div>
                             <div className="flex rounded-lg border border-border overflow-hidden">
@@ -375,6 +387,7 @@ export default function TransactionForm({ isOpen, onClose, onSuccess, defaultAcc
                                 onChange={(e) => setMemo(e.target.value)}
                                 placeholder="Add a note..."
                                 className="input pl-10 min-h-[80px] resize-none"
+                                maxLength={500}
                             />
                         </div>
                     </div>

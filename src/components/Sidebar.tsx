@@ -53,17 +53,14 @@ export default function Sidebar() {
     }, []);
 
     return (
-        <aside className="hidden lg:flex w-64 bg-background-secondary border-r border-border flex-col relative overflow-hidden">
-            {/* Subtle gradient shimmer at top */}
-            <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-[color:var(--gold)]/[0.03] to-transparent pointer-events-none" />
-
+        <aside className="hidden lg:flex w-64 bg-background-secondary border-r border-border flex-col">
             {/* Logo */}
-            <Link href="/" className="h-16 flex items-center gap-3 px-5 border-b border-border hover:bg-background-tertiary/50 transition-colors relative z-10">
-                <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center shadow-[0_0_16px_var(--gold-glow)]">
-                    <Wallet className="w-5 h-5 text-primary-foreground" />
+            <Link href="/" className="h-16 flex items-center gap-3 px-5 border-b border-border hover:bg-background-tertiary/50 transition-colors">
+                <div className="w-10 h-10 rounded-lg bg-primary/15 flex items-center justify-center">
+                    <Wallet className="w-5 h-5 text-primary" />
                 </div>
                 <div>
-                    <h1 className="font-semibold text-lg text-gold-gradient bg-gradient-to-r from-[color:var(--gold-light)] to-[color:var(--gold)] bg-clip-text text-transparent">Loot Council</h1>
+                    <h1 className="font-medium text-lg text-gold">Loot Council</h1>
                     <p className="text-xs text-neutral">Personal Finance</p>
                 </div>
             </Link>
@@ -130,7 +127,7 @@ export default function Sidebar() {
                             data-nav-item
                             className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all ${
                                 isActive
-                                    ? 'bg-primary/10 text-primary font-semibold'
+                                    ? 'bg-primary/8 text-primary font-medium'
                                     : 'text-neutral hover:text-foreground hover:bg-background-tertiary/50'
                             }`}
                         >
@@ -151,7 +148,7 @@ export default function Sidebar() {
                                 data-nav-item
                                 className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all ${
                                     isActive
-                                        ? 'bg-primary/10 text-primary font-semibold'
+                                        ? 'bg-primary/8 text-primary font-medium'
                                         : 'text-neutral hover:text-foreground hover:bg-background-tertiary/50'
                                 }`}
                             >

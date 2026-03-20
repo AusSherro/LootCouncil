@@ -2,7 +2,6 @@
 
 import { BarChart3, Calendar, ChevronLeft, ChevronRight, TrendingUp, EyeOff, Eye, Filter, X } from 'lucide-react';
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import GoldCoinSpinner from '@/components/GoldCoinSpinner';
 import {
     ResponsiveContainer,
     PieChart,
@@ -23,6 +22,7 @@ import {
 import Link from 'next/link';
 import { formatCurrency } from '@/lib/utils';
 import { useSettings } from '@/components/SettingsProvider';
+import ChartTooltip from '@/components/ChartTooltip';
 
 interface SpendingData {
     name: string;
@@ -422,22 +422,22 @@ export default function ReportsPage() {
     const avgNet = avgIncome - avgExpense;
 
     return (
-        <div className="p-6 animate-fade-in">
+        <div className="p-6 lg:p-8 animate-fade-in">
             {/* Header */}
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center justify-between mb-8">
                 <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-gold/20 flex items-center justify-center">
-                        <BarChart3 className="w-7 h-7 text-gold" />
+                    <div className="w-11 h-11 rounded-xl bg-gold/12 flex items-center justify-center">
+                        <BarChart3 className="w-6 h-6 text-gold" />
                     </div>
                     <div>
-                        <h1 className="text-2xl font-bold text-foreground">Reports</h1>
+                        <h1 className="text-2xl font-semibold text-foreground">Reports</h1>
                         <p className="text-neutral">Analyze your spending patterns</p>
                     </div>
                 </div>
             </div>
 
             {/* Tabs */}
-            <div className="flex items-center gap-2 mb-6 border-b border-border pb-2">
+            <div className="flex items-center gap-2 mb-4 border-b border-border pb-2">
                 {reportTabs.map((tab) => (
                     <button
                         key={tab.id}
@@ -598,21 +598,20 @@ export default function ReportsPage() {
                                             outerRadius={120}
                                             paddingAngle={2}
                                             dataKey="value"
+                                            animationDuration={750}
+                                            animationEasing="ease-out"
                                         >
                                             {filteredSpendingData.map((entry, index) => (
                                                 <Cell key={`cell-${index}`} fill={entry.color} />
                                             ))}
                                         </Pie>
                                         <Tooltip
-                                            contentStyle={{
-                                                backgroundColor: 'var(--background-secondary)',
-                                                border: '1px solid var(--gold-dark)',
-                                                borderRadius: '12px',
-                                                backdropFilter: 'blur(16px)',
-                                                boxShadow: '0 0 24px rgba(212, 168, 70, 0.08), 0 12px 32px -8px rgba(0, 0, 0, 0.5)',
-                                                padding: '10px 14px',
-                                            }}
-                                            formatter={(value) => typeof value === 'number' ? formatReportCurrency(value, currency) : ''}
+                                            content={
+                                                <ChartTooltip
+                                                    currency={currency}
+                                                    formatValue={(value) => formatReportCurrency(value, currency)}
+                                                />
+                                            }
                                         />
                                         <Legend />
                                     </PieChart>
@@ -752,27 +751,27 @@ export default function ReportsPage() {
                             <div className="h-80">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <BarChart data={incomeExpenseData}>
-                                        <CartesianGrid strokeDasharray="3 3" stroke="#2d2d3d" />
-                                        <XAxis dataKey="month" stroke="#94a3b8" fontSize={12} />
+                                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.5} />
+                                        <XAxis dataKey="month" stroke="var(--neutral)" fontSize={11} tickLine={false} />
                                         <YAxis 
-                                            stroke="#94a3b8" 
-                                            fontSize={12}
+                                            stroke="var(--neutral)" 
+                                            fontSize={11}
+                                            tickLine={false}
+                                            axisLine={false}
                                             tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
                                         />
                                         <Tooltip
-                                            contentStyle={{
-                                                backgroundColor: 'var(--background-secondary)',
-                                                border: '1px solid var(--gold-dark)',
-                                                borderRadius: '12px',
-                                                backdropFilter: 'blur(16px)',
-                                                boxShadow: '0 0 24px rgba(212, 168, 70, 0.08), 0 12px 32px -8px rgba(0, 0, 0, 0.5)',
-                                                padding: '10px 14px',
-                                            }}
-                                            formatter={(value) => typeof value === 'number' ? [`$${value.toFixed(2)}`, ''] : ''}
+                                            content={
+                                                <ChartTooltip
+                                                    currency={currency}
+                                                    formatValue={(value) => `$${value.toFixed(2)}`}
+                                                />
+                                            }
+                                            cursor={{ fill: 'var(--gold)', fillOpacity: 0.06 }}
                                         />
                                         <Legend />
-                                        <Bar dataKey="income" name="Income" fill="var(--success)" radius={[4, 4, 0, 0]} />
-                                        <Bar dataKey="expense" name="Expense" fill="var(--danger)" radius={[4, 4, 0, 0]} />
+                                        <Bar dataKey="income" name="Income" fill="var(--success)" radius={[4, 4, 0, 0]} animationDuration={750} />
+                                        <Bar dataKey="expense" name="Expense" fill="var(--danger)" radius={[4, 4, 0, 0]} animationDuration={750} />
                                     </BarChart>
                                 </ResponsiveContainer>
                             </div>
@@ -879,35 +878,36 @@ export default function ReportsPage() {
                             <div className="h-64">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <BarChart data={budgetVsActualSummary}>
-                                        <CartesianGrid strokeDasharray="3 3" stroke="#2d2d3d" />
+                                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.5} />
                                         <XAxis 
                                             dataKey="month" 
-                                            stroke="#94a3b8" 
-                                            fontSize={12}
+                                            stroke="var(--neutral)" 
+                                            fontSize={11}
+                                            tickLine={false}
                                             tickFormatter={(value) => {
                                                 const [year, month] = value.split('-');
                                                 return new Date(parseInt(year), parseInt(month) - 1).toLocaleDateString('en-AU', { month: 'short' });
                                             }}
                                         />
                                         <YAxis 
-                                            stroke="#94a3b8" 
-                                            fontSize={12}
+                                            stroke="var(--neutral)" 
+                                            fontSize={11}
+                                            tickLine={false}
+                                            axisLine={false}
                                             tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
                                         />
                                         <Tooltip
-                                            contentStyle={{
-                                                backgroundColor: 'var(--background-secondary)',
-                                                border: '1px solid var(--gold-dark)',
-                                                borderRadius: '12px',
-                                                backdropFilter: 'blur(16px)',
-                                                boxShadow: '0 0 24px rgba(212, 168, 70, 0.08), 0 12px 32px -8px rgba(0, 0, 0, 0.5)',
-                                                padding: '10px 14px',
-                                            }}
-                                            formatter={(value) => typeof value === 'number' ? [`$${value.toFixed(2)}`, ''] : ''}
+                                            content={
+                                                <ChartTooltip
+                                                    currency={currency}
+                                                    formatValue={(value) => `$${value.toFixed(2)}`}
+                                                />
+                                            }
+                                            cursor={{ fill: 'var(--gold)', fillOpacity: 0.06 }}
                                         />
                                         <Legend />
-                                        <Bar dataKey="budgeted" name="Budgeted" fill="var(--info)" radius={[4, 4, 0, 0]} />
-                                        <Bar dataKey="actual" name="Actual" fill="var(--danger)" radius={[4, 4, 0, 0]} />
+                                        <Bar dataKey="budgeted" name="Budgeted" fill="var(--info)" radius={[4, 4, 0, 0]} animationDuration={750} />
+                                        <Bar dataKey="actual" name="Actual" fill="var(--danger)" radius={[4, 4, 0, 0]} animationDuration={750} />
                                     </BarChart>
                                 </ResponsiveContainer>
                             </div>
@@ -1128,57 +1128,57 @@ export default function ReportsPage() {
                                             <stop offset="95%" stopColor="#34d399" stopOpacity={0} />
                                         </linearGradient>
                                     </defs>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#2d2d3d" />
-                                    <XAxis dataKey="month" stroke="#94a3b8" fontSize={12} />
+                                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.5} />
+                                    <XAxis dataKey="month" stroke="var(--neutral)" fontSize={11} tickLine={false} />
                                     <YAxis
-                                        stroke="#94a3b8"
-                                        fontSize={12}
+                                        stroke="var(--neutral)"
+                                        fontSize={11}
+                                        tickLine={false}
+                                        axisLine={false}
                                         tickFormatter={(value) => {
                                             if (Math.abs(value) >= 1000) return `$${(value / 1000).toFixed(0)}k`;
                                             return `$${value.toFixed(0)}`;
                                         }}
                                     />
                                     <Tooltip
-                                        contentStyle={{
-                                            backgroundColor: 'var(--background-secondary)',
-                                            border: '1px solid var(--gold-dark)',
-                                            borderRadius: '12px',
-                                            backdropFilter: 'blur(16px)',
-                                            boxShadow: '0 0 24px rgba(212, 168, 70, 0.08), 0 12px 32px -8px rgba(0, 0, 0, 0.5)',
-                                            padding: '10px 14px',
-                                        }}
-                                        formatter={(value, name) => {
-                                            if (typeof value !== 'number') return ['', ''];
-                                            const labels: Record<string, string> = {
-                                                netWorth: 'Net Worth',
-                                                accountBalance: 'Accounts',
-                                                assetValue: 'Assets',
-                                            };
-                                            return [`$${value.toLocaleString('en-AU', { minimumFractionDigits: 2 })}`, labels[name as string] || String(name)];
-                                        }}
+                                        content={
+                                            <ChartTooltip
+                                                currency={currency}
+                                                formatValue={(value) => `$${value.toLocaleString('en-AU', { minimumFractionDigits: 2 })}`}
+                                                labelFormatter={(label) => label}
+                                            />
+                                        }
+                                        cursor={{ stroke: 'var(--gold)', strokeOpacity: 0.3, strokeDasharray: '4 3' }}
                                     />
+                                    <Legend />
                                     <Area
                                         type="monotone"
                                         dataKey="accountBalance"
+                                        name="Accounts"
                                         stroke="#60a5fa"
-                                        strokeWidth={1}
+                                        strokeWidth={1.5}
                                         fill="url(#accountGradient)"
                                         strokeDasharray="4 2"
+                                        animationDuration={750}
                                     />
                                     <Area
                                         type="monotone"
                                         dataKey="assetValue"
+                                        name="Assets"
                                         stroke="#34d399"
-                                        strokeWidth={1}
+                                        strokeWidth={1.5}
                                         fill="url(#assetGradient)"
                                         strokeDasharray="4 2"
+                                        animationDuration={750}
                                     />
                                     <Area
                                         type="monotone"
                                         dataKey="netWorth"
+                                        name="Net Worth"
                                         stroke="#d4a846"
-                                        strokeWidth={2}
+                                        strokeWidth={2.5}
                                         fill="url(#goldGradient)"
+                                        animationDuration={750}
                                     />
                                 </AreaChart>
                             </ResponsiveContainer>
@@ -1238,21 +1238,19 @@ export default function ReportsPage() {
                             <div className="h-80">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <BarChart data={payeeSpendingData.slice(0, 15)} layout="vertical">
-                                        <CartesianGrid strokeDasharray="3 3" stroke="#2d2d3d" />
-                                        <XAxis type="number" stroke="#94a3b8" fontSize={12} tickFormatter={(value) => `$${value}`} />
-                                        <YAxis type="category" dataKey="payee" stroke="#94a3b8" fontSize={11} width={120} />
+                                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.5} />
+                                        <XAxis type="number" stroke="var(--neutral)" fontSize={11} tickLine={false} tickFormatter={(value) => `$${value}`} />
+                                        <YAxis type="category" dataKey="payee" stroke="var(--neutral)" fontSize={11} width={120} tickLine={false} />
                                         <Tooltip
-                                            contentStyle={{
-                                                backgroundColor: 'var(--background-secondary)',
-                                                border: '1px solid var(--gold-dark)',
-                                                borderRadius: '12px',
-                                                backdropFilter: 'blur(16px)',
-                                                boxShadow: '0 0 24px rgba(212, 168, 70, 0.08), 0 12px 32px -8px rgba(0, 0, 0, 0.5)',
-                                                padding: '10px 14px',
-                                            }}
-                                            formatter={(value, name) => [typeof value === 'number' ? `$${value.toFixed(2)}` : value, name === 'total' ? 'Total Spent' : name]}
+                                            content={
+                                                <ChartTooltip
+                                                    currency={currency}
+                                                    formatValue={(value, name) => [name === 'total' ? 'Total Spent' : name, `$${typeof value === 'number' ? value.toFixed(2) : value}`].reverse().join('')}
+                                                />
+                                            }
+                                            cursor={{ fill: 'var(--gold)', fillOpacity: 0.06 }}
                                         />
-                                        <Bar dataKey="total" fill="#f87171" radius={[0, 4, 4, 0]} />
+                                        <Bar dataKey="total" name="Total Spent" fill="var(--danger)" radius={[0, 4, 4, 0]} animationDuration={750} />
                                     </BarChart>
                                 </ResponsiveContainer>
                             </div>
@@ -1337,19 +1335,17 @@ export default function ReportsPage() {
                             <div className="h-96">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <LineChart data={categoryTrendData}>
-                                        <CartesianGrid strokeDasharray="3 3" stroke="#2d2d3d" />
-                                        <XAxis dataKey="month" stroke="#94a3b8" fontSize={12} />
-                                        <YAxis stroke="#94a3b8" fontSize={12} tickFormatter={(value) => `$${value}`} />
+                                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.5} />
+                                        <XAxis dataKey="month" stroke="var(--neutral)" fontSize={11} tickLine={false} />
+                                        <YAxis stroke="var(--neutral)" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(value) => `$${value}`} />
                                         <Tooltip
-                                            contentStyle={{
-                                                backgroundColor: 'var(--background-secondary)',
-                                                border: '1px solid var(--gold-dark)',
-                                                borderRadius: '12px',
-                                                backdropFilter: 'blur(16px)',
-                                                boxShadow: '0 0 24px rgba(212, 168, 70, 0.08), 0 12px 32px -8px rgba(0, 0, 0, 0.5)',
-                                                padding: '10px 14px',
-                                            }}
-                                            formatter={(value) => typeof value === 'number' ? [`$${value.toFixed(2)}`, ''] : ''}
+                                            content={
+                                                <ChartTooltip
+                                                    currency={currency}
+                                                    formatValue={(value) => `$${typeof value === 'number' ? value.toFixed(2) : value}`}
+                                                />
+                                            }
+                                            cursor={{ stroke: 'var(--gold)', strokeOpacity: 0.3, strokeDasharray: '4 3' }}
                                         />
                                         <Legend />
                                         {trendCategories.slice(0, 8).map((category, index) => (
@@ -1359,7 +1355,9 @@ export default function ReportsPage() {
                                                 dataKey={category}
                                                 stroke={COLORS[index % COLORS.length]}
                                                 strokeWidth={2}
-                                                dot={{ r: 3 }}
+                                                dot={{ r: 3, strokeWidth: 2 }}
+                                                activeDot={{ r: 5, strokeWidth: 2, stroke: 'var(--background-secondary)' }}
+                                                animationDuration={750}
                                             />
                                         ))}
                                     </LineChart>

@@ -29,7 +29,7 @@ const sizeStyles = {
 
 export default function StatusPill({ variant = 'neutral', icon, children, size = 'md', className = '' }: StatusPillProps) {
     return (
-        <span className={`status-pill inline-flex items-center font-semibold uppercase tracking-wide rounded-full border transition-colors ${variantStyles[variant]} ${sizeStyles[size]} ${className}`}>
+        <span className={`status-pill inline-flex items-center font-medium tracking-normal rounded-full border transition-colors ${variantStyles[variant]} ${sizeStyles[size]} ${className}`}>
             {icon && <span className="flex-shrink-0">{icon}</span>}
             {children}
         </span>

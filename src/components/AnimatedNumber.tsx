@@ -9,10 +9,10 @@ interface AnimatedNumberProps {
     className?: string;
 }
 
-export default function AnimatedNumber({ value, duration = 600, formatFn, className }: AnimatedNumberProps) {
+export default function AnimatedNumber({ value, duration = 400, formatFn, className }: AnimatedNumberProps) {
     const [display, setDisplay] = useState(value);
     const prevValue = useRef(value);
-    const rafRef = useRef<number>();
+    const rafRef = useRef<number | undefined>(undefined);
 
     useEffect(() => {
         const from = prevValue.current;

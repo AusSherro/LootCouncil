@@ -59,6 +59,50 @@ Most budgeting apps want your data in their cloud and a monthly subscription fee
 
 ---
 
+## 📸 Screenshots
+
+<details open>
+<summary><b>Budget — Zero-based envelope budgeting</b></summary>
+<br/>
+<p align="center">
+<img src="docs/screenshots/budget.svg" alt="Budget Page" width="100%"/>
+</p>
+</details>
+
+<details>
+<summary><b>Transactions — Full transaction ledger</b></summary>
+<br/>
+<p align="center">
+<img src="docs/screenshots/transactions.svg" alt="Transactions Page" width="100%"/>
+</p>
+</details>
+
+<details>
+<summary><b>Reports — Income vs Expense trends</b></summary>
+<br/>
+<p align="center">
+<img src="docs/screenshots/reports.svg" alt="Reports Page" width="100%"/>
+</p>
+</details>
+
+<details>
+<summary><b>Investments — Portfolio tracking with live prices</b></summary>
+<br/>
+<p align="center">
+<img src="docs/screenshots/investments.svg" alt="Investments Page" width="100%"/>
+</p>
+</details>
+
+<details>
+<summary><b>FIRE Calculator — Path to Financial Independence</b></summary>
+<br/>
+<p align="center">
+<img src="docs/screenshots/fire.svg" alt="FIRE Calculator Page" width="100%"/>
+</p>
+</details>
+
+---
+
 ## ✨ Features
 
 <table>

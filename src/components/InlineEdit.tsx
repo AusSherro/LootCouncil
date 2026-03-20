@@ -60,10 +60,10 @@ export function InlineCategorySelect({
         <div className={`relative ${className}`} ref={dropdownRef}>
             <button
                 onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen); }}
-                className="text-left w-full px-2 py-1 -mx-2 -my-1 rounded hover:bg-background-tertiary flex items-center gap-1 group"
+                className="text-left w-full px-2 py-1 -mx-2 -my-1 rounded hover:bg-background-tertiary flex items-center gap-1 group min-w-0"
                 disabled={saving}
             >
-                <span className={currentCategory ? 'text-foreground' : 'text-neutral'}>
+                <span className={`truncate ${currentCategory ? 'text-foreground' : 'text-neutral'}`}>
                     {saving ? 'Saving...' : (currentCategory?.name || 'Uncategorized')}
                 </span>
                 <ChevronDown className="w-3 h-3 text-neutral opacity-0 group-hover:opacity-100" />
@@ -90,12 +90,12 @@ export function InlineCategorySelect({
                                 <button
                                     key={cat.id}
                                     onClick={(e) => { e.stopPropagation(); handleSelect(cat.id); }}
-                                    className={`w-full text-left px-3 py-2 text-sm hover:bg-background-tertiary flex items-center justify-between ${
+                                    className={`w-full text-left px-3 py-2 text-sm hover:bg-background-tertiary flex items-center justify-between gap-2 ${
                                         cat.id === currentCategory?.id ? 'text-gold' : 'text-foreground'
                                     }`}
                                 >
-                                    {cat.name}
-                                    {cat.id === currentCategory?.id && <Check className="w-4 h-4" />}
+                                    <span className="truncate min-w-0">{cat.name}</span>
+                                    {cat.id === currentCategory?.id && <Check className="w-4 h-4 flex-shrink-0" />}
                                 </button>
                             ))
                         )}
@@ -127,13 +127,19 @@ export function InlineTextEdit({ value, onSave, placeholder = '', className = ''
     }, [isEditing]);
 
     async function handleSave() {
-        if (editValue === value) {
+        const trimmed = editValue.trim();
+        if (trimmed === value) {
+            setIsEditing(false);
+            return;
+        }
+        if (!trimmed) {
+            setEditValue(value);
             setIsEditing(false);
             return;
         }
         setSaving(true);
         try {
-            await onSave(editValue);
+            await onSave(trimmed);
             setIsEditing(false);
         } finally {
             setSaving(false);
@@ -161,6 +167,7 @@ export function InlineTextEdit({ value, onSave, placeholder = '', className = ''
                     onBlur={handleSave}
                     className="input input-sm flex-1 min-w-0"
                     disabled={saving}
+                    maxLength={200}
                 />
             </div>
         );

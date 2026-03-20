@@ -5,8 +5,6 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSettings } from '@/components/SettingsProvider';
 import { 
-    PiggyBank, 
-    ScrollText, 
     TrendingUp, 
     Target, 
     ArrowRight, 
@@ -16,8 +14,11 @@ import {
     ArrowUpRight,
     ArrowDownRight,
     Bell,
-    Clock,    AlertCircle,
-    RefreshCw,} from 'lucide-react';
+    Clock,
+    ScrollText,
+    AlertCircle,
+    RefreshCw,
+} from 'lucide-react';
 import ScheduledTransactions from '@/components/ScheduledTransactions';
 import { SkeletonDashboard } from '@/components/Skeleton';
 import { formatCurrency } from '@/lib/utils';
@@ -80,9 +81,11 @@ export default function HomePage() {
 
     useEffect(() => {
         const hour = new Date().getHours();
-        if (hour < 12) setGreeting('Good morning');
+        if (hour < 6) setGreeting('Burning the midnight oil');
+        else if (hour < 12) setGreeting('Good morning');
         else if (hour < 17) setGreeting('Good afternoon');
-        else setGreeting('Good evening');
+        else if (hour < 21) setGreeting('Good evening');
+        else setGreeting('Winding down');
 
         async function fetchDashboard() {
             setError(null);
@@ -164,8 +167,8 @@ export default function HomePage() {
 
     if (error) {
         return (
-            <div className="min-h-screen p-6 lg:p-8 flex items-center justify-center">
-                <div className="card max-w-md w-full text-center p-8">
+            <div className="min-h-screen p-4 lg:p-8 flex items-center justify-center">
+                <div className="card max-w-md w-full text-center p-8 animate-scale-in">
                     <div className="w-16 h-16 rounded-full bg-danger/20 flex items-center justify-center mx-auto mb-4">
                         <AlertCircle className="w-8 h-8 text-danger" />
                     </div>
@@ -184,15 +187,15 @@ export default function HomePage() {
     }
 
     return (
-        <div className="min-h-screen p-6 lg:p-8">
+        <div className="min-h-screen p-4 lg:p-8">
             {/* Header */}
-            <div className="mb-8">
+            <div className="mb-6 lg:mb-8 animate-slide-up">
                 <p className="text-neutral text-sm mb-1">{greeting}</p>
                 <h1 className="text-2xl font-semibold text-foreground">Dashboard</h1>
             </div>
 
             {/* Main Stats Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8 animate-stagger">
                 {/* Net Worth Card - Featured */}
                 <div className="lg:col-span-2 card-hero">
                     <div className="flex items-center gap-2 mb-2">
@@ -202,7 +205,7 @@ export default function HomePage() {
                         <span className="text-neutral text-sm">Total Net Worth</span>
                     </div>
                     <div className="flex items-end gap-3 mb-4">
-                        <p className="text-3xl font-bold text-foreground">
+                        <p className="text-2xl font-semibold text-foreground">
                             <AnimatedNumber
                                 value={data?.netWorth || 0}
                                 formatFn={(v) => formatDashboardCurrency(Math.round(v), currency)}
@@ -253,7 +256,7 @@ export default function HomePage() {
                         </div>
                         <span className="text-neutral text-sm">Ready to Assign</span>
                     </div>
-                    <p className={`text-2xl font-bold ${
+                    <p className={`text-xl font-semibold ${
                         (data?.readyToAssign || 0) >= 0 ? 'text-success' : 'text-danger'
                     }`}>
                         <AnimatedNumber
@@ -275,17 +278,21 @@ export default function HomePage() {
                         </div>
                         <span className="text-neutral text-sm">Age of Money</span>
                     </div>
-                    <p className="text-2xl font-bold text-foreground">
+                    <p className="text-xl font-semibold text-foreground">
                         {data?.ageOfMoney || 0} <span className="text-base font-normal text-neutral">days</span>
                     </p>
                     <p className="text-sm text-neutral mt-1">
-                        {(data?.ageOfMoney || 0) >= 30 ? 'Well ahead!' : 'Keep budgeting'}
+                        {(data?.ageOfMoney || 0) >= 90 ? 'Three months ahead — rock solid'
+                            : (data?.ageOfMoney || 0) >= 60 ? 'Two months ahead — great buffer'
+                            : (data?.ageOfMoney || 0) >= 30 ? 'A month ahead — well done'
+                            : (data?.ageOfMoney || 0) >= 14 ? 'Getting there, keep going'
+                            : 'Keep budgeting'}
                     </p>
                 </div>
             </div>
 
             {/* Secondary Row */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8 animate-stagger">
                 {/* Transactions This Month */}
                 <div className="card">
                     <div className="flex items-center gap-2 mb-2">
@@ -294,7 +301,7 @@ export default function HomePage() {
                         </div>
                         <span className="text-neutral text-sm">Transactions This Month</span>
                     </div>
-                    <p className="text-2xl font-bold text-foreground">
+                    <p className="text-xl font-semibold text-foreground">
                         {data?.transactionsThisMonth || 0}
                     </p>
                     <Link href="/transactions" className="flex items-center gap-1 text-sm text-neutral hover:text-primary mt-2 transition-colors">
@@ -319,79 +326,50 @@ export default function HomePage() {
                 </div>
             </div>
 
-            {/* Quick Navigation & Recent Activity */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                {/* Quick Navigation */}
-                <div className="card">
-                    <h3 className="font-medium text-foreground mb-4">Quick Access</h3>
+            {/* Recent Activity */}
+            <div className="card">
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-medium text-foreground flex items-center gap-2">
+                        <Calendar className="w-4 h-4 text-neutral" />
+                        Recent Transactions
+                    </h3>
+                    <Link href="/transactions" className="text-sm text-neutral hover:text-primary transition-colors flex items-center gap-1">
+                        View all
+                        <ArrowRight className="w-4 h-4" />
+                    </Link>
+                </div>
+                {data?.recentTransactions && data.recentTransactions.length > 0 ? (
                     <div className="space-y-2">
-                        <Link href="/budget" className="flex items-center gap-3 p-3 rounded-lg hover:bg-background-tertiary/50 transition-colors">
-                            <PiggyBank className="w-5 h-5 text-primary" />
-                            <span className="text-sm font-medium text-foreground">Budget</span>
-                            <ChevronRight className="w-4 h-4 text-neutral ml-auto" />
-                        </Link>
-                        <Link href="/transactions" className="flex items-center gap-3 p-3 rounded-lg hover:bg-background-tertiary/50 transition-colors">
-                            <ScrollText className="w-5 h-5 text-info" />
-                            <span className="text-sm font-medium text-foreground">Transactions</span>
-                            <ChevronRight className="w-4 h-4 text-neutral ml-auto" />
-                        </Link>
-                        <Link href="/reports" className="flex items-center gap-3 p-3 rounded-lg hover:bg-background-tertiary/50 transition-colors">
-                            <TrendingUp className="w-5 h-5 text-success" />
-                            <span className="text-sm font-medium text-foreground">Reports</span>
-                            <ChevronRight className="w-4 h-4 text-neutral ml-auto" />
-                        </Link>
-                        <Link href="/investments" className="flex items-center gap-3 p-3 rounded-lg hover:bg-background-tertiary/50 transition-colors">
-                            <Target className="w-5 h-5 text-warning" />
-                            <span className="text-sm font-medium text-foreground">Investments</span>
-                            <ChevronRight className="w-4 h-4 text-neutral ml-auto" />
-                        </Link>
-                    </div>
-                </div>
-
-                {/* Recent Transactions */}
-                <div className="card lg:col-span-2">
-                    <div className="flex items-center justify-between mb-4">
-                        <h3 className="font-medium text-foreground flex items-center gap-2">
-                            <Calendar className="w-4 h-4 text-neutral" />
-                            Recent Transactions
-                        </h3>
-                        <Link href="/transactions" className="text-sm text-neutral hover:text-primary transition-colors flex items-center gap-1">
-                            View all
-                            <ArrowRight className="w-4 h-4" />
-                        </Link>
-                    </div>
-                    {data?.recentTransactions && data.recentTransactions.length > 0 ? (
-                        <div className="space-y-2">
-                            {data.recentTransactions.map((t) => (
-                                <div 
-                                    key={t.id} 
-                                    className="flex items-center justify-between p-3 rounded-lg bg-background-tertiary/30 hover:bg-background-tertiary/50 transition-colors"
-                                >
-                                    <div className="flex items-center gap-3">
-                                        <div className={`w-2 h-2 rounded-full ${t.amount >= 0 ? 'bg-success' : 'bg-neutral'}`} />
-                                        <div>
-                                            <p className="text-sm font-medium text-foreground">{t.payee || 'Unknown'}</p>
-                                            <p className="text-xs text-neutral">
-                                                {new Date(t.date).toLocaleDateString('en-AU', { month: 'short', day: 'numeric' })}
-                                            </p>
-                                        </div>
+                        {data.recentTransactions.map((t) => (
+                            <div 
+                                key={t.id} 
+                                className="flex items-center justify-between p-3 rounded-lg bg-background-tertiary/30 hover:bg-background-tertiary/50 transition-colors"
+                            >
+                                <div className="flex items-center gap-3">
+                                    <div className={`w-2 h-2 rounded-full ${t.amount >= 0 ? 'bg-success' : 'bg-neutral'}`} />
+                                    <div>
+                                        <p className="text-sm font-medium text-foreground">{t.payee || 'Unknown'}</p>
+                                        <p className="text-xs text-neutral">
+                                            {new Date(t.date).toLocaleDateString('en-AU', { month: 'short', day: 'numeric' })}
+                                        </p>
                                     </div>
-                                    <span className={`text-sm font-medium ${t.amount >= 0 ? 'text-success' : 'text-foreground'}`}>
-                                        {t.amount >= 0 ? '+' : ''}{formatCurrency(t.amount, currency, { useAbsolute: true, minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                                    </span>
                                 </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="text-center py-8">
-                            <Coins className="w-10 h-10 text-neutral mx-auto mb-2" />
-                            <p className="text-neutral text-sm">No transactions yet</p>
-                            <Link href="/settings" className="btn btn-primary btn-sm mt-3">
-                                Import from YNAB
-                            </Link>
-                        </div>
-                    )}
-                </div>
+                                <span className={`text-sm font-medium ${t.amount >= 0 ? 'text-success' : 'text-foreground'}`}>
+                                    {t.amount >= 0 ? '+' : ''}{formatCurrency(t.amount, currency, { useAbsolute: true, minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <div className="text-center py-8">
+                        <Coins className="w-10 h-10 text-neutral mx-auto mb-2 opacity-60" />
+                        <p className="text-foreground font-medium text-sm mb-1">Your ledger awaits</p>
+                        <p className="text-neutral text-xs mb-3">Import your data to see recent activity here</p>
+                        <Link href="/settings" className="btn btn-primary btn-sm mt-1">
+                            Import from YNAB
+                        </Link>
+                    </div>
+                )}
             </div>
         </div>
     );

@@ -128,15 +128,15 @@ export default function FIREPage() {
         : 0;
 
     return (
-        <div className="p-6 animate-fade-in">
+        <div className="p-6 lg:p-8 animate-fade-in">
             {/* Header */}
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center justify-between mb-8">
                 <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center">
-                        <Flame className="w-7 h-7 text-white" />
+                    <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center">
+                        <Flame className="w-6 h-6 text-white" />
                     </div>
                     <div>
-                        <h1 className="text-2xl font-bold text-foreground">FIRE Calculator</h1>
+                        <h1 className="text-2xl font-semibold text-foreground">FIRE Calculator</h1>
                         <p className="text-neutral">Financial Independence, Retire Early</p>
                     </div>
                 </div>

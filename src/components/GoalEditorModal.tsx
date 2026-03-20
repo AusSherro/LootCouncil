@@ -149,7 +149,7 @@ export default function GoalEditorModal({
 
     return (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] animate-fade-in">
-            <div className="bg-background-secondary border border-border rounded-xl w-full max-w-md mx-4 shadow-lg">
+            <div className="bg-background-secondary border border-border rounded-xl w-full max-w-md mx-4 shadow-lg animate-scale-in">
                 {/* Header */}
                 <div className="flex items-center justify-between p-4 border-b border-border">
                     <div className="flex items-center gap-3">
@@ -161,7 +161,7 @@ export default function GoalEditorModal({
                             <p className="text-sm text-neutral">{categoryName}</p>
                         </div>
                     </div>
-                    <button onClick={onClose} className="p-1 hover:bg-background-tertiary rounded-lg transition-colors">
+                    <button onClick={onClose} className="p-1 hover:bg-background-tertiary rounded-lg transition-colors" aria-label="Close">
                         <X className="w-5 h-5 text-neutral" />
                     </button>
                 </div>

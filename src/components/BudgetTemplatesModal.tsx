@@ -153,18 +153,18 @@ export default function BudgetTemplatesModal({ isOpen, onClose, onApply, current
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="bg-background-secondary rounded-xl w-full max-w-2xl shadow-2xl animate-fade-in max-h-[90vh] flex flex-col">
+            <div className="bg-background-secondary rounded-xl w-full max-w-2xl shadow-2xl animate-scale-in max-h-[90vh] flex flex-col">
                 <div className="flex items-center justify-between p-6 border-b border-border">
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-lg bg-gold/20 flex items-center justify-center">
                             <FileCheck2 className="w-6 h-6 text-gold" />
                         </div>
                         <div>
-                            <h2 className="text-xl font-bold text-foreground">Budget Templates</h2>
+                            <h2 className="text-lg font-semibold text-foreground">Budget Templates</h2>
                             <p className="text-sm text-neutral">Save and apply monthly budget templates</p>
                         </div>
                     </div>
-                    <button onClick={onClose} className="text-neutral hover:text-foreground transition-colors">
+                    <button onClick={onClose} className="text-neutral hover:text-foreground transition-colors" aria-label="Close">
                         <X className="w-6 h-6" />
                     </button>
                 </div>

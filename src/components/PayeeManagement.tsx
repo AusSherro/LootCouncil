@@ -313,8 +313,8 @@ export default function PayeeManagement() {
 
             {/* Merge Modal */}
             {showMergeModal && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70]" onClick={() => setShowMergeModal(false)}>
-                    <div className="bg-background-secondary rounded-xl p-6 w-96 shadow-xl" onClick={(e) => e.stopPropagation()}>
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] animate-fade-in" onClick={() => setShowMergeModal(false)}>
+                    <div className="bg-background-secondary rounded-xl p-6 w-96 shadow-xl animate-scale-in" onClick={(e) => e.stopPropagation()}>
                         <h3 className="text-lg font-semibold text-foreground mb-4">Merge Payees</h3>
                         <p className="text-sm text-neutral mb-4">
                             All transactions from the selected payees will be updated to use the target payee name.
@@ -347,8 +347,8 @@ export default function PayeeManagement() {
 
             {/* Rename Modal */}
             {showRenameModal && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70]" onClick={() => setShowRenameModal(false)}>
-                    <div className="bg-background-secondary rounded-xl p-6 w-96 shadow-xl" onClick={(e) => e.stopPropagation()}>
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] animate-fade-in" onClick={() => setShowRenameModal(false)}>
+                    <div className="bg-background-secondary rounded-xl p-6 w-96 shadow-xl animate-scale-in" onClick={(e) => e.stopPropagation()}>
                         <h3 className="text-lg font-semibold text-foreground mb-4">Rename Payee</h3>
                         <p className="text-sm text-neutral mb-4">
                             Renaming &ldquo;{renamePayee}&rdquo; will update all transactions with this payee.

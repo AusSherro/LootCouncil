@@ -24,7 +24,6 @@ export default function GoalProgress({
     goalOverallFunded,
     goalOverallLeft,
     available,
-    assigned,
 }: GoalProgressProps) {
     const { settings } = useSettings();
     const currency = settings?.currency || 'AUD';
@@ -70,9 +69,18 @@ function getProgressColor(percentage: number, isUnderFunded: boolean): string {
         switch (goalType) {
             case 'TB': // Target Balance
                 return (
-                    <div className="space-y-1">
+                    <div className={`space-y-1 ${percentage >= 100 ? 'goal-complete-glow' : ''}`}>
                         <div className="flex items-center justify-between text-xs">
-                            <span className="text-ghost-400">Target: {formatGoalCurrency(goalTarget || 0)}</span>
+                            <span className="text-ghost-400">
+                                {percentage >= 100 ? (
+                                    <span className="inline-flex items-center gap-1">
+                                        <svg className="w-3 h-3 text-success goal-check-pop" viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3.5 3.5 6.5-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                                        Goal reached!
+                                    </span>
+                                ) : (
+                                    <>Target: {formatGoalCurrency(goalTarget || 0)}</>
+                                )}
+                            </span>
                             <span className="text-ghost-300">{percentage}%</span>
                         </div>
                         <div className="h-1.5 bg-midnight-700 rounded-full overflow-hidden">
@@ -97,10 +105,17 @@ function getProgressColor(percentage: number, isUnderFunded: boolean): string {
                     : null;
                 
                 return (
-                    <div className="space-y-1">
+                    <div className={`space-y-1 ${percentage >= 100 ? 'goal-complete-glow' : ''}`}>
                         <div className="flex items-center justify-between text-xs">
                             <span className="text-ghost-400">
-                                {formatGoalCurrency(goalTarget || 0)} by {dueDate?.toLocaleDateString('en-AU', { month: 'short', year: 'numeric' })}
+                                {percentage >= 100 ? (
+                                    <span className="inline-flex items-center gap-1">
+                                        <svg className="w-3 h-3 text-success goal-check-pop" viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3.5 3.5 6.5-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                                        Goal reached!
+                                    </span>
+                                ) : (
+                                    <>{formatGoalCurrency(goalTarget || 0)} by {dueDate?.toLocaleDateString('en-AU', { month: 'short', year: 'numeric' })}</>
+                                )}
                             </span>
                             <span className="text-ghost-300">{percentage}%</span>
                         </div>

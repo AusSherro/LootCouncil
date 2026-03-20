@@ -311,14 +311,14 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="p-6 animate-fade-in max-w-4xl">
+    <div className="p-6 lg:p-8 animate-fade-in max-w-4xl">
       {/* Header */}
       <div className="flex items-center gap-4 mb-8">
-        <div className="w-12 h-12 rounded-xl bg-gold/20 flex items-center justify-center">
-          <SettingsIcon className="w-7 h-7 text-gold" />
+        <div className="w-11 h-11 rounded-xl bg-gold/12 flex items-center justify-center">
+          <SettingsIcon className="w-6 h-6 text-gold" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Settings</h1>
+          <h1 className="text-2xl font-semibold text-foreground">Settings</h1>
           <p className="text-neutral">Configure your preferences</p>
         </div>
       </div>
@@ -345,7 +345,7 @@ export default function SettingsPage() {
               className={`flex items-center gap-3 px-4 py-3 rounded-lg border transition-colors ${
                 profile.id === activeProfile?.id
                   ? 'border-primary/50 bg-primary/5'
-                  : 'border-border bg-surface-light/30'
+                  : 'border-border bg-background-tertiary/30'
               }`}
             >
               {editingProfileId === profile.id ? (
@@ -372,7 +372,7 @@ export default function SettingsPage() {
                       }
                       setEditingProfileId(null);
                     }}
-                    className="text-primary hover:text-primary/80 text-sm font-medium"
+                    className="text-primary hover:text-primary/80 text-sm font-medium transition-colors"
                   >
                     Save
                   </button>
@@ -392,7 +392,7 @@ export default function SettingsPage() {
                   {profile.id !== activeProfile?.id && (
                     <button
                       onClick={() => switchProfile(profile.id)}
-                      className="text-sm text-primary hover:text-primary/80 font-medium"
+                      className="text-sm text-primary hover:text-primary/80 font-medium transition-colors"
                     >
                       Switch
                     </button>
@@ -402,7 +402,7 @@ export default function SettingsPage() {
                       setEditingProfileId(profile.id);
                       setEditingProfileName(profile.name);
                     }}
-                    className="text-neutral hover:text-foreground"
+                    className="text-neutral hover:text-foreground transition-colors"
                   >
                     <Pencil className="w-4 h-4" />
                   </button>
@@ -413,7 +413,7 @@ export default function SettingsPage() {
                           await deleteProfile(profile.id);
                         }
                       }}
-                      className="text-neutral hover:text-danger"
+                      className="text-neutral hover:text-danger transition-colors"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -624,7 +624,7 @@ export default function SettingsPage() {
         <div className="settings-section-body">
 
         {/* Binance */}
-        <div className="p-4 bg-surface-light/30 rounded-lg border border-gold/20">
+        <div className="p-4 bg-background-tertiary/30 rounded-lg border border-gold/20">
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-medium text-gold flex items-center gap-2">
               <svg className="w-5 h-5" viewBox="0 0 126.61 126.61" fill="currentColor">
@@ -730,7 +730,7 @@ export default function SettingsPage() {
 
         {/* YNAB Delta Sync */}
         {syncStatus?.hasSynced && (
-          <div className="mb-6 p-4 bg-surface-light/30 rounded-lg border border-gold/20">
+          <div className="mb-6 p-4 bg-background-tertiary/30 rounded-lg border border-gold/20">
             <h3 className="font-medium text-gold mb-2 flex items-center gap-2">
               <Zap className="w-4 h-4" />
               YNAB Delta Sync
@@ -760,7 +760,7 @@ export default function SettingsPage() {
         )}
 
         {/* YNAB API Import */}
-        <div className="mb-6 p-4 bg-surface-light/30 rounded-lg border border-gold/20">
+        <div className="mb-6 p-4 bg-background-tertiary/30 rounded-lg border border-gold/20">
           <h3 className="font-medium text-gold mb-2 flex items-center gap-2">
             <Key className="w-4 h-4" />
             Import via YNAB API (Recommended)

@@ -46,6 +46,13 @@ export async function POST(request: NextRequest) {
             );
         }
 
+        if (typeof name !== 'string' || name.length > 100) {
+            return NextResponse.json({ error: 'Account name too long (max 100 characters)' }, { status: 400 });
+        }
+        if (typeof type !== 'string' || type.length > 50) {
+            return NextResponse.json({ error: 'Invalid account type' }, { status: 400 });
+        }
+
         const account = await prisma.account.create({
             data: {
                 name,

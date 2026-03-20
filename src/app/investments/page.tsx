@@ -17,7 +17,9 @@ import {
     YAxis,
     CartesianGrid,
     Tooltip,
+    Legend,
 } from 'recharts';
+import ChartTooltip from '@/components/ChartTooltip';
 
 interface Asset {
     id: string;
@@ -249,15 +251,15 @@ export default function InvestmentsPage() {
     }) || [];
 
     return (
-        <div className="p-6 animate-fade-in">
+        <div className="p-6 lg:p-8 animate-fade-in">
             {/* Header */}
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center justify-between mb-8">
                 <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-gold/20 flex items-center justify-center">
-                        <TrendingUp className="w-7 h-7 text-gold" />
+                    <div className="w-11 h-11 rounded-xl bg-gold/12 flex items-center justify-center">
+                        <TrendingUp className="w-6 h-6 text-gold" />
                     </div>
                     <div>
-                        <h1 className="text-2xl font-bold text-foreground">Investment Portfolio</h1>
+                        <h1 className="text-2xl font-semibold text-foreground">Investment Portfolio</h1>
                         <p className="text-neutral">Track your wealth and investments</p>
                     </div>
                 </div>
@@ -326,7 +328,7 @@ export default function InvestmentsPage() {
             )}
 
             {/* Summary Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
                 <div className="card">
                     <p className="text-sm text-neutral mb-1">
                         Net Worth {excludeSuperFromNetWorth && '(ex. Super)'} (AUD)
@@ -388,7 +390,7 @@ export default function InvestmentsPage() {
             )}
 
             {/* Tabs */}
-            <div className="flex items-center gap-2 mb-6 border-b border-border pb-2">
+            <div className="flex items-center gap-2 mb-4 border-b border-border pb-2">
                 {[
                     { id: 'overview', label: 'Overview', icon: TrendingUp },
                     { id: 'portfolio', label: 'Holdings', icon: Wallet },
@@ -437,58 +439,56 @@ export default function InvestmentsPage() {
                                                 <stop offset="95%" stopColor="#34d399" stopOpacity={0} />
                                             </linearGradient>
                                         </defs>
-                                        <CartesianGrid strokeDasharray="3 3" stroke="#2d2d3d" />
-                                        <XAxis dataKey="month" stroke="#94a3b8" fontSize={12} />
+                                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.5} />
+                                        <XAxis dataKey="month" stroke="var(--neutral)" fontSize={11} tickLine={false} />
                                         <YAxis
-                                            stroke="#94a3b8"
-                                            fontSize={12}
+                                            stroke="var(--neutral)"
+                                            fontSize={11}
+                                            tickLine={false}
+                                            axisLine={false}
                                             tickFormatter={(value) => {
                                                 if (Math.abs(value) >= 1000) return `$${(value / 1000).toFixed(0)}k`;
                                                 return `$${value.toFixed(0)}`;
                                             }}
                                         />
                                         <Tooltip
-                                            contentStyle={{
-                                                backgroundColor: 'var(--background-secondary)',
-                                                border: '1px solid var(--gold-dark)',
-                                                borderRadius: '12px',
-                                                backdropFilter: 'blur(16px)',
-                                                boxShadow: '0 0 24px rgba(212, 168, 70, 0.08), 0 12px 32px -8px rgba(0, 0, 0, 0.5)',
-                                                padding: '10px 14px',
-                                            }}
-                                            labelStyle={{ color: 'var(--foreground)' }}
-                                            formatter={(value, name) => {
-                                                if (typeof value !== 'number') return ['', ''];
-                                                const labels: Record<string, string> = {
-                                                    netWorth: 'Net Worth',
-                                                    accountBalance: 'Accounts',
-                                                    assetValue: 'Assets',
-                                                };
-                                                return [fmt(value * 100), labels[name as string] || String(name)];
-                                            }}
+                                            content={
+                                                <ChartTooltip
+                                                    currency={currency}
+                                                    formatValue={(value) => fmt(value * 100)}
+                                                />
+                                            }
+                                            cursor={{ stroke: 'var(--gold)', strokeOpacity: 0.3, strokeDasharray: '4 3' }}
                                         />
+                                        <Legend />
                                         <Area
                                             type="monotone"
                                             dataKey="accountBalance"
+                                            name="Accounts"
                                             stroke="#60a5fa"
-                                            strokeWidth={1}
+                                            strokeWidth={1.5}
                                             fill="url(#accountGradientInv)"
                                             strokeDasharray="4 2"
+                                            animationDuration={750}
                                         />
                                         <Area
                                             type="monotone"
                                             dataKey="assetValue"
+                                            name="Assets"
                                             stroke="#34d399"
-                                            strokeWidth={1}
+                                            strokeWidth={1.5}
                                             fill="url(#assetGradientInv)"
                                             strokeDasharray="4 2"
+                                            animationDuration={750}
                                         />
                                         <Area
                                             type="monotone"
                                             dataKey="netWorth"
+                                            name="Net Worth"
                                             stroke="#d4a846"
-                                            strokeWidth={2}
+                                            strokeWidth={2.5}
                                             fill="url(#goldGradient)"
+                                            animationDuration={750}
                                         />
                                     </AreaChart>
                                 </ResponsiveContainer>
@@ -792,7 +792,7 @@ function PortfolioView({
                                                     e.stopPropagation();
                                                     onAddLot(asset);
                                                 }}
-                                                className="flex items-center gap-1 text-xs text-gold hover:text-gold/80 mt-2 py-1"
+                                                className="flex items-center gap-1 text-xs text-gold hover:text-gold/80 mt-2 py-1 transition-colors"
                                             >
                                                 <Plus className="w-3 h-3" />
                                                 Add Purchase Lot
@@ -1256,13 +1256,13 @@ function AddAssetModal({ onClose, onAdded }: { onClose: () => void; onAdded: () 
     }
 
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-background-secondary rounded-xl p-6 w-full max-w-md">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fade-in" onClick={onClose}>
+            <div className="bg-background-secondary rounded-xl p-6 w-full max-w-md animate-scale-in" onClick={(e) => e.stopPropagation()}>
                 <div className="flex items-center justify-between mb-4">
                     <h2 className="text-lg font-semibold text-foreground">
                         {step === 'asset' ? 'Add Asset' : 'Add Purchase'}
                     </h2>
-                    <button onClick={onClose} className="text-neutral hover:text-foreground">
+                    <button onClick={onClose} aria-label="Close" className="text-neutral hover:text-foreground transition-colors">
                         <X className="w-5 h-5" />
                     </button>
                 </div>
@@ -1270,7 +1270,7 @@ function AddAssetModal({ onClose, onAdded }: { onClose: () => void; onAdded: () 
                 {step === 'asset' ? (
                     <div className="space-y-4">
                         {/* Manual checkbox first - changes the form behavior */}
-                        <label className="flex items-center gap-2 p-2 bg-surface-secondary/50 rounded-lg border border-border">
+                        <label className="flex items-center gap-2 p-2 bg-background-tertiary/50 rounded-lg border border-border">
                             <input
                                 type="checkbox"
                                 checked={isManual}
@@ -1488,13 +1488,13 @@ function AddLotModal({ asset, onClose, onAdded }: { asset: Asset; onClose: () =>
     }
 
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-background-secondary rounded-xl p-6 w-full max-w-md">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fade-in" onClick={onClose}>
+            <div className="bg-background-secondary rounded-xl p-6 w-full max-w-md animate-scale-in" onClick={(e) => e.stopPropagation()}>
                 <div className="flex items-center justify-between mb-4">
                     <h2 className="text-lg font-semibold text-foreground">
                         Add Lot — <span className="text-gold">{asset.symbol}</span>
                     </h2>
-                    <button onClick={onClose} className="text-neutral hover:text-foreground">
+                    <button onClick={onClose} aria-label="Close" className="text-neutral hover:text-foreground transition-colors">
                         <X className="w-5 h-5" />
                     </button>
                 </div>
@@ -1606,11 +1606,11 @@ function UpdateManualAssetModal({
     const changePct = previousValue > 0 ? (change / previousValue) * 100 : 0;
 
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-surface-primary rounded-xl border border-border p-6 w-full max-w-md">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-fade-in" onClick={onClose}>
+            <div className="bg-background-secondary rounded-xl border border-border p-6 w-full max-w-md animate-scale-in" onClick={(e) => e.stopPropagation()}>
                 <div className="flex items-center justify-between mb-4">
                     <h2 className="text-xl font-bold text-foreground">Update {asset.name}</h2>
-                    <button onClick={onClose} className="p-1 hover:bg-background-tertiary rounded">
+                    <button onClick={onClose} aria-label="Close" className="p-1 hover:bg-background-tertiary rounded">
                         <X className="w-5 h-5 text-neutral" />
                     </button>
                 </div>

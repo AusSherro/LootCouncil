@@ -78,55 +78,99 @@ function TransactionRow({
         : "grid-cols-[32px_80px_1fr_1fr_1fr_120px_40px]";
 
     return (
-        <div 
-            onClick={() => onEdit(transaction)}
-            className={`table-row table-row-zebra ${gridCols} group cursor-pointer transition-colors ${isSelected ? 'bg-gold/10' : ''} ${selectedIndex !== undefined && selectedIndex >= 0 ? 'ring-1 ring-gold' : ''}`}>
-            <div className="flex items-center justify-center" onClick={(e) => { e.stopPropagation(); onToggleSelect?.(transaction.id); }}>
-                {isSelected ? (
-                    <CheckSquare className="w-4 h-4 text-gold" />
-                ) : (
-                    <Square className="w-4 h-4 text-neutral opacity-0 group-hover:opacity-100" />
-                )}
-            </div>
-            <div className="text-sm text-neutral">{formatDate(transaction.date)}</div>
-            <div className="font-medium text-foreground">
-                {transaction.payee || '—'}
-                {transaction.isSplit && (
-                    <span className="ml-2 text-xs bg-secondary/30 text-secondary px-1.5 py-0.5 rounded">split</span>
-                )}
-            </div>
-            <div className="text-neutral" onClick={(e) => e.stopPropagation()}>
-                {categories && onCategoryChange ? (
-                    <InlineCategorySelect
-                        currentCategory={transaction.category}
-                        categories={categories}
-                        onSelect={(categoryId) => onCategoryChange(transaction.id, categoryId)}
-                    />
-                ) : (
-                    transaction.category?.name || 'Uncategorized'
-                )}
-            </div>
-            <div className="text-sm text-neutral truncate">{transaction.memo || '—'}</div>
-            <div className={`text-right font-medium ${isInflow ? 'text-positive' : 'text-foreground'}`}>
-                {isInflow ? '+' : ''}{formatCurrency(transaction.amount, currency, { useAbsolute: true })}
-            </div>
-            {showBalance && transaction.runningBalance !== undefined && (
-                <div className={`text-right font-medium ${transaction.runningBalance >= 0 ? 'text-foreground' : 'text-negative'}`}>
-                    {formatCurrency(transaction.runningBalance)}
+        <>
+            {/* Desktop table row — hidden on mobile */}
+            <div 
+                onClick={() => onEdit(transaction)}
+                className={`hidden lg:grid table-row table-row-zebra ${gridCols} group cursor-pointer transition-colors ${isSelected ? 'bg-gold/10' : ''} ${selectedIndex !== undefined && selectedIndex >= 0 ? 'ring-1 ring-gold' : ''}`}>
+                <div className="flex items-center justify-center" onClick={(e) => { e.stopPropagation(); onToggleSelect?.(transaction.id); }}>
+                    {isSelected ? (
+                        <CheckSquare className="w-4 h-4 text-gold" />
+                    ) : (
+                        <Square className="w-4 h-4 text-neutral opacity-0 group-hover:opacity-100" />
+                    )}
                 </div>
-            )}
-            <div className="flex justify-center">
-                {transaction.cleared ? (
-                    <div className="w-6 h-6 rounded-full bg-success/20 flex items-center justify-center">
-                        <Check className="w-4 h-4 text-success" />
-                    </div>
-                ) : (
-                    <div className="w-6 h-6 rounded-full bg-warning/20 flex items-center justify-center">
-                        <X className="w-4 h-4 text-warning" />
+                <div className="text-sm text-neutral">{formatDate(transaction.date)}</div>
+                <div className="font-medium text-foreground truncate min-w-0">
+                    {transaction.payee || '\u2014'}
+                    {transaction.isSplit && (
+                        <span className="ml-2 text-xs bg-secondary/30 text-secondary px-1.5 py-0.5 rounded">split</span>
+                    )}
+                </div>
+                <div className="text-neutral min-w-0 truncate" onClick={(e) => e.stopPropagation()}>
+                    {categories && onCategoryChange ? (
+                        <InlineCategorySelect
+                            currentCategory={transaction.category}
+                            categories={categories}
+                            onSelect={(categoryId) => onCategoryChange(transaction.id, categoryId)}
+                        />
+                    ) : (
+                        transaction.category?.name || 'Uncategorized'
+                    )}
+                </div>
+                <div className="text-sm text-neutral truncate">{transaction.memo || '—'}</div>
+                <div className={`text-right font-medium ${isInflow ? 'text-positive' : 'text-foreground'}`}>
+                    {isInflow ? '+' : ''}{formatCurrency(transaction.amount, currency, { useAbsolute: true })}
+                </div>
+                {showBalance && transaction.runningBalance !== undefined && (
+                    <div className={`text-right font-medium ${transaction.runningBalance >= 0 ? 'text-foreground' : 'text-negative'}`}>
+                        {formatCurrency(transaction.runningBalance)}
                     </div>
                 )}
+                <div className="flex justify-center">
+                    {transaction.cleared ? (
+                        <div className="w-6 h-6 rounded-full bg-success/20 flex items-center justify-center">
+                            <Check className="w-4 h-4 text-success" />
+                        </div>
+                    ) : (
+                        <div className="w-6 h-6 rounded-full bg-warning/20 flex items-center justify-center">
+                            <X className="w-4 h-4 text-warning" />
+                        </div>
+                    )}
+                </div>
             </div>
-        </div>
+
+            {/* Mobile card row — shown below lg */}
+            <div
+                onClick={() => onEdit(transaction)}
+                className={`lg:hidden flex items-center gap-3 px-4 py-3 border-b border-border/50 cursor-pointer active:bg-background-tertiary transition-colors ${isSelected ? 'bg-gold/10' : ''}`}
+            >
+                <div className="flex-shrink-0 min-w-[44px] min-h-[44px] flex items-center justify-center" onClick={(e) => { e.stopPropagation(); onToggleSelect?.(transaction.id); }}>
+                    {isSelected ? (
+                        <CheckSquare className="w-5 h-5 text-gold" />
+                    ) : (
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${transaction.cleared ? 'bg-success/15' : 'bg-warning/15'}`}>
+                            {transaction.cleared ? (
+                                <Check className="w-4 h-4 text-success" />
+                            ) : (
+                                <X className="w-4 h-4 text-warning" />
+                            )}
+                        </div>
+                    )}
+                </div>
+                <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium text-foreground truncate">
+                            {transaction.payee || '\u2014'}
+                            {transaction.isSplit && (
+                                <span className="ml-1.5 text-xs bg-secondary/30 text-secondary px-1.5 py-0.5 rounded">split</span>
+                            )}
+                        </span>
+                        <span className={`flex-shrink-0 font-medium ${isInflow ? 'text-positive' : 'text-foreground'}`}>
+                            {isInflow ? '+' : ''}{formatCurrency(transaction.amount, currency, { useAbsolute: true })}
+                        </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 mt-0.5">
+                        <span className="text-xs text-neutral truncate">
+                            {formatDate(transaction.date)} · {transaction.category?.name || 'Uncategorized'}
+                        </span>
+                        {transaction.memo && (
+                            <span className="text-xs text-neutral truncate max-w-[120px]">{transaction.memo}</span>
+                        )}
+                    </div>
+                </div>
+            </div>
+        </>
     );
 }
 
@@ -246,7 +290,7 @@ export default function TransactionsPage() {
     }
     const [activeFiltersCount, setActiveFiltersCount] = useState(0);
 
-    const fetchTransactions = useCallback(async () => {
+    const fetchTransactions = useCallback(async (signal?: AbortSignal) => {
         setLoading(true);
         try {
             const params = new URLSearchParams({ limit: '100' });
@@ -261,10 +305,11 @@ export default function TransactionsPage() {
             if (debouncedSearch) params.set('q', debouncedSearch);
             params.set('hideReconciliationAdjustments', String(hideReconciliationAdjustments));
 
-            const res = await fetch(`/api/transactions?${params.toString()}`);
+            const res = await fetch(`/api/transactions?${params.toString()}`, { signal });
             const data = await res.json();
             setTransactions(data.transactions || []);
         } catch (err) {
+            if (err instanceof DOMException && err.name === 'AbortError') return;
             console.error('Failed to fetch transactions:', err);
         } finally {
             setLoading(false);
@@ -291,7 +336,9 @@ export default function TransactionsPage() {
     }, [categories]);
 
     useEffect(() => {
-        fetchTransactions();
+        const controller = new AbortController();
+        fetchTransactions(controller.signal);
+        return () => controller.abort();
     }, [fetchTransactions]);
 
     useEffect(() => {
@@ -413,16 +460,16 @@ export default function TransactionsPage() {
     }
 
     return (
-        <div className="p-6 animate-fade-in">
+        <div className="p-4 lg:p-8 animate-fade-in">
             {/* Header */}
-            <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-gold/20 flex items-center justify-center">
-                        <ScrollText className="w-7 h-7 text-gold" />
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 lg:mb-8">
+                <div className="flex items-center gap-3 lg:gap-4">
+                    <div className="w-10 h-10 lg:w-11 lg:h-11 rounded-xl bg-gold/12 flex items-center justify-center">
+                        <ScrollText className="w-5 h-5 lg:w-6 lg:h-6 text-gold" />
                     </div>
                     <div>
-                        <h1 className="text-2xl font-bold text-foreground">Transactions</h1>
-                        <p className="text-neutral">The Ledger of All Exchanges</p>
+                        <h1 className="text-xl lg:text-2xl font-semibold text-foreground">Transactions</h1>
+                        <p className="text-neutral text-sm">The Ledger of All Exchanges</p>
                     </div>
                 </div>
 
@@ -432,17 +479,17 @@ export default function TransactionsPage() {
                     </button>
                     <button onClick={() => setShowImport(true)} className="btn btn-secondary">
                         <Upload className="w-5 h-5" />
-                        Import CSV
+                        <span className="hidden sm:inline">Import CSV</span>
                     </button>
                     <button onClick={() => setShowForm(true)} className="btn btn-primary">
                         <Plus className="w-5 h-5" />
-                        Add Transaction
+                        <span className="hidden sm:inline">Add Transaction</span>
                     </button>
                 </div>
             </div>
 
             {/* Tabs */}
-            <div className="flex gap-2 mb-6">
+            <div className="flex gap-2 mb-4">
                 <button
                     onClick={() => setActiveTab('all')}
                     className={`px-4 py-2 rounded-lg font-medium transition-all ${
@@ -476,7 +523,7 @@ export default function TransactionsPage() {
             {activeTab === 'all' && (
             <>
             {/* Search & Filter Bar */}
-            <div className="flex items-center gap-4 mb-6">
+            <div className="flex items-center gap-2 sm:gap-4 mb-4">
                 <div className="relative flex-1">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral" />
                     <input
@@ -489,10 +536,10 @@ export default function TransactionsPage() {
                 </div>
                 <button 
                     onClick={() => setShowFilters(!showFilters)} 
-                    className={`btn ${activeFiltersCount > 0 ? 'btn-primary' : 'btn-secondary'} relative`}
+                    className={`btn ${activeFiltersCount > 0 ? 'btn-primary' : 'btn-secondary'} relative flex-shrink-0`}
                 >
                     <Filter className="w-5 h-5" />
-                    Filters
+                    <span className="hidden sm:inline">Filters</span>
                     {activeFiltersCount > 0 && (
                         <span className="absolute -top-1 -right-1 w-5 h-5 bg-gold text-background text-xs rounded-full flex items-center justify-center">
                             {activeFiltersCount}
@@ -510,7 +557,7 @@ export default function TransactionsPage() {
                             Clear All
                         </button>
                     </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                         <div>
                             <label className="block text-sm text-neutral mb-1">Account</label>
                             <select
@@ -587,7 +634,7 @@ export default function TransactionsPage() {
                                 <option value="uncleared">Uncleared</option>
                             </select>
                         </div>
-                        <div className="col-span-2 md:col-span-4 flex items-center gap-2 pt-2">
+                        <div className="col-span-1 sm:col-span-2 md:col-span-4 flex items-center gap-2 pt-2">
                             <label className="flex items-center gap-2 cursor-pointer">
                                 <input
                                     type="checkbox"
@@ -605,9 +652,9 @@ export default function TransactionsPage() {
             {/* Empty State */}
             {!loading && transactions.length === 0 && (
                 <div className="card text-center py-12">
-                    <ScrollText className="w-12 h-12 text-neutral mx-auto mb-4" />
-                    <h3 className="text-lg font-semibold text-foreground mb-2">No transactions yet</h3>
-                    <p className="text-neutral mb-4">Add your first transaction or import from YNAB</p>
+                    <ScrollText className="w-12 h-12 text-neutral mx-auto mb-4 opacity-60" />
+                    <h3 className="text-lg font-semibold text-foreground mb-2">Your transactions live here</h3>
+                    <p className="text-neutral mb-4">Add your first one manually or import from YNAB</p>
                     <button onClick={() => setShowForm(true)} className="btn btn-primary">
                         <Plus className="w-5 h-5" />
                         Add Transaction
@@ -617,7 +664,7 @@ export default function TransactionsPage() {
 
             {/* Bulk Action Bar */}
             {selectedIds.size > 0 && (
-                <div className="mb-4 p-3 bg-gold/10 border border-gold/30 rounded-lg flex items-center justify-between">
+                <div className="mb-4 p-3 bg-gold/10 border border-gold/30 rounded-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
                     <div className="flex items-center gap-3">
                         <span className="text-gold font-medium">{selectedIds.size} selected</span>
                         <button onClick={() => setSelectedIds(new Set())} className="text-sm text-neutral hover:text-foreground">
@@ -627,11 +674,11 @@ export default function TransactionsPage() {
                     <div className="flex items-center gap-2">
                         <button onClick={() => setShowBulkEdit(true)} className="btn btn-secondary">
                             <Tag className="w-4 h-4" />
-                            Categorize
+                            <span className="hidden sm:inline">Categorize</span>
                         </button>
                         <button onClick={handleBulkDelete} className="btn btn-ghost text-negative">
                             <Trash2 className="w-4 h-4" />
-                            Delete
+                            <span className="hidden sm:inline">Delete</span>
                         </button>
                     </div>
                 </div>
@@ -639,8 +686,8 @@ export default function TransactionsPage() {
 
             {/* Bulk Edit Modal */}
             {showBulkEdit && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70]" onClick={() => setShowBulkEdit(false)}>
-                    <div className="bg-background-secondary rounded-xl p-6 w-96 shadow-xl" onClick={(e) => e.stopPropagation()}>
+                <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-[70] p-4 animate-fade-in" onClick={() => setShowBulkEdit(false)}>
+                    <div className="bg-background-secondary rounded-xl p-6 w-full sm:w-96 shadow-xl animate-scale-in" onClick={(e) => e.stopPropagation()}>
                         <h3 className="text-lg font-semibold text-foreground mb-4">Edit {selectedIds.size} Transactions</h3>
                         <div className="space-y-4">
                             <div>
@@ -684,9 +731,10 @@ export default function TransactionsPage() {
             {/* Table */}
             {(loading || transactions.length > 0) && (
                 <>
-                    <div className={`table-row table-header ${filters.accountId ? 'grid-cols-[32px_80px_1fr_1fr_1fr_120px_120px_40px]' : 'grid-cols-[32px_80px_1fr_1fr_1fr_120px_40px]'} rounded-t-lg`}>
+                    {/* Desktop table header — hidden on mobile */}
+                    <div className={`hidden lg:grid table-row table-header ${filters.accountId ? 'grid-cols-[32px_80px_1fr_1fr_1fr_120px_120px_40px]' : 'grid-cols-[32px_80px_1fr_1fr_1fr_120px_40px]'} rounded-t-lg`}>
                         <div className="flex items-center justify-center">
-                            <button onClick={selectAll} className="p-1 hover:bg-background-tertiary rounded">
+                            <button onClick={selectAll} aria-label="Select all transactions" className="p-1 hover:bg-background-tertiary rounded">
                                 {selectedIds.size === filteredTransactions.length && filteredTransactions.length > 0 ? (
                                     <CheckSquare className="w-4 h-4 text-gold" />
                                 ) : (
@@ -703,6 +751,19 @@ export default function TransactionsPage() {
                         <div className="text-center">C</div>
                     </div>
 
+                    {/* Mobile list header */}
+                    <div className="lg:hidden flex items-center justify-between px-4 py-2 bg-background-tertiary rounded-t-lg">
+                        <button onClick={selectAll} className="flex items-center gap-2 p-1 min-h-[44px]">
+                            {selectedIds.size === filteredTransactions.length && filteredTransactions.length > 0 ? (
+                                <CheckSquare className="w-4 h-4 text-gold" />
+                            ) : (
+                                <Square className="w-4 h-4 text-neutral" />
+                            )}
+                            <span className="text-xs text-neutral uppercase tracking-wide">Select all</span>
+                        </button>
+                        <span className="text-xs text-neutral">{filteredTransactions.length} transactions</span>
+                    </div>
+
                     <div className="card p-0 rounded-t-none">
                         {loading ? (
                             <div className="p-2">
@@ -710,12 +771,12 @@ export default function TransactionsPage() {
                             </div>
                         ) : filteredTransactions.length === 0 ? (
                             <div className="p-12 text-center">
-                                <Inbox className="w-12 h-12 text-neutral mx-auto mb-3" />
-                                <p className="text-foreground font-medium mb-1">No transactions found</p>
+                                <Inbox className="w-12 h-12 text-neutral mx-auto mb-3 opacity-60" />
+                                <p className="text-foreground font-medium mb-1">Nothing to show</p>
                                 <p className="text-neutral text-sm mb-4">
                                     {searchQuery || activeFiltersCount > 0 
                                         ? 'Try adjusting your search or filters' 
-                                        : 'Add your first transaction to get started'}
+                                        : 'Add a transaction to get started'}
                                 </p>
                                 {!searchQuery && activeFiltersCount === 0 && (
                                     <button onClick={() => setShowForm(true)} className="btn btn-primary">
@@ -748,7 +809,7 @@ export default function TransactionsPage() {
             {/* Add Transaction FAB */}
             <button
                 onClick={() => setShowForm(true)}
-                className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-gold text-background flex items-center justify-center shadow-lg hover:bg-gold-light transition-all animate-pulse-gold"
+                className="fixed bottom-24 lg:bottom-6 right-4 lg:right-6 w-14 h-14 rounded-full bg-gold text-background flex items-center justify-center shadow-lg hover:bg-gold-light transition-colors z-40"
             >
                 <Plus className="w-6 h-6" />
             </button>

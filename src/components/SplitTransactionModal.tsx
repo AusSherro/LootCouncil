@@ -133,18 +133,18 @@ export default function SplitTransactionModal({ isOpen, onClose, onSuccess, tran
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="bg-background-secondary rounded-xl w-full max-w-2xl shadow-2xl animate-fade-in">
+            <div className="bg-background-secondary rounded-xl w-full max-w-2xl shadow-2xl animate-scale-in">
                 <div className="flex items-center justify-between p-6 border-b border-border">
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-lg bg-secondary/20 flex items-center justify-center">
                             <Split className="w-6 h-6 text-secondary" />
                         </div>
                         <div>
-                            <h2 className="text-xl font-bold text-foreground">Split Transaction</h2>
+                            <h2 className="text-lg font-semibold text-foreground">Split Transaction</h2>
                             <p className="text-sm text-neutral">{transactionPayee || 'Unknown Payee'} • {formatCurrency(transactionAmount, currency, { useAbsolute: true })}</p>
                         </div>
                     </div>
-                    <button onClick={onClose} className="text-neutral hover:text-foreground transition-colors">
+                    <button onClick={onClose} className="text-neutral hover:text-foreground transition-colors" aria-label="Close">
                         <X className="w-6 h-6" />
                     </button>
                 </div>

@@ -166,7 +166,7 @@ export default function BudgetTransferModal({
                         <ArrowDownUp className="w-5 h-5 text-gold" />
                         Move Money
                     </h2>
-                    <button onClick={onClose} className="p-1 hover:bg-background-tertiary rounded-lg transition-colors">
+                    <button onClick={onClose} className="p-1 hover:bg-background-tertiary rounded-lg transition-colors" aria-label="Close">
                         <X className="w-5 h-5 text-neutral" />
                     </button>
                 </div>

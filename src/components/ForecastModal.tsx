@@ -65,10 +65,6 @@ interface ForecastModalProps {
     categories: CategoryOption[];
 }
 
-function formatMonthInput(monthStr: string): string {
-    return monthStr; // Already YYYY-MM
-}
-
 function formatMonthDisplay(monthStr: string): string {
     const [year, month] = monthStr.split('-');
     const date = new Date(parseInt(year), parseInt(month) - 1);
@@ -201,9 +197,9 @@ export default function ForecastModal({
     const minTargetMonth = getMonthOffset(currentMonth, 1);
 
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70]" onClick={onClose}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] animate-fade-in" onClick={onClose}>
             <div
-                className="bg-background-secondary rounded-xl shadow-xl w-[720px] max-h-[90vh] overflow-y-auto"
+                className="bg-background-secondary rounded-xl shadow-xl w-[720px] max-h-[90vh] overflow-y-auto animate-scale-in"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Header */}
@@ -217,7 +213,7 @@ export default function ForecastModal({
                             <p className="text-sm text-neutral">Can you afford it? Let&apos;s find out.</p>
                         </div>
                     </div>
-                    <button onClick={onClose} className="text-neutral hover:text-foreground transition-colors">
+                    <button onClick={onClose} className="text-neutral hover:text-foreground transition-colors" aria-label="Close">
                         <X className="w-5 h-5" />
                     </button>
                 </div>
@@ -465,12 +461,12 @@ export default function ForecastModal({
                                             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.5} />
                                             <XAxis
                                                 dataKey="name"
-                                                tick={{ fontSize: 11, fill: 'var(--neutral)' }}
+                                                tick={{ fontSize: '0.6875rem', fill: 'var(--neutral)' }}
                                                 tickLine={false}
                                                 axisLine={{ stroke: 'var(--border)' }}
                                             />
                                             <YAxis
-                                                tick={{ fontSize: 11, fill: 'var(--neutral)' }}
+                                                tick={{ fontSize: '0.6875rem', fill: 'var(--neutral)' }}
                                                 tickLine={false}
                                                 axisLine={false}
                                                 tickFormatter={(v: number) => `$${(v / 1000).toFixed(0)}k`}
@@ -482,6 +478,7 @@ export default function ForecastModal({
                                                         formatValue={(value) => formatCurrency(Math.round(value * 100))}
                                                     />
                                                 }
+                                                cursor={{ stroke: 'var(--gold)', strokeOpacity: 0.3, strokeDasharray: '4 3' }}
                                             />
                                             <ReferenceLine y={0} stroke="var(--danger)" strokeDasharray="3 3" strokeOpacity={0.7} />
                                             <Area

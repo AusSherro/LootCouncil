@@ -155,7 +155,7 @@ export default function CSVImportModal({ isOpen, onClose, onSuccess, accounts }:
 
     return (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] animate-fade-in" onClick={handleClose}>
-            <div className="bg-background-secondary border border-border rounded-xl w-full max-w-2xl mx-4 p-6 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="bg-background-secondary border border-border rounded-xl w-full max-w-2xl mx-4 p-6 max-h-[90vh] overflow-y-auto animate-scale-in" onClick={e => e.stopPropagation()}>
                 {/* Header */}
                 <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-3">
@@ -172,7 +172,7 @@ export default function CSVImportModal({ isOpen, onClose, onSuccess, accounts }:
                             </p>
                         </div>
                     </div>
-                    <button onClick={handleClose} className="text-neutral hover:text-foreground">
+                    <button onClick={handleClose} className="text-neutral hover:text-foreground" aria-label="Close">
                         <X className="w-5 h-5" />
                     </button>
                 </div>

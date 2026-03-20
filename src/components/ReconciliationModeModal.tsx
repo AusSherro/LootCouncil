@@ -172,14 +172,14 @@ export default function ReconciliationModeModal({ isOpen, onClose, onSuccess, ac
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="bg-background-secondary rounded-xl w-full max-w-4xl shadow-2xl animate-fade-in max-h-[90vh] flex flex-col">
+            <div className="bg-background-secondary rounded-xl w-full max-w-4xl shadow-2xl animate-scale-in max-h-[90vh] flex flex-col">
                 <div className="flex items-center justify-between p-6 border-b border-border">
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-lg bg-success/20 flex items-center justify-center">
                             <Lock className="w-6 h-6 text-success" />
                         </div>
                         <div>
-                            <h2 className="text-xl font-bold text-foreground">Reconcile {accountName}</h2>
+                            <h2 className="text-lg font-semibold text-foreground">Reconcile {accountName}</h2>
                             <p className="text-sm text-neutral">
                                 {status?.lastReconciled 
                                     ? `Last reconciled: ${new Date(status.lastReconciled).toLocaleDateString('en-AU')}`
@@ -187,7 +187,7 @@ export default function ReconciliationModeModal({ isOpen, onClose, onSuccess, ac
                             </p>
                         </div>
                     </div>
-                    <button onClick={onClose} className="text-neutral hover:text-foreground transition-colors">
+                    <button onClick={onClose} className="text-neutral hover:text-foreground transition-colors" aria-label="Close">
                         <X className="w-6 h-6" />
                     </button>
                 </div>

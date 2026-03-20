@@ -4,6 +4,201 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.3.9] — 2026-03-18
+
+### 🪥 Polish — Final Quality Pass
+
+Systematic polish pass fixing visual inconsistencies, undefined tokens, missing interaction states, and accessibility gaps across the app.
+
+- **Defined `--color-primary` token** — `text-primary`/`bg-primary` was used 31 times but never registered in the Tailwind `@theme` block; now maps to `--gold` and adapts per theme. Added `--color-primary-foreground` for solid-bg text contrast.
+- **Button disabled styling** — added `.btn:disabled` / `.btn[aria-disabled]` styles (opacity 0.5, `cursor: not-allowed`, `pointer-events: none`); ~30 buttons already passed `disabled` props with zero visual feedback
+- **Missing aria-labels** — added `aria-label` to 8 icon-only buttons: prev/next month (Budget), select-all checkbox (Transactions), 4 modal close buttons (Investments, Budget)
+- **Undefined CSS class cleanup** — replaced `bg-surface-primary`, `bg-surface-secondary/50`, and 4× `bg-surface-light/30` with proper design-system tokens (`bg-background-secondary`, `bg-background-tertiary/30`)
+- **Modal animation consistency** — added `animate-fade-in` overlay + `animate-scale-in` panel to 3 investment modals and 1 transaction bulk-edit modal that previously appeared without animation
+- **Modal click-to-close** — added overlay `onClick={onClose}` + `stopPropagation` to 3 investment modals that previously trapped the user
+- **Missing transition-colors** — added `transition-colors` to 5 hover-enabled elements in Settings and Investments that snapped without easing
+- **Finance theme CSS indentation** — fixed inconsistent indentation on `.theme-finance .input:focus` rule
+- **Unused imports removed** — cleaned up 5 files: `X` (Accounts), `RefreshCw` (Budget), `GoldCoinSpinner` (Reports), `formatMonthInput` (ForecastModal), `assigned` destructure (GoalProgress)
+
+---
+
+## [0.3.8] — 2026-03-18
+
+### ✨ Delight — Micro-interactions, Polish & Personality
+
+Targeted delight pass adding moments of joy and premium feel without blocking core functionality. All animations respect `prefers-reduced-motion`.
+
+- **Premium shimmer skeletons** — replaced generic `animate-pulse` with a gradient shimmer sweep using theme-aware colors (`background-tertiary` → `border-hover` blend), giving loading states a more polished feel
+- **Animated success checkmark** — success toasts now render a hand-drawn SVG checkmark: circle scales in, then the check path draws itself 200ms later via `stroke-dashoffset` animation
+- **Goal completion celebration** — when a budget goal hits 100%, the progress bar emits a soft gold glow pulse (`goalComplete` keyframe, 1.2s) and the label swaps to "Goal reached!" with a spring-pop checkmark icon
+- **Warm empty states** — replaced flat "No X yet" copy with welcoming, action-oriented text: "Your ledger awaits" (dashboard), "Your transactions live here" (transactions), "Ready to start budgeting" (budget); icons softened to 60% opacity
+- **Primary button lift** — `.btn-primary:hover` now rises 1px with a warm gold box-shadow (`0 4px 12px rgba(201,160,78,0.2)`) for a satisfying physical feel
+- **Transaction row hover accent** — table rows show a 2px gold inset bar on the left edge on hover via `box-shadow`, with smooth transition alongside the background change
+- **Dashboard greeting personality** — time-of-day greetings expanded to 5 periods: "Burning the midnight oil" (<6am), morning, afternoon, evening, "Winding down" (>9pm)
+- **Age of Money milestones** — expanded from 2 tiers to 5: "Keep budgeting" → "Getting there, keep going" (14d) → "A month ahead — well done" (30d) → "Two months ahead — great buffer" (60d) → "Three months ahead — rock solid" (90d+)
+- **Error state entrance** — dashboard error card now enters with `animate-scale-in` instead of appearing flat
+
+---
+
+## [0.3.7] — 2026-03-18
+
+### 📱 Adapt — Mobile & Responsive Design
+
+Comprehensive responsive adaptation making the two most data-dense pages (Transactions and Budget) fully usable on mobile, with touch enhancements and layout fixes across the app.
+
+- **Transactions mobile card layout** — below `lg:` breakpoint, transactions render as compact card rows (payee + amount on top line, date · category on second line, cleared indicator as avatar) instead of the 7-8 column desktop grid that overflowed on small screens
+- **Transactions desktop table preserved** — full grid with all columns (select, date, payee, category, memo, amount, balance, cleared) remains at `lg:` and above
+- **Budget responsive grid** — 3-column layout on mobile (`category | assigned | available`) hiding the activity column, drag handle, and row menu; full 6-column layout restored on desktop
+- **Budget header restructured** — month navigation moved to top row (always visible on mobile), toolbar buttons wrap naturally with `flex-wrap`
+- **Page header stacking** — Transactions header stacks vertically on small screens (`flex-col sm:flex-row`); button labels hide on mobile leaving icon-only buttons
+- **Search & filter responsiveness** — filter button text hidden on mobile; filter panel grid adapts from 1-col → 2-col → 4-col (`grid-cols-1 sm:grid-cols-2 md:grid-cols-4`)
+- **Bulk action bar** — stacks vertically on mobile with icon-only buttons
+- **Bulk edit modal** — slides up from bottom on mobile (`items-end sm:items-center`), full-width on small screens
+- **FAB positioning** — floating add button elevated to `bottom-24` on mobile to clear the bottom nav bar, `bottom-6` on desktop
+- **Mobile list header** — transactions list shows a select-all button and transaction count on mobile
+- **Skeleton dual-mode** — transaction skeleton shows desktop grid or mobile card layout matching the actual rendered view
+- **Touch target enforcement** — `@media (pointer: coarse)` sets 44px minimum height on buttons and inputs; inputs sized to `1rem` to prevent iOS zoom on focus
+- **Tap feedback** — `@media (hover: none)` adds active-state background on table rows for touch devices
+- **Tighter mobile padding** — dashboard, budget, and transactions pages use `p-4` on mobile, `p-8` on desktop
+- **Budget summary footer** — responsive grid matching the header, activity column hidden on mobile
+
+---
+
+## [0.3.6] — 2026-03-18
+
+### 🛡️ Harden — Edge Cases, Validation & Accessibility Resilience
+
+Systematic hardening pass strengthening interfaces against edge cases, invalid input, text overflow, and accessibility gaps across the entire app.
+
+- **Toast accessibility** — added `role="status"` and `aria-live="polite"` to toast container so screen readers announce notifications; dismiss button gets `aria-label`; icons marked `aria-hidden`
+- **Skip-to-content link** — keyboard users can now skip past the sidebar to main content (`#main-content` anchor in layout)
+- **Close button aria-labels** — added `aria-label="Close"` to **11 modal close buttons** (BudgetTransfer, GoalEditor, QuickTransfer, CSVImport, Forecast, KeyboardShortcuts, ScheduledTransactions, BudgetTemplates, SplitTransaction, Reconciliation, CreditCardPayment)
+- **TransactionForm input hardening** — amount field gains `min="0"` / `max="999999999"` with `aria-label`; memo gains `maxLength={500}`; client-side validation rejects zero/negative amounts, oversized values, payees >200 chars, memos >500 chars
+- **InlineTextEdit hardening** — `maxLength={200}` on input; trims whitespace before save; reverts on empty instead of saving blank
+- **Transaction API (POST)** — server-side validation for amount type/range (`isFinite`, ≤999M), payee length (200), memo length (500)
+- **Transaction API (GET)** — `limit` clamped to 1–500, `offset` clamped to ≥0 to prevent abuse
+- **Accounts API (POST)** — name length capped at 100 chars, type at 50 chars
+- **Text overflow protection** — transaction row payee and category columns gain `truncate min-w-0` to prevent layout blow-out with long text; InlineCategorySelect trigger and dropdown items use `truncate` with `flex-shrink-0` on icons
+- **AbortController cleanup** — transactions page fetch uses AbortController with cleanup on unmount/re-render, preventing state updates on stale requests
+
+---
+
+## [0.3.5] — 2026-03-18
+
+### ✨ Animate — Motion & Micro-interactions
+
+Strategic animation system adding purposeful motion across the app — entrance choreography, modal transitions, toast feedback, and button micro-interactions.
+
+- **Animation token system** — added `--ease-out-quart` and `--ease-out-expo` CSS custom properties replacing generic `ease` across all transitions
+- **10 new keyframes** — `fadeOut`, `scaleIn/Out`, `slideUp/Down`, `slideInFromBottom/OutToBottom`, `overlayFadeIn`, `expandHeight`, `progressFill`
+- **12 new utility classes** — `.animate-scale-in/out`, `.animate-slide-up/down`, `.animate-slide-in-bottom/out-bottom`, `.animate-overlay`, `.animate-expand`, `.animate-progress-fill`, `.animate-fade-out`, `.animate-stagger`
+- **Modal animations (11 modals)** — all overlays get `animate-fade-in`, all content panels get `animate-scale-in` (subtle 95%→100% scale); fixes previously undefined `.animate-scale-in` in ConfirmDialog
+- **Toast slide animations** — toasts now slide in from bottom on appear and slide out on dismiss (was instant remove); exit animation with proper timer cleanup
+- **Button press feedback** — `.btn:active` scales to 0.97 for tactile click feel; transitions upgraded to target specific properties instead of `all`
+- **Input focus enhancement** — focus ring expanded from 2px to 3px with softer opacity, using quart easing
+- **Card hover polish** — hero cards gain subtle gold glow on hover (`box-shadow`); all card/settings-section transitions use proper easing
+- **Dashboard entrance choreography** — header gets `animate-slide-up`, stat grids use `animate-stagger` (50ms per child) for sequential reveal
+- **Budget page** entrance upgraded from `animate-fade-in` to `animate-slide-up`
+- **Sidebar indicator** easing upgraded to `--ease-out-expo` for snappier navigation feel
+- **`prefers-reduced-motion` support** — global media query disabling all animations and transitions for accessibility
+
+---
+
+## [0.3.4] — 2026-03-18
+
+### 🔤 Typeset — Typography Refinement
+
+Systematic typography improvements for better readability, consistency, and accessibility across the entire app.
+
+- **Global `tabular-nums`** applied to body — all ~70+ financial displays now align properly in columns (was only on ~14 budget elements)
+- **`font-kerning: normal`** enabled on body for proper letter spacing
+- **Body `line-height: 1.6`** for improved dark-mode readability (up from Tailwind default 1.5; recommended +0.1 for light-on-dark text)
+- **Modal titles standardized** — 4 outlier modals (BudgetTemplates, CreditCardPayment, Reconciliation, SplitTransaction) normalized from `text-xl font-bold` to `text-lg font-semibold`, matching the other 10 modals
+- **Hardcoded `px` font sizes replaced with `rem`** for accessibility (respects user zoom):
+  - BudgetFlowBar bar labels: `text-[10px]` → `text-[0.625rem]` (3 instances)
+  - ForecastModal chart ticks: `fontSize: 11` → `fontSize: '0.6875rem'` (2 instances)
+- **New utility classes** added: `.leading-heading` (line-height 1.2 for headings), `.max-w-prose` (max-width 65ch for long-form text)
+
+---
+
+## [0.3.3] — 2026-03-18
+
+### 📐 Arrange — Layout & Spacing Normalization
+
+Systematic layout improvements to establish consistent spacing rhythm, visual hierarchy, and content width constraints across all pages.
+
+- **Global max-width constraint** added via layout wrapper (`max-w-[1400px] mx-auto`) — prevents content from stretching uncomfortably on ultra-wide screens
+- **Page padding normalized** to `p-6 lg:p-8` across all 8 pages (accounts, transactions, investments, FIRE, reports, budget, settings already had `p-6` only)
+- **Spacing rhythm established** — headers now use `mb-8` for strong separation from content; tab-to-content gaps tightened to `mb-4` (transactions, reports, investments) since tabs belong with their content
+- **Dashboard section spacing** improved: stats grid and secondary row both use `mb-8` for breathing room between major content blocks
+- **Page header icons standardized** across 6 pages: `w-11 h-11` containers with `bg-gold/12`, `w-6 h-6` icons (was inconsistent mix of w-10/w-11/w-12)
+- **Heading weight normalized** to `font-semibold` across all pages (was mixed `font-bold` / `font-semibold`)
+- **CSS spacing scale tokens** added to design system: `--space-xs` (4px) through `--space-2xl` (48px)
+- **Design context established** — created `.impeccable.md` with brand personality, aesthetic direction, and 5 design principles for future design work
+
+---
+
+## [0.3.2] — 2026-03-18
+
+### 🤫 Quieter — Visual Refinement Pass
+
+Reduced visual intensity across the entire design system for a more refined, sophisticated aesthetic without losing functionality or personality.
+
+- **Color palette desaturated ~15%** across all 7 themes
+  - Gold: `#d4a846` → `#c9a04e`, gold-light: `#f0d078` → `#d9b56a`
+  - Semantic colors softened: success, danger, warning, info all shifted to less vivid tones
+  - Glow opacity halved across all themes (0.4 → 0.2)
+  - Badge backgrounds 15% → 10% opacity, borders 30% → 20%
+  - Shadow intensity reduced: softer drop shadows and gold glows
+- **Font weights lowered throughout**
+  - Dashboard stats: `text-3xl font-bold` → `text-2xl font-semibold`
+  - Buttons: weight 600 → 500
+  - Badges: weight 600 → 500, removed uppercase
+  - StatusPill: removed `uppercase tracking-wide`, `font-semibold` → `font-medium`
+  - Table headers: weight 600 → 500
+  - Sidebar nav: active `font-semibold` → `font-medium`, logo `font-semibold` → `font-medium`
+- **Motion reduced**
+  - GoldCoinSpinner: 1.2s → 2.4s (half speed), shine opacity 0.2 → 0.1
+  - BudgetFlowBar: bar transitions 500ms → 300ms, bar height 20px → 16px, segment opacity lowered
+  - AnimatedNumber: default duration 600ms → 400ms
+  - Toast: auto-dismiss 4s → 3s
+- **Decorative elements simplified**
+  - Sidebar logo: solid gold → `bg-primary/15` (translucent)
+  - Sidebar active indicator: 3px/32px → 2px/28px, opacity 0.8
+  - Budget page icon: 48px → 44px, gold/20 → gold/12
+  - Input focus rings: 3px → 2px spread
+  - Chart bar hover: removed `brightness(1.1)` filter
+  - BudgetFlowBar: removed gold border accent, hero `text-2xl font-bold` → `text-xl font-semibold`
+  - Budget table header: removed uppercase
+
+---
+
+## [0.3.1] — 2026-03-18
+
+### 🧹 Distill — Design Simplification
+
+Ruthless complexity reduction across the design system, removing visual noise and dead code while preserving all functionality.
+
+- **globals.css reduced 46%** (1,175 → 631 lines)
+  - Removed ambient body glow animation (200% fixed overlay with 3 radial gradients)
+  - Removed 9 unused keyframe animations (fadeInUp, shimmer, glow, float, borderGlow, gradientShift, countUp, pulse-gold, slideInRight)
+  - Removed 6 unused utility classes (card-glass, card-glow, border-glow, divider-glow, text-gold-gradient, stat-value)
+  - Removed unused tooltip CSS, stagger delay classes, animate-shimmer/glow/float/gradient/slide-in/fade-in-up
+  - Removed entire unused accent palette (accent-secondary/tertiary/warm/cool across 7 themes)
+  - Removed duplicate scrollbar definitions and orphaned theme-specific body::before overrides
+  - Simplified `.card` — solid background instead of gradient + backdrop-filter + ::before gold hover line
+  - Simplified `.card-hero` — removed gradient, backdrop-filter, ::before line, multi-layer shadows
+  - Simplified `.btn-primary` / `.btn-danger` — solid colors instead of gradients + shadows
+  - Simplified `.fadeIn` — opacity-only instead of translate+opacity, faster (0.3s)
+  - Simplified chart-tooltip, sidebar-active-indicator, settings-section, card-inset
+  - Cleaned up all theme-specific overrides (finance, kawaii) to match simplified base
+- **Sidebar** — removed gradient shimmer overlay, logo glow shadow, gradient text (now solid `text-gold`)
+- **Dashboard** — removed redundant "Quick Access" card (duplicated sidebar navigation)
+- **Budget + Transactions** — removed pulsing gold animation from floating action buttons
+- **AnimatedNumber** — fixed pre-existing React 19 `useRef` TypeScript error
+
+---
+
 ## [0.3.0] — 2026-03-17
 
 ### ✨ New Features

@@ -138,11 +138,11 @@ export function KeyboardShortcutsProvider({ children }: { children: ReactNode })
 
             {/* Help Modal */}
             {showHelp && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowHelp(false)}>
-                    <div className="bg-background-secondary border border-border rounded-xl shadow-xl max-w-lg w-full mx-4 max-h-[80vh] overflow-auto" onClick={e => e.stopPropagation()}>
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fade-in" onClick={() => setShowHelp(false)}>
+                    <div className="bg-background-secondary border border-border rounded-xl shadow-xl max-w-lg w-full mx-4 max-h-[80vh] overflow-auto animate-scale-in" onClick={e => e.stopPropagation()}>
                         <div className="flex items-center justify-between p-4 border-b border-border">
                             <h2 className="text-lg font-semibold text-foreground">Keyboard Shortcuts</h2>
-                            <button onClick={() => setShowHelp(false)} className="p-1 hover:bg-background-tertiary rounded">
+                            <button onClick={() => setShowHelp(false)} className="p-1 hover:bg-background-tertiary rounded" aria-label="Close">
                                 <X className="w-5 h-5 text-neutral" />
                             </button>
                         </div>

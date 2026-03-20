@@ -68,7 +68,7 @@ export default function UndoToast() {
         <div className="fixed bottom-20 lg:bottom-6 right-6 z-50 flex items-center gap-2">
             {/* Toast message */}
             {showToast && toastMessage && (
-                <div className="bg-background-secondary border border-border rounded-lg shadow-lg px-4 py-3 flex items-center gap-3 animate-fade-in">
+                <div className="bg-background-secondary border border-border rounded-lg shadow-lg px-4 py-3 flex items-center gap-3 animate-slide-in-bottom">
                     <span className="text-sm text-foreground">{toastMessage}</span>
                     <button
                         onClick={() => setShowToast(false)}

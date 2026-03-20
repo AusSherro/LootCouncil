@@ -2,10 +2,10 @@
 
 import type { ReactNode } from 'react';
 
-// Base skeleton component with animation
+// Base skeleton component with premium shimmer animation
 export function Skeleton({ className = '' }: { className?: string }) {
     return (
-        <div className={`animate-pulse bg-background-tertiary rounded ${className}`} />
+        <div className={`skeleton-shimmer ${className}`} />
     );
 }
 
@@ -40,19 +40,33 @@ export function SkeletonStatCard() {
 // Transaction row skeleton
 export function SkeletonTransactionRow() {
     return (
-        <div className="table-row grid-cols-[32px_80px_1fr_1fr_1fr_120px_40px]">
-            <div className="flex items-center justify-center">
-                <Skeleton className="w-4 h-4" />
+        <>
+            {/* Desktop skeleton */}
+            <div className="hidden lg:grid table-row grid-cols-[32px_80px_1fr_1fr_1fr_120px_40px]">
+                <div className="flex items-center justify-center">
+                    <Skeleton className="w-4 h-4" />
+                </div>
+                <SkeletonText width="w-16" />
+                <SkeletonText width="w-32" />
+                <SkeletonText width="w-24" />
+                <SkeletonText width="w-40" />
+                <div className="flex justify-end">
+                    <SkeletonText width="w-20" />
+                </div>
+                <div />
             </div>
-            <SkeletonText width="w-16" />
-            <SkeletonText width="w-32" />
-            <SkeletonText width="w-24" />
-            <SkeletonText width="w-40" />
-            <div className="flex justify-end">
-                <SkeletonText width="w-20" />
+            {/* Mobile skeleton */}
+            <div className="lg:hidden flex items-center gap-3 px-4 py-3 border-b border-border/50">
+                <Skeleton className="w-8 h-8 rounded-full flex-shrink-0" />
+                <div className="flex-1 space-y-1.5">
+                    <div className="flex justify-between">
+                        <SkeletonText width="w-28" />
+                        <SkeletonText width="w-16" />
+                    </div>
+                    <SkeletonText width="w-36" height="h-2.5" />
+                </div>
             </div>
-            <div />
-        </div>
+        </>
     );
 }
 
