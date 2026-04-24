@@ -1,18 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getProfileId } from '@/lib/profile';
 
 // POST - Copy budget from one month to another
 export async function POST(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         const { sourceMonth, targetMonth } = await request.json();
 
         if (!sourceMonth || !targetMonth) {
             return NextResponse.json({ error: 'Missing source or target month' }, { status: 400 });
         }
 
-        // Get source month's budgets
+        // Get source month's budgets for the active profile only
         const sourceBudgets = await prisma.monthlyBudget.findMany({
-            where: { month: sourceMonth },
+            where: { month: sourceMonth, category: { group: { profileId } } },
         });
 
         if (sourceBudgets.length === 0) {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { getProfileId } from '@/lib/profile';
 
 interface CSVRow {
     [key: string]: string;
@@ -79,6 +80,7 @@ const BANK_FORMATS: BankFormat[] = [
 // POST - Analyze CSV and return preview
 export async function POST(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         const formData = await request.formData();
         const file = formData.get('file') as File;
         const accountId = formData.get('accountId') as string;
@@ -111,6 +113,12 @@ export async function POST(request: NextRequest) {
         // Import mode
         if (!accountId) {
             return NextResponse.json({ error: 'Account ID required for import' }, { status: 400 });
+        }
+
+        // Verify account belongs to this profile
+        const account = await prisma.account.findUnique({ where: { id: accountId, profileId } });
+        if (!account) {
+            return NextResponse.json({ error: 'Account not found' }, { status: 404 });
         }
 
         let imported = 0;
@@ -153,10 +161,13 @@ export async function POST(request: NextRequest) {
                     },
                 });
 
-                // Update account balance
+                // Update account balance (cleared: true, so update both)
                 await tx.account.update({
                     where: { id: accountId },
-                    data: { balance: { increment: t.amount } },
+                    data: {
+                        balance: { increment: t.amount },
+                        clearedBalance: { increment: t.amount },
+                    },
                 });
 
                 imported++;
@@ -285,7 +296,7 @@ function detectFormatAndParse(rows: CSVRow[], headers: string[]): { format: Bank
 
                     if (amount === 0) continue;
 
-                    const payee = row[payeeCol] || 'Unknown';
+                    const payee = row[payeeCol] || '';
                     const memo = memoCol ? row[memoCol] : '';
 
                     transactions.push({

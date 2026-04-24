@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { optimizeBudget } from '@/lib/openai';
+import { getProfileId } from '@/lib/profile';
 
 // GET - Get budget optimization suggestions
 export async function GET(request: NextRequest) {
@@ -14,6 +15,7 @@ export async function GET(request: NextRequest) {
             });
         }
 
+        const profileId = await getProfileId(request);
         const { searchParams } = new URL(request.url);
         const savingsGoal = parseFloat(searchParams.get('savingsGoal') || '0.2'); // Default 20%
         const priorities = searchParams.get('priorities')?.split(',') || [];
@@ -22,15 +24,16 @@ export async function GET(request: NextRequest) {
         const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-        // Get current month's budgets
+        // Get current month's budgets for the active profile
         const budgets = await prisma.monthlyBudget.findMany({
-            where: { month: currentMonth },
+            where: { month: currentMonth, category: { group: { profileId } } },
             include: { category: true },
         });
 
         // Get actual spending per category this month
         const transactions = await prisma.transaction.findMany({
             where: {
+                account: { profileId },
                 date: { gte: startOfMonth },
                 amount: { lt: 0 },
             },
@@ -54,6 +57,7 @@ export async function GET(request: NextRequest) {
         // Get income from accounts (positive inflows this month)
         const incomeTransactions = await prisma.transaction.findMany({
             where: {
+                account: { profileId },
                 date: { gte: startOfMonth },
                 amount: { gt: 0 },
             },
@@ -94,6 +98,7 @@ export async function GET(request: NextRequest) {
 // POST - Apply optimization suggestions
 export async function POST(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         const body = await request.json();
         const { recommendations } = body; // Array of { categoryName, suggestedAmount }
 
@@ -109,9 +114,9 @@ export async function POST(request: NextRequest) {
         for (const rec of recommendations) {
             const { categoryName, suggestedAmount } = rec;
 
-            // Find category
+            // Find category belonging to the active profile
             const category = await prisma.category.findFirst({
-                where: { name: categoryName },
+                where: { name: categoryName, group: { profileId } },
             });
 
             if (!category) continue;

@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getProfileId } from '@/lib/profile';
 
 // GET all lots for an asset
 export async function GET(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         const { searchParams } = new URL(request.url);
         const assetId = searchParams.get('assetId');
 
         const lots = await prisma.assetLot.findMany({
-            where: assetId ? { assetId } : undefined,
+            where: assetId ? { assetId, asset: { profileId } } : { asset: { profileId } },
             include: {
                 asset: {
                     select: { symbol: true, name: true, currentPrice: true },
@@ -52,6 +54,7 @@ export async function GET(request: NextRequest) {
 // POST create new lot (purchase)
 export async function POST(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         const body = await request.json();
         const { assetId, purchaseDate, units, unitPrice, brokerage } = body;
 
@@ -59,6 +62,12 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ 
                 error: 'assetId, purchaseDate, units, and unitPrice are required' 
             }, { status: 400 });
+        }
+
+        // Verify asset belongs to profile
+        const asset = await prisma.asset.findUnique({ where: { id: assetId, profileId } });
+        if (!asset) {
+            return NextResponse.json({ error: 'Asset not found' }, { status: 404 });
         }
 
         // unitPrice and brokerage are already in cents from the client

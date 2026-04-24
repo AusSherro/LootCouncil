@@ -175,10 +175,11 @@ export async function GET(request: NextRequest) {
                 checkDate.setMonth(checkDate.getMonth() + 1);
             }
 
-            // Get all monthly budgets
+            // Get all monthly budgets for the active profile
             const monthlyBudgets = await prisma.monthlyBudget.findMany({
                 where: {
                     month: { in: monthsToCheck },
+                    category: { group: { profileId } },
                 },
                 include: {
                     category: {

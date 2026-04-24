@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
         const avgTransaction = totalSpent / Math.max(currentMonthTx.filter(t => t.amount < 0).length, 1);
         const unusualTransactions = currentMonthTx
             .filter(t => t.amount < 0 && Math.abs(t.amount) > avgTransaction * 3)
-            .map(t => ({ payee: t.payee || 'Unknown', amount: t.amount }))
+            .map(t => ({ payee: t.payee || '(no payee)', amount: t.amount }))
             .slice(0, 5);
 
         // Calculate savings rate

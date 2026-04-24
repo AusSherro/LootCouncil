@@ -1,0 +1,11 @@
+node_modules
+.next
+.git
+.gitignore
+*.md
+.planning
+.agents
+tmp-*
+Loot Council.lnk
+start-budget.bat
+docs

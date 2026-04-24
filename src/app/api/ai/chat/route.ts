@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
         const recentTransactions = monthlyTransactions
             .slice(-10)
             .map(t => ({
-                payee: t.payee || 'Unknown',
+                payee: t.payee || '(no payee)',
                 amount: t.amount,
                 category: t.category?.name || 'Uncategorized',
             }));

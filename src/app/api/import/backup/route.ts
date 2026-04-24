@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { getProfileId } from '@/lib/profile';
 
 interface BackupData {
     exportVersion: string;
@@ -22,6 +23,7 @@ interface BackupData {
 // POST - Restore from backup JSON
 export async function POST(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         const backup: BackupData = await request.json();
 
         // Validate backup structure
@@ -48,19 +50,18 @@ export async function POST(request: NextRequest) {
             restored: true,
         };
 
-        // Clear existing data in reverse dependency order
+        // Clear existing data for this profile in reverse dependency order
         await prisma.$transaction([
-            prisma.subTransaction.deleteMany(),
-            prisma.transaction.deleteMany(),
-            prisma.monthlyBudget.deleteMany(),
-            prisma.category.deleteMany(),
-            prisma.categoryGroup.deleteMany(),
-            prisma.account.deleteMany(),
-            prisma.payee.deleteMany(),
-            prisma.transfer.deleteMany(),
-            prisma.assetLot.deleteMany(),
-            prisma.asset.deleteMany(),
-            prisma.exchangeRate.deleteMany(),
+            prisma.subTransaction.deleteMany({ where: { transaction: { account: { profileId } } } }),
+            prisma.transaction.deleteMany({ where: { account: { profileId } } }),
+            prisma.monthlyBudget.deleteMany({ where: { category: { group: { profileId } } } }),
+            prisma.category.deleteMany({ where: { group: { profileId } } }),
+            prisma.categoryGroup.deleteMany({ where: { profileId } }),
+            prisma.account.deleteMany({ where: { profileId } }),
+            prisma.payee.deleteMany({ where: { profileId } }),
+            prisma.transfer.deleteMany({ where: { profileId } }),
+            prisma.assetLot.deleteMany({ where: { asset: { profileId } } }),
+            prisma.asset.deleteMany({ where: { profileId } }),
         ]);
 
         // Restore category groups
@@ -72,6 +73,7 @@ export async function POST(request: NextRequest) {
                         name: group.name,
                         sortOrder: group.sortOrder || 0,
                         isHidden: group.isHidden || false,
+                        profileId,
                     },
                 });
             }
@@ -137,6 +139,7 @@ export async function POST(request: NextRequest) {
                         clearedBalance: acc.clearedBalance || 0,
                         closed: acc.closed || false,
                         lastReconciled: acc.lastReconciled ? new Date(acc.lastReconciled) : null,
+                        profileId,
                     },
                 });
                 stats.accounts++;
@@ -216,6 +219,7 @@ export async function POST(request: NextRequest) {
                         name: p.name,
                         ynabId: p.ynabId,
                         transferAccountId: p.transferAccountId,
+                        profileId,
                     },
                 });
             }
@@ -278,6 +282,7 @@ export async function POST(request: NextRequest) {
                         annualDividend: a.annualDividend || 0,
                         dividendYield: a.dividendYield || 0,
                         stakingYield: a.stakingYield || 0,
+                        profileId,
                     },
                 });
                 stats.assets++;

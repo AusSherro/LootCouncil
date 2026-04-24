@@ -5,6 +5,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 interface Payee {
     id: string;
     name: string;
+    lastCategoryId?: string | null;
 }
 
 interface PayeeAutocompleteProps {

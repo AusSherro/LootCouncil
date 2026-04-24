@@ -83,13 +83,14 @@ interface CategoryRowProps {
     onRename: (id: string, name: string) => void;
     onGoalClick: (category: Category) => void;
     onMoveMoney?: (categoryId: string) => void;
+    onCoverOverspent?: (categoryId: string) => void;
     onError?: (message: string) => void;
     isHidden?: boolean;
     isDragging?: boolean;
     isCompact?: boolean;
 }
 
-function CategoryRow({ category, month, onUpdate, onHide, onRename, onGoalClick, onMoveMoney, onError, isHidden, isDragging, isCompact }: CategoryRowProps) {
+function CategoryRow({ category, month, onUpdate, onHide, onRename, onGoalClick, onMoveMoney, onCoverOverspent, onError, isHidden, isDragging, isCompact }: CategoryRowProps) {
     const [editing, setEditing] = useState(false);
     const [assignedInput, setAssignedInput] = useState((category.assigned / 100).toFixed(2));
     const [showMenu, setShowMenu] = useState(false);
@@ -265,7 +266,10 @@ function CategoryRow({ category, month, onUpdate, onHide, onRename, onGoalClick,
                             </button>
                         )}
                         <button
-                            onClick={() => setEditing(true)}
+                            onClick={() => {
+                                if (category.assigned === 0) setAssignedInput('');
+                                setEditing(true);
+                            }}
                             className="text-foreground hover:text-gold transition-colors"
                         >
                             {formatCurrency(category.assigned)}
@@ -316,7 +320,17 @@ function CategoryRow({ category, month, onUpdate, onHide, onRename, onGoalClick,
                         <AlertTriangle className={`${isCompact ? 'w-2.5 h-2.5' : 'w-3 h-3'} text-danger`} />
                     </span>
                 )}
-                {formatCurrency(category.available)}
+                {category.available !== 0 ? (
+                    <button
+                        onClick={() => category.available < 0 ? onCoverOverspent?.(category.id) : onMoveMoney?.(category.id)}
+                        className="hover:underline cursor-pointer transition-colors"
+                        title={category.available < 0 ? 'Cover overspending' : 'Move money'}
+                    >
+                        {formatCurrency(category.available)}
+                    </button>
+                ) : (
+                    formatCurrency(category.available)
+                )}
             </div>
             <div className="relative hidden lg:block">
                 <button
@@ -365,6 +379,7 @@ interface GroupSectionProps {
     onRenameGroup: (id: string, name: string) => void;
     onGoalClick: (category: Category) => void;
     onMoveMoney?: (categoryId: string) => void;
+    onCoverOverspent?: (categoryId: string) => void;
     onError?: (message: string) => void;
     showHidden: boolean;
     activeId: string | null;
@@ -372,7 +387,7 @@ interface GroupSectionProps {
     searchQuery?: string;
 }
 
-function CategoryGroupSection({ group, month, onUpdate, onHideCategory, onHideGroup, onRenameCategory, onRenameGroup, onGoalClick, onMoveMoney, onError, showHidden, activeId, isCompact, searchQuery }: GroupSectionProps) {
+function CategoryGroupSection({ group, month, onUpdate, onHideCategory, onHideGroup, onRenameCategory, onRenameGroup, onGoalClick, onMoveMoney, onCoverOverspent, onError, showHidden, activeId, isCompact, searchQuery }: GroupSectionProps) {
     const [showMenu, setShowMenu] = useState(false);
     const [collapsed, setCollapsed] = useState(false);
     const [renaming, setRenaming] = useState(false);
@@ -511,6 +526,7 @@ function CategoryGroupSection({ group, month, onUpdate, onHideCategory, onHideGr
                             onRename={onRenameCategory}
                             onGoalClick={onGoalClick}
                             onMoveMoney={onMoveMoney}
+                            onCoverOverspent={onCoverOverspent}
                             onError={onError}
                             isHidden={group.isHidden}
                             isDragging={activeId === category.id}
@@ -646,6 +662,7 @@ export default function BudgetPage() {
     const [fundingUnderfunded, setFundingUnderfunded] = useState(false);
     const [showTransferModal, setShowTransferModal] = useState(false);
     const [transferFromId, setTransferFromId] = useState<string | undefined>();
+    const [transferToId, setTransferToId] = useState<string | undefined>();
     const [showForecastModal, setShowForecastModal] = useState(false);
 
     const sensors = useSensors(
@@ -1076,7 +1093,7 @@ export default function BudgetPage() {
 
                     {/* Move Money */}
                     <button
-                        onClick={() => { setTransferFromId(undefined); setShowTransferModal(true); }}
+                        onClick={() => { setTransferFromId(undefined); setTransferToId(undefined); setShowTransferModal(true); }}
                         className="flex items-center justify-center gap-2 h-9 px-3 rounded-lg text-sm bg-background-tertiary text-neutral hover:text-foreground transition-colors"
                         title="Move money between categories"
                     >
@@ -1192,7 +1209,8 @@ export default function BudgetPage() {
                                     onRenameCategory={handleRenameCategory}
                                     onRenameGroup={handleRenameGroup}
                                     onGoalClick={setEditingGoal}
-                                    onMoveMoney={(catId) => { setTransferFromId(catId); setShowTransferModal(true); }}
+                                    onMoveMoney={(catId) => { setTransferFromId(catId); setTransferToId(undefined); setShowTransferModal(true); }}
+                                    onCoverOverspent={(catId) => { setTransferToId(catId); setTransferFromId(undefined); setShowTransferModal(true); }}
                                     onError={(msg) => showToast(msg, 'error')}
                                     showHidden={showHidden}
                                     activeId={activeId}
@@ -1277,6 +1295,7 @@ export default function BudgetPage() {
                 ) || []}
                 readyToAssign={budgetData?.totals?.readyToAssign ?? 0}
                 preselectedFromId={transferFromId}
+                preselectedToId={transferToId}
             />
 
             {/* Forecast Modal */}

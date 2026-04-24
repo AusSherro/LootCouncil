@@ -18,6 +18,7 @@ interface ReconcileStatus {
     clearedBalance: number;
     unclearedCount: number;
     lastReconciled: string | null;
+    accountBalance: number;
 }
 
 interface Props {
@@ -47,7 +48,12 @@ export default function ReconciliationModeModal({ isOpen, onClose, onSuccess, ac
         try {
             const res = await fetch(`/api/reconcile?accountId=${accountId}`);
             const data = await res.json();
-            setStatus(data);
+            setStatus({
+                clearedBalance: data.calculatedClearedBalance ?? data.account?.clearedBalance ?? 0,
+                unclearedCount: data.unreconciledCleared?.length ?? 0,
+                lastReconciled: data.account?.lastReconciled ?? null,
+                accountBalance: data.account?.balance ?? 0,
+            });
         } catch (err) {
             console.error('Failed to fetch reconcile status:', err);
         }
@@ -261,7 +267,7 @@ export default function ReconciliationModeModal({ isOpen, onClose, onSuccess, ac
                                                 <Square className="w-5 h-5 text-neutral flex-shrink-0" />
                                             )}
                                             <span className="text-sm text-neutral w-20 flex-shrink-0">{formatDate(tx.date)}</span>
-                                            <span className="font-medium text-foreground flex-1 truncate">{tx.payee || 'Unknown'}</span>
+                                            <span className="font-medium text-foreground flex-1 truncate">{tx.payee || '\u2014'}</span>
                                             <span className={`font-medium ${tx.amount >= 0 ? 'text-positive' : 'text-foreground'}`}>
                                                 {tx.amount >= 0 ? '+' : ''}{formatCurrency(tx.amount)}
                                             </span>
@@ -285,6 +291,11 @@ export default function ReconciliationModeModal({ isOpen, onClose, onSuccess, ac
                             </p>
 
                             <div className="max-w-sm mx-auto">
+                                <div className="p-3 bg-background-tertiary rounded-lg mb-4">
+                                    <p className="text-sm text-neutral">Account Balance</p>
+                                    <p className="text-lg font-bold text-foreground">{formatCurrency(status?.accountBalance || 0)}</p>
+                                </div>
+
                                 <label className="block text-sm text-neutral mb-2">
                                     Confirm Statement Balance (optional)
                                 </label>
@@ -299,9 +310,43 @@ export default function ReconciliationModeModal({ isOpen, onClose, onSuccess, ac
                                         className="input pl-7 w-full"
                                     />
                                 </div>
-                                <p className="text-xs text-neutral mt-2">
-                                    Enter your bank statement balance to verify the reconciliation.
-                                </p>
+
+                                {statementBalance && (() => {
+                                    const stmtCents = Math.round(parseFloat(statementBalance) * 100);
+                                    const acctBalance = status?.accountBalance || 0;
+                                    const diff = stmtCents - acctBalance;
+                                    const isMatch = diff === 0;
+                                    return (
+                                        <div className={`mt-3 p-3 rounded-lg border ${
+                                            isMatch
+                                                ? 'bg-success/10 border-success/30'
+                                                : 'bg-warning/10 border-warning/30'
+                                        }`}>
+                                            {isMatch ? (
+                                                <p className="text-sm font-medium text-success flex items-center justify-center gap-1.5">
+                                                    <Check className="w-4 h-4" />
+                                                    Balances match perfectly
+                                                </p>
+                                            ) : (
+                                                <>
+                                                    <p className="text-sm text-neutral mb-1">Difference from account</p>
+                                                    <p className={`text-lg font-bold ${diff > 0 ? 'text-positive' : 'text-negative'}`}>
+                                                        {diff > 0 ? '+' : ''}{formatCurrency(diff)}
+                                                    </p>
+                                                    <p className="text-xs text-neutral mt-1">
+                                                        An adjustment transaction will be created to match your statement.
+                                                    </p>
+                                                </>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
+
+                                {!statementBalance && (
+                                    <p className="text-xs text-neutral mt-2">
+                                        Enter your bank statement balance to verify the reconciliation.
+                                    </p>
+                                )}
                             </div>
                         </div>
                     )}

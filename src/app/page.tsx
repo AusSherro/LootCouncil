@@ -348,7 +348,7 @@ export default function HomePage() {
                                 <div className="flex items-center gap-3">
                                     <div className={`w-2 h-2 rounded-full ${t.amount >= 0 ? 'bg-success' : 'bg-neutral'}`} />
                                     <div>
-                                        <p className="text-sm font-medium text-foreground">{t.payee || 'Unknown'}</p>
+                                        <p className="text-sm font-medium text-foreground">{t.payee || '\u2014'}</p>
                                         <p className="text-xs text-neutral">
                                             {new Date(t.date).toLocaleDateString('en-AU', { month: 'short', day: 'numeric' })}
                                         </p>

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getProfileId } from '@/lib/profile';
 
 interface RouteParams {
     params: Promise<{ id: string }>;
@@ -8,9 +9,10 @@ interface RouteParams {
 // GET single asset
 export async function GET(request: NextRequest, { params }: RouteParams) {
     try {
+        const profileId = await getProfileId(request);
         const { id } = await params;
         const asset = await prisma.asset.findUnique({
-            where: { id },
+            where: { id, profileId },
             include: {
                 lots: {
                     orderBy: { purchaseDate: 'asc' },
@@ -32,11 +34,12 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 // PATCH update asset
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
     try {
+        const profileId = await getProfileId(request);
         const { id } = await params;
         const body = await request.json();
 
         const asset = await prisma.asset.update({
-            where: { id },
+            where: { id, profileId },
             data: {
                 ...(body.symbol && { symbol: body.symbol.toUpperCase() }),
                 ...(body.name && { name: body.name }),
@@ -60,8 +63,9 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 // DELETE asset
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
     try {
+        const profileId = await getProfileId(request);
         const { id } = await params;
-        await prisma.asset.delete({ where: { id } });
+        await prisma.asset.delete({ where: { id, profileId } });
         return NextResponse.json({ success: true });
     } catch (error) {
         console.error('Failed to delete asset:', error);

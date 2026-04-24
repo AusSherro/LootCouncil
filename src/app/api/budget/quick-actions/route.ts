@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getProfileId } from '@/lib/profile';
 
 // Quick budget actions: last month, average, underfunded
 export async function POST(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         const { action, categoryId, month } = await request.json();
 
         if (!action || !categoryId || !month) {
@@ -35,6 +37,7 @@ export async function POST(request: NextRequest) {
 
             const transactions = await prisma.transaction.findMany({
                 where: {
+                    account: { profileId },
                     categoryId,
                     date: {
                         gte: threeMonthsAgo,
@@ -82,6 +85,7 @@ export async function POST(request: NextRequest) {
 
             const transactions = await prisma.transaction.findMany({
                 where: {
+                    account: { profileId },
                     categoryId,
                     date: {
                         gte: startOfCurrentMonth,

@@ -9,6 +9,8 @@
 
 <br/>
 
+[![CI](https://github.com/AusSherro/LootCouncil/actions/workflows/ci.yml/badge.svg)](https://github.com/AusSherro/LootCouncil/actions/workflows/ci.yml)
+
 [![Next.js](https://img.shields.io/badge/Next.js_16-black?style=for-the-badge&logo=next.js&logoColor=white)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript_5-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Prisma](https://img.shields.io/badge/Prisma_6-2D3748?style=for-the-badge&logo=prisma&logoColor=white)](https://www.prisma.io/)

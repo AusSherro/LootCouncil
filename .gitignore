@@ -43,7 +43,14 @@ next-env.d.ts
 # prisma - generated client & local database
 /src/generated/prisma
 prisma/*.db
+data/*.db
 
 # agent / AI tooling
 .agent/
 .github/agents/
+
+# local / temp files
+*.lnk
+*.ico
+tmp-*
+.vscode/

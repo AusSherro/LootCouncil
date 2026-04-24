@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { getProfileId } from '@/lib/profile';
 
 const YNAB_API_BASE = 'https://api.ynab.com/v1';
 
@@ -105,6 +106,7 @@ export async function GET(request: NextRequest) {
 // POST - Import a specific budget from YNAB
 export async function POST(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         const body = await request.json();
         const { token, budgetId } = body;
 
@@ -139,9 +141,9 @@ export async function POST(request: NextRequest) {
         for (const acc of budget.accounts as YNABAccount[]) {
             // Check by ynabId first, then by name
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const existing = await (prisma.account as any).findFirst({ where: { ynabId: acc.id } })
+            const existing = await (prisma.account as any).findFirst({ where: { ynabId: acc.id, profileId } })
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                || await (prisma.account as any).findFirst({ where: { name: acc.name } });
+                || await (prisma.account as any).findFirst({ where: { name: acc.name, profileId } });
             if (existing) {
                 accountMap.set(acc.id, existing.id);
                 // Update balance + set ynabId for delta sync
@@ -168,6 +170,7 @@ export async function POST(request: NextRequest) {
                         clearedBalance: Math.round(acc.cleared_balance / 10),
                         closed: acc.closed,
                         ynabId: acc.id,
+                        profileId,
                     },
                 });
                 accountMap.set(acc.id, created.id);
@@ -186,9 +189,9 @@ export async function POST(request: NextRequest) {
 
             // Check by ynabId first, then by name
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const existingGroup = await (prisma.categoryGroup as any).findFirst({ where: { ynabId: group.id } })
+            const existingGroup = await (prisma.categoryGroup as any).findFirst({ where: { ynabId: group.id, profileId } })
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                || await (prisma.categoryGroup as any).findFirst({ where: { name: group.name } });
+                || await (prisma.categoryGroup as any).findFirst({ where: { name: group.name, profileId } });
 
             if (existingGroup) {
                 categoryGroupMap.set(group.id, existingGroup.id);
@@ -206,6 +209,7 @@ export async function POST(request: NextRequest) {
                         sortOrder: groupSortOrder++,
                         isHidden: group.hidden,
                         ynabId: group.id,
+                        profileId,
                     },
                 });
                 categoryGroupMap.set(group.id, created.id);
@@ -322,6 +326,7 @@ export async function POST(request: NextRequest) {
                             name: payee.name,
                             ynabId: payee.id,
                             transferAccountId: transferAccId,
+                            profileId,
                         },
                     });
                     payeeMap.set(payee.id, created.id);

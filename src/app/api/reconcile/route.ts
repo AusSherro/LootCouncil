@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { getProfileId } from '@/lib/profile';
 
 // GET - Get reconciliation status for an account
 export async function GET(request: NextRequest) {
+    const profileId = await getProfileId(request);
     const { searchParams } = new URL(request.url);
     const accountId = searchParams.get('accountId');
 
@@ -12,7 +14,7 @@ export async function GET(request: NextRequest) {
 
     try {
         const account = await prisma.account.findUnique({
-            where: { id: accountId },
+            where: { id: accountId, profileId },
         });
 
         if (!account) {
@@ -69,6 +71,7 @@ export async function GET(request: NextRequest) {
 // POST - Start or complete reconciliation
 export async function POST(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         const body = await request.json();
         const { accountId, action, statementBalance, transactionIds } = body;
 
@@ -76,10 +79,16 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Missing accountId' }, { status: 400 });
         }
 
+        // Verify account belongs to this profile
+        const account = await prisma.account.findUnique({ where: { id: accountId, profileId } });
+        if (!account) {
+            return NextResponse.json({ error: 'Account not found' }, { status: 404 });
+        }
+
         // Mark specific transactions as reconciled
         if (action === 'reconcile' && transactionIds?.length > 0) {
             await prisma.transaction.updateMany({
-                where: { id: { in: transactionIds } },
+                where: { id: { in: transactionIds }, accountId },
                 data: { isReconciled: true },
             });
 
@@ -106,10 +115,6 @@ export async function POST(request: NextRequest) {
 
         // Complete reconciliation with statement balance
         if (action === 'complete' && statementBalance !== undefined) {
-            const account = await prisma.account.findUnique({ where: { id: accountId } });
-            if (!account) {
-                return NextResponse.json({ error: 'Account not found' }, { status: 404 });
-            }
 
             // Calculate what cleared transactions actually sum to.
             // This avoids the old bug where oldClearedBalance + unreconciled
@@ -174,6 +179,7 @@ export async function POST(request: NextRequest) {
 // PATCH - Toggle cleared status for a transaction
 export async function PATCH(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         const body = await request.json();
         const { transactionId, cleared } = body;
 
@@ -181,9 +187,33 @@ export async function PATCH(request: NextRequest) {
             return NextResponse.json({ error: 'Missing transactionId' }, { status: 400 });
         }
 
-        const transaction = await prisma.transaction.update({
+        // Get existing transaction to calculate clearedBalance adjustment
+        const existing = await prisma.transaction.findUnique({
             where: { id: transactionId },
-            data: { cleared: cleared ?? undefined },
+        });
+
+        if (!existing) {
+            return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
+        }
+
+        const nowCleared = cleared ?? !existing.cleared;
+
+        const transaction = await prisma.$transaction(async (tx) => {
+            const updated = await tx.transaction.update({
+                where: { id: transactionId, account: { profileId } },
+                data: { cleared: nowCleared },
+            });
+
+            // Update clearedBalance: add amount if clearing, remove if unclearing
+            if (existing.cleared !== nowCleared) {
+                const clearedDelta = nowCleared ? existing.amount : -existing.amount;
+                await tx.account.update({
+                    where: { id: existing.accountId },
+                    data: { clearedBalance: { increment: clearedDelta } },
+                });
+            }
+
+            return updated;
         });
 
         return NextResponse.json({ transaction });

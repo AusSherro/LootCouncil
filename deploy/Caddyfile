@@ -1,0 +1,6 @@
+# Reverse proxy
+# Loot Council: http://192.168.68.120/
+
+:80 {
+	reverse_proxy 172.17.0.1:3000
+}

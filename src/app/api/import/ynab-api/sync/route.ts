@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { getProfileId } from '@/lib/profile';
 
 const YNAB_API_BASE = 'https://api.ynab.com/v1';
 
@@ -107,6 +108,7 @@ export async function GET() {
 // POST - Perform delta sync
 export async function POST(request: NextRequest) {
   try {
+    const profileId = await getProfileId(request);
     const body = await request.json();
     const { token } = body;
 
@@ -424,6 +426,7 @@ export async function POST(request: NextRequest) {
               name: payee.name,
               ynabId: payee.id,
               transferAccountId: transferAccId,
+              profileId,
             },
           });
           stats.payees.created++;

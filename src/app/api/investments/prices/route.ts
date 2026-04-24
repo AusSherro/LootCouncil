@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import YahooFinance from 'yahoo-finance2';
+import { getProfileId } from '@/lib/profile';
 
 const yahooFinance = new YahooFinance();
 
 // Fetch live prices for assets
 export async function POST(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         let symbols: string[] | undefined;
         let assetClass: string | undefined;
         
@@ -22,11 +24,12 @@ export async function POST(request: NextRequest) {
             // Body is empty or invalid JSON - proceed with defaults (fetch all)
         }
 
-        // If no symbols provided, fetch all non-manual assets
+        // If no symbols provided, fetch all non-manual assets for this profile
         let assetsToUpdate;
         if (symbols && symbols.length > 0) {
             assetsToUpdate = await prisma.asset.findMany({
                 where: {
+                    profileId,
                     symbol: { in: symbols },
                     isManual: false,
                 },
@@ -34,6 +37,7 @@ export async function POST(request: NextRequest) {
         } else {
             assetsToUpdate = await prisma.asset.findMany({
                 where: {
+                    profileId,
                     isManual: false,
                     ...(assetClass && { assetClass }),
                 },

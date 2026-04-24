@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
+import { getProfileId } from '@/lib/profile';
 
 interface YNABTransaction {
     Date: string | number;
@@ -100,6 +101,7 @@ function getCategoryGroupName(row: any): string | undefined {
 
 export async function POST(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         const formData = await request.formData();
         const file = formData.get('file') as File;
 
@@ -184,7 +186,7 @@ export async function POST(request: NextRequest) {
             const accountMap = new Map<string, string>();
 
             for (const name of accountNames) {
-                const existing = await prisma.account.findFirst({ where: { name } });
+                const existing = await prisma.account.findFirst({ where: { name, profileId } });
                 if (existing) {
                     accountMap.set(name, existing.id);
                 } else {
@@ -194,6 +196,7 @@ export async function POST(request: NextRequest) {
                             type: name.toLowerCase().includes('credit') ? 'credit' :
                                 name.toLowerCase().includes('saving') ? 'savings' : 'checking',
                             onBudget: true,
+                            profileId,
                         },
                     });
                     accountMap.set(name, account.id);
@@ -208,12 +211,12 @@ export async function POST(request: NextRequest) {
 
             for (const groupName of categoryGroups) {
                 if (!groupName) continue;
-                const existing = await prisma.categoryGroup.findFirst({ where: { name: groupName } });
+                const existing = await prisma.categoryGroup.findFirst({ where: { name: groupName, profileId } });
                 if (existing) {
                     groupMap.set(groupName, existing.id);
                 } else {
                     const group = await prisma.categoryGroup.create({
-                        data: { name: groupName },
+                        data: { name: groupName, profileId },
                     });
                     groupMap.set(groupName, group.id);
                 }
@@ -316,13 +319,13 @@ export async function POST(request: NextRequest) {
                 let groupId: string | undefined;
 
                 const existingGroup = await prisma.categoryGroup.findFirst({
-                    where: { name: groupName }
+                    where: { name: groupName, profileId }
                 });
                 if (existingGroup) {
                     groupId = existingGroup.id;
                 } else if (groupName) {
                     const group = await prisma.categoryGroup.create({
-                        data: { name: groupName },
+                        data: { name: groupName, profileId },
                     });
                     groupId = group.id;
                 }

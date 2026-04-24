@@ -280,11 +280,27 @@ export const PUT = withErrorHandler(async (request: NextRequest) => {
         });
 
         if (accountId === existing.accountId) {
+            // Calculate cleared balance adjustment based on old and new cleared state
+            const wasCleared = existing.cleared;
+            const nowCleared = cleared ?? existing.cleared;
+            let clearedDelta = 0;
+            if (wasCleared && nowCleared) {
+                // Was cleared, still cleared — adjust by amount difference
+                clearedDelta = amountDiff;
+            } else if (!wasCleared && nowCleared) {
+                // Became cleared — add full new amount
+                clearedDelta = newAmountCents;
+            } else if (wasCleared && !nowCleared) {
+                // Became uncleared — remove old amount
+                clearedDelta = -existing.amount;
+            }
+            // !wasCleared && !nowCleared → no change
+
             await tx.account.update({
                 where: { id: accountId },
                 data: {
                     balance: { increment: amountDiff },
-                    clearedBalance: cleared ? { increment: amountDiff } : undefined,
+                    clearedBalance: clearedDelta !== 0 ? { increment: clearedDelta } : undefined,
                 },
             });
         } else {

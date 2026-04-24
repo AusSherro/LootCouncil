@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { getProfileId } from '@/lib/profile';
 
 // POST - Create splits for a transaction
 export async function POST(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         const body = await request.json();
         const { transactionId, splits } = body;
 
@@ -11,9 +13,9 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Need transactionId and at least 2 splits' }, { status: 400 });
         }
 
-        // Get the parent transaction
+        // Get the parent transaction (verify profile ownership)
         const transaction = await prisma.transaction.findUnique({
-            where: { id: transactionId },
+            where: { id: transactionId, account: { profileId } },
         });
 
         if (!transaction) {
@@ -118,6 +120,7 @@ export async function GET(request: NextRequest) {
 
 // DELETE - Remove splits and unsplit a transaction
 export async function DELETE(request: NextRequest) {
+    const profileId = await getProfileId(request);
     const { searchParams } = new URL(request.url);
     const transactionId = searchParams.get('transactionId');
 
@@ -128,7 +131,7 @@ export async function DELETE(request: NextRequest) {
     try {
         // Get the transaction and its splits for budget adjustment
         const transaction = await prisma.transaction.findUnique({
-            where: { id: transactionId },
+            where: { id: transactionId, account: { profileId } },
             include: { subTransactions: true },
         });
 

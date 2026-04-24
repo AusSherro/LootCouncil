@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { withErrorHandler } from '@/lib/apiHandler';
 import { getProfileId } from '@/lib/profile';
-import { getMonthOffset, calculateActivity, calculateReadyToAssign, isInflowGroup, isHiddenCategoriesGroup } from '@/lib/budgetHelpers';
+import { getMonthOffset, calculateActivity, calculateReadyToAssign, isInflowGroup, isHiddenCategoriesGroup, calculateGoalUnderFunded } from '@/lib/budgetHelpers';
 
 // GET budget for a specific month with proper envelope calculations
 export async function GET(request: NextRequest) {
@@ -161,6 +161,11 @@ export async function GET(request: NextRequest) {
                     totalInflow += available;
                 }
 
+                // Dynamically calculate goalUnderFunded from current available
+                const dynamicGoalUnderFunded = calculateGoalUnderFunded(
+                    cat.goalType, cat.goalTarget, cat.goalDueDate, available, month, assigned
+                );
+
                 return {
                     id: cat.id,
                     name: cat.name,
@@ -168,7 +173,7 @@ export async function GET(request: NextRequest) {
                     goalAmount: cat.goalTarget,
                     goalDueDate: cat.goalDueDate?.toISOString() || null,
                     goalPercentageComplete: cat.goalPercentageComplete,
-                    goalUnderFunded: cat.goalUnderFunded,
+                    goalUnderFunded: dynamicGoalUnderFunded,
                     goalOverallFunded: cat.goalOverallFunded,
                     goalOverallLeft: cat.goalOverallLeft,
                     assigned,
@@ -224,14 +229,70 @@ export async function GET(request: NextRequest) {
             }
         }
 
+        // Write-back: sync stored available with dynamically computed values
+        // so future months get correct rollovers
+        const staleUpdates: { categoryId: string; available: number }[] = [];
+        for (const group of groups) {
+            for (const cat of group.categories) {
+                const budgetRow = categoryGroups
+                    .flatMap(g => g.categories)
+                    .find(c => c.id === cat.id);
+                const stored = budgetRow?.monthlyData[0]?.available ?? null;
+                if (stored !== null && stored !== cat.available) {
+                    staleUpdates.push({ categoryId: cat.id, available: cat.available });
+                }
+            }
+        }
+        if (staleUpdates.length > 0) {
+            await Promise.all(
+                staleUpdates.map(u =>
+                    prisma.monthlyBudget.updateMany({
+                        where: { month, categoryId: u.categoryId },
+                        data: { available: u.available },
+                    })
+                )
+            );
+        }
+
         // Always calculate RTA from account balances - envelope totals (YNAB-style)
-        // This ensures uncategorized transactions and reconciliation adjustments
-        // naturally reduce RTA, and RTA can go negative when overspent
+        // RTA = Account Balance - total money sitting in ALL envelopes
+        // Envelope total = sum of all assignments ever + sum of all categorized activity ever
+        // This is the ground truth — no rollover chain dependency, universal across months
         const accounts = await prisma.account.findMany({
             where: { onBudget: true, closed: false, profileId },
         });
         const totalBalance = accounts.reduce((sum, acc) => sum + acc.balance, 0);
-        const readyToAssign = totalBalance - totalAvailable;
+
+        // Collect ALL categories in budget groups (including individually hidden ones)
+        // Exclude only system groups (inflow, Hidden Categories) and user-hidden groups
+        const envelopeCats = await prisma.category.findMany({
+            where: {
+                group: {
+                    profileId,
+                    isHidden: false,
+                    NOT: {
+                        name: { in: ['Inflow: Ready to Assign', 'Internal Master Category', 'Hidden Categories'] },
+                    },
+                },
+            },
+            select: { id: true },
+        });
+        const envelopeCatIds = envelopeCats.map(c => c.id);
+
+        // Total ever assigned to envelopes
+        const totalEverAssigned = await prisma.monthlyBudget.aggregate({
+            where: { categoryId: { in: envelopeCatIds } },
+            _sum: { assigned: true },
+        });
+
+        // Total categorized activity (transaction amounts)
+        const totalEverActivity = await prisma.transaction.aggregate({
+            where: { categoryId: { in: envelopeCatIds } },
+            _sum: { amount: true },
+        });
+
+        const envelopeTotal = (totalEverAssigned._sum.assigned || 0) + (totalEverActivity._sum.amount || 0);
+        const readyToAssign = totalBalance - envelopeTotal;
 
         return NextResponse.json({
             month,

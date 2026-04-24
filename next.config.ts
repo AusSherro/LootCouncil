@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  output: 'standalone',
+
   // Exclude native modules from bundling
   serverExternalPackages: ['better-sqlite3'],
 

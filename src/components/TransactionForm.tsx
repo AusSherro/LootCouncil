@@ -313,6 +313,11 @@ export default function TransactionForm({ isOpen, onClose, onSuccess, defaultAcc
                         <PayeeAutocomplete
                             value={payee}
                             onChange={setPayee}
+                            onPayeeSelect={(p) => {
+                                if (!isEditing && p?.lastCategoryId && !categoryId) {
+                                    setCategoryId(p.lastCategoryId);
+                                }
+                            }}
                             placeholder="Who did you pay?"
                         />
                     </div>

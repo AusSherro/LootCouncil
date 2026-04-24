@@ -24,6 +24,7 @@ export default function GoalProgress({
     goalOverallFunded,
     goalOverallLeft,
     available,
+    assigned,
 }: GoalProgressProps) {
     const { settings } = useSettings();
     const currency = settings?.currency || 'AUD';
@@ -139,8 +140,8 @@ function getProgressColor(percentage: number, isUnderFunded: boolean): string {
                 );
 
             case 'MF': // Monthly Funding
-                // Use available (includes rollover) to determine if funded
-                const mfNeeded = Math.max(0, (goalTarget || 0) - available);
+                // Check assigned this month vs goal, not available balance
+                const mfNeeded = Math.max(0, (goalTarget || 0) - assigned);
                 const isFunded = mfNeeded === 0;
                 return (
                     <div className="flex items-center gap-2">

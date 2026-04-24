@@ -55,3 +55,48 @@ export async function calculateActivity(categoryId: string, month: string): Prom
     });
     return result._sum.amount || 0;
 }
+
+/**
+ * Dynamically calculate how much a category is underfunded based on
+ * its goal type, target, and current available balance.
+ * Returns amount in cents, or 0 if fully funded / no goal.
+ */
+export function calculateGoalUnderFunded(
+    goalType: string | null,
+    goalTarget: number | null,
+    goalDueDate: Date | null,
+    available: number,
+    currentMonth: string,
+    assigned: number = 0,
+): number {
+    if (!goalType || !goalTarget) return 0;
+
+    switch (goalType) {
+        case 'TB': // Target Balance
+            return Math.max(0, goalTarget - available);
+
+        case 'TBD': { // Target by Date
+            if (!goalDueDate) {
+                return Math.max(0, goalTarget - available);
+            }
+            const [currentYear, currentMonthNum] = currentMonth.split('-').map(Number);
+            const dueYear = goalDueDate.getFullYear();
+            const dueMonth = goalDueDate.getMonth() + 1;
+            const monthsRemaining = (dueYear - currentYear) * 12 + (dueMonth - currentMonthNum);
+            if (monthsRemaining <= 0) {
+                return Math.max(0, goalTarget - available);
+            }
+            const amountNeeded = Math.max(0, goalTarget - available);
+            return Math.ceil(amountNeeded / monthsRemaining);
+        }
+
+        case 'MF': // Monthly Funding – check assigned this month, not available
+            return Math.max(0, goalTarget - assigned);
+
+        case 'NEED': // Needed for Spending
+            return Math.max(0, goalTarget - available);
+
+        default:
+            return 0;
+    }
+}

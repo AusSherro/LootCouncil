@@ -13,10 +13,9 @@ export async function GET(request: NextRequest) {
         let payees;
         
         if (query) {
-            // Search by name (case-insensitive)
+            // Search by name (case-insensitive) - shared across all profiles
             payees = await prisma.payee.findMany({
                 where: {
-                    profileId,
                     name: {
                         contains: query,
                     },
@@ -39,7 +38,6 @@ export async function GET(request: NextRequest) {
             // Get payee records for these names
             payees = await prisma.payee.findMany({
                 where: {
-                    profileId,
                     name: { in: recentPayeeNames as string[] },
                 },
                 take: limit,
@@ -49,7 +47,6 @@ export async function GET(request: NextRequest) {
             if (payees.length < limit) {
                 const morePayees = await prisma.payee.findMany({
                     where: {
-                        profileId,
                         id: { notIn: payees.map(p => p.id) },
                     },
                     orderBy: { name: 'asc' },
@@ -59,7 +56,33 @@ export async function GET(request: NextRequest) {
             }
         }
 
-        return NextResponse.json({ payees });
+        // Attach the most recently used categoryId for each payee
+        const payeeNames = payees.map((p: { name: string }) => p.name);
+        const lastCategories = payeeNames.length > 0
+            ? await prisma.transaction.findMany({
+                where: {
+                    payee: { in: payeeNames },
+                    categoryId: { not: null },
+                    account: { profileId },
+                },
+                orderBy: { date: 'desc' },
+                select: { payee: true, categoryId: true },
+            })
+            : [];
+
+        const payeeCategoryMap = new Map<string, string>();
+        for (const t of lastCategories) {
+            if (t.payee && t.categoryId && !payeeCategoryMap.has(t.payee)) {
+                payeeCategoryMap.set(t.payee, t.categoryId);
+            }
+        }
+
+        const enrichedPayees = payees.map((p: { id: string; name: string }) => ({
+            ...p,
+            lastCategoryId: payeeCategoryMap.get(p.name) || null,
+        }));
+
+        return NextResponse.json({ payees: enrichedPayees });
     } catch (error) {
         console.error('Error fetching payees:', error);
         return NextResponse.json({ error: 'Failed to fetch payees' }, { status: 500 });
@@ -69,6 +92,7 @@ export async function GET(request: NextRequest) {
 // POST - Create a new payee
 export async function POST(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         const body = await request.json();
         const { name } = body;
 
@@ -78,18 +102,26 @@ export async function POST(request: NextRequest) {
 
         const trimmedName = name.trim();
 
-        // Check if payee already exists
+        // Check if payee already exists (with this profile or unassigned)
         const existing = await prisma.payee.findFirst({
             where: { name: trimmedName },
         });
 
         if (existing) {
+            // Adopt orphaned payee into this profile if it has no profile
+            if (!existing.profileId) {
+                const updated = await prisma.payee.update({
+                    where: { id: existing.id },
+                    data: { profileId },
+                });
+                return NextResponse.json({ payee: updated });
+            }
             return NextResponse.json({ payee: existing });
         }
 
-        // Create new payee
+        // Create new payee with profileId
         const payee = await prisma.payee.create({
-            data: { name: trimmedName },
+            data: { name: trimmedName, profileId },
         });
 
         return NextResponse.json({ payee }, { status: 201 });
