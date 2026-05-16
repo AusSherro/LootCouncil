@@ -30,10 +30,12 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     const [toasts, setToasts] = useState<Toast[]>([]);
     const timersRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
 
-    // Cleanup timers on unmount
+    // Cleanup timers on unmount — capture the Map locally so the cleanup
+    // doesn't depend on a possibly-stale `timersRef.current`.
     useEffect(() => {
+        const timers = timersRef.current;
         return () => {
-            timersRef.current.forEach(t => clearTimeout(t));
+            timers.forEach(t => clearTimeout(t));
         };
     }, []);
 

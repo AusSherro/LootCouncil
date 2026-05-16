@@ -7,12 +7,26 @@ export interface FormatCurrencyOptions {
     showSign?: boolean;
 }
 
+// Module-level default currency for `formatCurrency` when no explicit currency is
+// passed. Driven by SettingsProvider via `setDefaultCurrency()` so the whole app
+// follows the user's home-currency setting without each call site needing the hook.
+// Per-asset/foreign-currency call sites (e.g. MSFT in USD) still pass `asset.currency`
+// explicitly and are unaffected.
+let _defaultCurrency = 'AUD';
+
+export function setDefaultCurrency(currency: string) {
+    if (currency && typeof currency === 'string') {
+        _defaultCurrency = currency;
+    }
+}
+
 /**
- * Format cents to display currency (e.g., 12345 -> "$123.45")
+ * Format cents to display currency (e.g., 12345 -> "$123.45").
+ * Falls back to the user's home-currency setting (via `setDefaultCurrency`).
  */
 export function formatCurrency(
     cents: number,
-    currency = 'AUD',
+    currency: string = _defaultCurrency,
     options: FormatCurrencyOptions = {}
 ): string {
     const {

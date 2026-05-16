@@ -4,6 +4,7 @@ import { FileCheck2, Trash2, X, Copy, PlayCircle, AlertCircle } from 'lucide-rea
 import { useState, useEffect } from 'react';
 import { formatCurrency } from '@/lib/utils';
 import { useSettings } from '@/components/SettingsProvider';
+import { useConfirmDialog } from '@/components/ConfirmDialog';
 
 interface TemplateItem {
     id: string;
@@ -37,6 +38,7 @@ export default function BudgetTemplatesModal({ isOpen, onClose, onApply, current
     const [success, setSuccess] = useState<string | null>(null);
     const { settings } = useSettings();
     const currency = settings?.currency || 'AUD';
+    const { confirm, Dialog: ConfirmDialogModal } = useConfirmDialog();
 
     // Create template form
     const [showCreate, setShowCreate] = useState(false);
@@ -137,14 +139,20 @@ export default function BudgetTemplatesModal({ isOpen, onClose, onApply, current
     }
 
     async function handleDeleteTemplate(id: string) {
-        if (!confirm('Are you sure you want to delete this template?')) return;
-
-        try {
-            await fetch(`/api/templates?id=${id}`, { method: 'DELETE' });
-            fetchTemplates();
-        } catch (err) {
-            console.error('Failed to delete template:', err);
-        }
+        confirm({
+            title: 'Delete template',
+            message: 'Are you sure you want to delete this template? This cannot be undone.',
+            variant: 'danger',
+            confirmText: 'Delete',
+            onConfirm: async () => {
+                try {
+                    await fetch(`/api/templates?id=${id}`, { method: 'DELETE' });
+                    fetchTemplates();
+                } catch (err) {
+                    console.error('Failed to delete template:', err);
+                }
+            },
+        });
     }
 
     if (!isOpen) return null;
@@ -300,6 +308,7 @@ export default function BudgetTemplatesModal({ isOpen, onClose, onApply, current
                     </button>
                 </div>
             </div>
+            <ConfirmDialogModal />
         </div>
     );
 }

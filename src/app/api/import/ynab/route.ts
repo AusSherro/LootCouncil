@@ -16,6 +16,7 @@ interface YNABTransaction {
     Account?: string;
     '"Account"'?: string; // YNAB exports with quoted column name
     Cleared?: string;
+    [key: string]: unknown;
 }
 
 interface YNABBudget {
@@ -27,6 +28,7 @@ interface YNABBudget {
     Assigned?: string | number;  // YNAB sometimes uses this field name
     Activity?: string | number;
     Available?: string | number;
+    [key: string]: unknown;
 }
 
 function parseAmount(value: string | number | undefined): number {
@@ -35,11 +37,12 @@ function parseAmount(value: string | number | undefined): number {
     const cleaned = value.replace(/[$,]/g, '');
     return Math.round(parseFloat(cleaned) * 100) || 0;
 }
+// YNAB CSV/XLSX rows have variable column names; treat as opaque key/value bags.
+type YNABRow = Record<string, unknown>;
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function getAccountName(row: any): string | undefined {
+function getAccountName(row: YNABRow): string | undefined {
     // After normalization, Account key should be clean
-    return row.Account || undefined;
+    return (row.Account as string | undefined) || undefined;
 }
 
 function parseExcelDate(value: string | number | undefined): Date | null {
@@ -69,16 +72,15 @@ function parseExcelDate(value: string | number | undefined): Date | null {
     
     return null;
 }
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function getCategoryName(row: any): string | undefined {
+function getCategoryName(row: YNABRow): string | undefined {
     // If we have explicit Category, use it
-    if (row.Category) return row.Category;
+    if (row.Category) return row.Category as string;
 
     // If not, try to parse from combined column "Category Group/Category"
     // Format is usually "Group: Category"
-    if (row['Category Group/Category']) {
-        const parts = row['Category Group/Category'].split(': ');
+    const combined = row['Category Group/Category'];
+    if (typeof combined === 'string') {
+        const parts = combined.split(': ');
         // If there's a colon, the part after is the category
         if (parts.length > 1) return parts.slice(1).join(': ');
         // If no colon, assume the whole thing is the category name (or it's a transfer)
@@ -86,14 +88,13 @@ function getCategoryName(row: any): string | undefined {
     }
     return undefined;
 }
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function getCategoryGroupName(row: any): string | undefined {
-    if (row['Category Group']) return row['Category Group'];
+function getCategoryGroupName(row: YNABRow): string | undefined {
+    if (row['Category Group']) return row['Category Group'] as string;
 
     // Fallback to parsing from combined column
-    if (row['Category Group/Category']) {
-        const parts = row['Category Group/Category'].split(': ');
+    const combined = row['Category Group/Category'];
+    if (typeof combined === 'string') {
+        const parts = combined.split(': ');
         return parts[0];
     }
     return undefined;
@@ -114,10 +115,8 @@ export async function POST(request: NextRequest) {
         let budgetData: YNABBudget[] = [];
 
         // Helper to normalize keys (remove quotes, trim, etc.)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const normalizeRow = (row: any): any => {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const normalized: any = {};
+        const normalizeRow = (row: YNABRow): YNABRow => {
+            const normalized: YNABRow = {};
             for (const key of Object.keys(row)) {
                 // Remove leading/trailing quotes and whitespace from key
                 const cleanKey = key.replace(/^["'\s]+|["'\s]+$/g, '');
@@ -148,16 +147,16 @@ export async function POST(request: NextRequest) {
                 const csvContent = await registerFile.async('string');
                 const workbook = XLSX.read(csvContent, { type: 'string', raw: false });
                 const sheetName = workbook.SheetNames[0];
-                const rawData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
-                transactionData = rawData.map(normalizeRow);
+                const rawData = XLSX.utils.sheet_to_json<YNABRow>(workbook.Sheets[sheetName]);
+                transactionData = rawData.map(normalizeRow) as unknown as YNABTransaction[];
             }
 
             if (budgetFile) {
                 const csvContent = await budgetFile.async('string');
                 const workbook = XLSX.read(csvContent, { type: 'string', raw: false });
                 const sheetName = workbook.SheetNames[0];
-                const rawData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
-                budgetData = rawData.map(normalizeRow);
+                const rawData = XLSX.utils.sheet_to_json<YNABRow>(workbook.Sheets[sheetName]);
+                budgetData = rawData.map(normalizeRow) as unknown as YNABBudget[];
             }
         } else {
             // Try standard Excel/Single CSV read
@@ -166,13 +165,13 @@ export async function POST(request: NextRequest) {
             // Process Register (transactions) sheet
             const registerSheet = workbook.Sheets['Register'] || workbook.Sheets['Transactions'];
             if (registerSheet) {
-                transactionData = XLSX.utils.sheet_to_json(registerSheet);
+                transactionData = XLSX.utils.sheet_to_json<YNABTransaction>(registerSheet);
             }
 
             // Process Budget sheet
             const budgetSheet = workbook.Sheets['Budget'];
             if (budgetSheet) {
-                budgetData = XLSX.utils.sheet_to_json(budgetSheet);
+                budgetData = XLSX.utils.sheet_to_json<YNABBudget>(budgetSheet);
             }
         }
 

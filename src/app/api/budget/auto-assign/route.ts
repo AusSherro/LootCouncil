@@ -23,7 +23,6 @@ function calculateMonthlyNeeded(
     if (!category.goalType || !category.goalTarget) return 0;
     
     const currentAvailable = category.monthlyData?.available ?? 0;
-    const currentAssigned = category.monthlyData?.assigned ?? 0;
     
     switch (category.goalType) {
         case 'TB': // Target Balance - just need to reach the target

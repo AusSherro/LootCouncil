@@ -6,6 +6,8 @@ import {
     AlertTriangle, CheckCircle, X, Repeat, ChevronRight 
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
+import { useToast } from '@/components/Toast';
+import { useConfirmDialog } from '@/components/ConfirmDialog';
 
 interface ScheduledTransaction {
     id: string;
@@ -69,6 +71,8 @@ export default function ScheduledTransactions({ compact, limit, onViewAll }: Sch
     const [editingItem, setEditingItem] = useState<ScheduledTransaction | null>(null);
     const [accounts, setAccounts] = useState<Account[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
+    const { showToast } = useToast();
+    const { confirm, Dialog: ConfirmDialogModal } = useConfirmDialog();
 
     const fetchScheduled = useCallback(async () => {
         setLoading(true);
@@ -97,13 +101,21 @@ export default function ScheduledTransactions({ compact, limit, onViewAll }: Sch
     }, [fetchScheduled]);
 
     async function handleDelete(id: string) {
-        if (!confirm('Delete this scheduled transaction?')) return;
-        try {
-            await fetch(`/api/scheduled?id=${id}`, { method: 'DELETE' });
-            fetchScheduled();
-        } catch (err) {
-            console.error('Failed to delete:', err);
-        }
+        confirm({
+            title: 'Delete scheduled transaction',
+            message: 'Are you sure you want to delete this scheduled transaction? Any already-created transactions will remain.',
+            variant: 'danger',
+            confirmText: 'Delete',
+            onConfirm: async () => {
+                try {
+                    await fetch(`/api/scheduled?id=${id}`, { method: 'DELETE' });
+                    fetchScheduled();
+                } catch (err) {
+                    console.error('Failed to delete:', err);
+                    showToast('Failed to delete scheduled transaction.', 'error');
+                }
+            },
+        });
     }
 
     async function handleProcessDue() {
@@ -111,13 +123,14 @@ export default function ScheduledTransactions({ compact, limit, onViewAll }: Sch
             const res = await fetch('/api/scheduled', { method: 'PUT' });
             const data = await res.json();
             if (data.processed > 0) {
-                alert(`Created ${data.processed} transaction(s) from scheduled items!`);
+                showToast(`Created ${data.processed} transaction${data.processed === 1 ? '' : 's'} from scheduled items.`, 'success');
                 fetchScheduled();
             } else {
-                alert('No scheduled transactions are due for auto-creation.');
+                showToast('No scheduled transactions are due for auto-creation.', 'info');
             }
         } catch (err) {
             console.error('Failed to process:', err);
+            showToast('Failed to process scheduled transactions.', 'error');
         }
     }
 
@@ -330,6 +343,7 @@ export default function ScheduledTransactions({ compact, limit, onViewAll }: Sch
                     editItem={editingItem}
                 />
             )}
+            <ConfirmDialogModal />
         </div>
     );
 }

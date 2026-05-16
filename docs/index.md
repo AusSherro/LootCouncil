@@ -1,6 +1,6 @@
 # Loot Council — Documentation Index
 
-> **Generated:** 2026-03-04 | **Mode:** Updated | **Scan Level:** Comprehensive
+> **Generated:** 2026-03-04 (last updated 2026-05-16) | **Mode:** Updated | **Scan Level:** Comprehensive
 
 ---
 
@@ -14,12 +14,13 @@
 
 ### Quick Reference
 
-- **Tech Stack:** Next.js 16.1.6 · TypeScript 5 · SQLite · Prisma 6 · Tailwind CSS 4 · Recharts · Lucide React · OpenAI
+- **Tech Stack:** Next.js 16.2.6 · TypeScript 5 · SQLite · Prisma 6 · Tailwind CSS 4 · Recharts · Lucide React · OpenAI
 - **Entry Point:** `src/app/layout.tsx` (root layout) → `src/app/page.tsx` (dashboard)
 - **API Gateway:** `src/app/api/*/route.ts` (46 route files, 28 domains)
 - **Database:** `prisma/schema.prisma` (18 models) → `prisma/loot-council.db`
 - **Architecture Pattern:** Client-side rendered React pages fetching from co-located API routes over SQLite
 - **Multi-Profile:** Each profile has independent budgets, accounts, transactions, and settings
+- **Reports:** 8 tab components under `src/app/reports/_tabs/` (Spending Breakdown, Top Movers, Income/Expense, Savings Rate, Budget vs Actual, Net Worth, By Payee, Category Trends)
 
 ---
 

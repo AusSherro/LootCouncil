@@ -173,11 +173,11 @@ Most budgeting apps want your data in their cloud and a monthly subscription fee
 <td width="50%" valign="top">
 
 ### 📊 Advanced Reports
-- Spending breakdown by category (pie)
-- Income vs Expense trends (bar)
-- Net Worth over time (line)
-- Spending by payee analysis
-- Category trends across months
+- 8 report tabs — Spending Breakdown, Top Movers, Income v Expense, **Savings Rate**, Budget vs Actual, Net Worth, By Payee, Category Trends
+- **Chart drill-down** — click any segment to jump to filtered transactions
+- **Top Movers** — biggest category swings vs last month or last year
+- **Savings Rate** — `(income − expense) / income` over time with 20% target
+- Global "Exclude categories" filter, persisted per profile
 - All-time historical data view
 
 </td>
@@ -196,10 +196,11 @@ Most budgeting apps want your data in their cloud and a monthly subscription fee
 
 ### 📦 Data Management
 - YNAB import (ZIP backup + API)
-- CSV transaction import
+- CSV transaction import **+ CSV export**
 - Full JSON backup & restore
 - Payee management (merge/rename)
-- Bulk transaction editing
+- Bulk transaction editing & pagination
+- Date-range presets + filters persisted per profile
 - **Multi-profile** — independent budgets per profile
 
 </td>
@@ -245,7 +246,7 @@ Most budgeting apps want your data in their cloud and a monthly subscription fee
 
 | Layer | Technology | Version | Purpose |
 |-------|------------|---------|---------|
-| Framework | Next.js (App Router + Turbopack) | 16.1.6 | Full-stack React framework |
+| Framework | Next.js (App Router + Turbopack) | 16.2.6 | Full-stack React framework |
 | Language | TypeScript (strict mode) | 5.x | Type safety |
 | Database | SQLite | — | Local-first data storage |
 | ORM | Prisma | 6.19.2 | Database access & migrations |
@@ -257,7 +258,7 @@ Most budgeting apps want your data in their cloud and a monthly subscription fee
 | Crypto Data | CoinGecko API | — | Cryptocurrency prices |
 | Exchange Rates | exchangerate-api.com | — | Currency conversion |
 | Crypto Sync | Binance API | — | Direct wallet sync |
-| Spreadsheets | xlsx + jszip | 0.18.5 | YNAB import parsing |
+| Spreadsheets | xlsx + jszip | 0.20.3 (SheetJS CDN) | YNAB import parsing |
 | Drag & Drop | dnd-kit | 6.3.1 | Category reordering |
 
 </details>
@@ -339,7 +340,7 @@ loot-council/
 │   │   ├── budget/           # Budget page
 │   │   ├── transactions/     # Transactions page
 │   │   ├── accounts/         # Accounts page
-│   │   ├── reports/          # Reports page
+│   │   ├── reports/          # Reports page (8 tab components in _tabs/)
 │   │   ├── investments/      # Portfolio page
 │   │   ├── fire/             # FIRE calculator page
 │   │   ├── settings/         # Settings page (with profiles)

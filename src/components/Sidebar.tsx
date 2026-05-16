@@ -25,20 +25,33 @@ export default function Sidebar() {
         return -1;
     }, [pathname]);
 
-    // Position the indicator
+    // Position the indicator — measurements happen in a callback (rAF / ResizeObserver)
+    // so we satisfy react-hooks/set-state-in-effect (no direct setState in effect body).
     useEffect(() => {
-        if (!navRef.current || activeIndex < 0) {
-            setIndicatorY(null);
-            return;
-        }
         const navEl = navRef.current;
-        const links = navEl.querySelectorAll<HTMLElement>('[data-nav-item]');
-        const target = links[activeIndex];
-        if (target) {
+        const update = () => {
+            if (!navEl || activeIndex < 0) {
+                setIndicatorY(null);
+                return;
+            }
+            const links = navEl.querySelectorAll<HTMLElement>('[data-nav-item]');
+            const target = links[activeIndex];
+            if (!target) return;
             const navRect = navEl.getBoundingClientRect();
             const targetRect = target.getBoundingClientRect();
             setIndicatorY(targetRect.top - navRect.top + (targetRect.height - 32) / 2);
+        };
+
+        const rafId = requestAnimationFrame(update);
+        if (!navEl) {
+            return () => cancelAnimationFrame(rafId);
         }
+        const observer = new ResizeObserver(update);
+        observer.observe(navEl);
+        return () => {
+            cancelAnimationFrame(rafId);
+            observer.disconnect();
+        };
     }, [activeIndex]);
 
     // Close menu when clicking outside

@@ -91,6 +91,7 @@ interface CategoryRowProps {
 }
 
 function CategoryRow({ category, month, onUpdate, onHide, onRename, onGoalClick, onMoveMoney, onCoverOverspent, onError, isHidden, isDragging, isCompact }: CategoryRowProps) {
+    const { showToast } = useToast();
     const [editing, setEditing] = useState(false);
     const [assignedInput, setAssignedInput] = useState((category.assigned / 100).toFixed(2));
     const [showMenu, setShowMenu] = useState(false);
@@ -137,7 +138,7 @@ function CategoryRow({ category, month, onUpdate, onHide, onRename, onGoalClick,
         if (isNaN(amount)) return;
 
         try {
-            await fetch('/api/budget', {
+            const res = await fetch('/api/budget', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -146,6 +147,18 @@ function CategoryRow({ category, month, onUpdate, onHide, onRename, onGoalClick,
                     amount,
                 }),
             });
+            // FEAT-9: warn when this assignment leaves the category overspent.
+            // Toast only when newly overspent (avoid spamming on every edit of an
+            // already-overspent category).
+            if (res.ok) {
+                const data = await res.json();
+                if (typeof data?.available === 'number' && data.available < 0 && category.available >= 0) {
+                    showToast(
+                        `${category.name} is overspent by ${formatCurrency(Math.abs(data.available))}`,
+                        'warning'
+                    );
+                }
+            }
             setEditing(false);
             onUpdate();
         } catch (err) {

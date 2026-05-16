@@ -84,14 +84,14 @@ export async function GET(request: NextRequest) {
         });
 
         if (!res.ok) {
-            const error = await res.json();
-            return NextResponse.json({ error: 'YNAB API error', details: error }, { status: res.status });
+            const error = await res.json().catch(() => null);
+            console.error('YNAB API error (budgets):', res.status, error);
+            return NextResponse.json({ error: 'YNAB API error' }, { status: res.status });
         }
 
         const data = await res.json();
         return NextResponse.json({
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            budgets: data.data.budgets.map((b: any) => ({
+            budgets: (data.data.budgets as Array<{ id: string; name: string; last_modified_on: string }>).map((b) => ({
                 id: b.id,
                 name: b.name,
                 lastModified: b.last_modified_on,
@@ -120,8 +120,9 @@ export async function POST(request: NextRequest) {
         });
 
         if (!budgetRes.ok) {
-            const error = await budgetRes.json();
-            return NextResponse.json({ error: 'YNAB API error', details: error }, { status: budgetRes.status });
+            const error = await budgetRes.json().catch(() => null);
+            console.error('YNAB API error (import):', budgetRes.status, error);
+            return NextResponse.json({ error: 'YNAB API error' }, { status: budgetRes.status });
         }
 
         const budgetData = await budgetRes.json();
@@ -140,16 +141,13 @@ export async function POST(request: NextRequest) {
         // 1. Import Accounts
         for (const acc of budget.accounts as YNABAccount[]) {
             // Check by ynabId first, then by name
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const existing = await (prisma.account as any).findFirst({ where: { ynabId: acc.id, profileId } })
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                || await (prisma.account as any).findFirst({ where: { name: acc.name, profileId } });
+            const existing = await prisma.account.findFirst({ where: { ynabId: acc.id, profileId } })
+                || await prisma.account.findFirst({ where: { name: acc.name, profileId } });
             if (existing) {
                 accountMap.set(acc.id, existing.id);
                 // Update balance + set ynabId for delta sync
                 // YNAB uses milliunits (1000 = $1), convert to cents (divide by 10)
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                await (prisma.account as any).update({
+                await prisma.account.update({
                     where: { id: existing.id },
                     data: {
                         balance: Math.round(acc.balance / 10),
@@ -160,8 +158,7 @@ export async function POST(request: NextRequest) {
                 });
             } else {
                 // YNAB uses milliunits (1000 = $1), convert to cents (divide by 10)
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const created = await (prisma.account as any).create({
+                const created = await prisma.account.create({
                     data: {
                         name: acc.name,
                         type: acc.type.toLowerCase().replace('_', ''),
@@ -188,22 +185,18 @@ export async function POST(request: NextRequest) {
             if (group.name === 'Internal Master Category') continue;
 
             // Check by ynabId first, then by name
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const existingGroup = await (prisma.categoryGroup as any).findFirst({ where: { ynabId: group.id, profileId } })
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                || await (prisma.categoryGroup as any).findFirst({ where: { name: group.name, profileId } });
+            const existingGroup = await prisma.categoryGroup.findFirst({ where: { ynabId: group.id, profileId } })
+                || await prisma.categoryGroup.findFirst({ where: { name: group.name, profileId } });
 
             if (existingGroup) {
                 categoryGroupMap.set(group.id, existingGroup.id);
                 // Update ynabId for delta sync
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                await (prisma.categoryGroup as any).update({
+                await prisma.categoryGroup.update({
                     where: { id: existingGroup.id },
                     data: { ynabId: group.id },
                 });
             } else {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const created = await (prisma.categoryGroup as any).create({
+                const created = await prisma.categoryGroup.create({
                     data: {
                         name: group.name,
                         sortOrder: groupSortOrder++,
@@ -233,16 +226,13 @@ export async function POST(request: NextRequest) {
             catsByGroup.set(groupId, sortOrder + 1);
 
             // Check by ynabId first, then by name+group
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const existingCat = await (prisma.category as any).findFirst({ where: { ynabId: cat.id } })
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                || await (prisma.category as any).findFirst({ where: { name: cat.name, groupId } });
+            const existingCat = await prisma.category.findFirst({ where: { ynabId: cat.id } })
+                || await prisma.category.findFirst({ where: { name: cat.name, groupId } });
 
             if (existingCat) {
                 categoryMap.set(cat.id, existingCat.id);
                 // Update existing categories with goal info + ynabId for delta sync
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                await (prisma.category as any).update({
+                await prisma.category.update({
                     where: { id: existingCat.id },
                     data: {
                         isHidden: cat.hidden,
@@ -256,8 +246,7 @@ export async function POST(request: NextRequest) {
                     },
                 });
             } else {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const created = await (prisma.category as any).create({
+                const created = await prisma.category.create({
                     data: {
                         name: cat.name,
                         groupId,
@@ -365,10 +354,8 @@ export async function POST(request: NextRequest) {
                 // Check if transaction already exists (by date + amount + account)
                 const amountCents = Math.round(tx.amount / 10);
                 // Check by ynabId first, then by date+amount+account
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const existing = await (prisma.transaction as any).findFirst({ where: { ynabId: tx.id } })
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    || await (prisma.transaction as any).findFirst({
+                const existing = await prisma.transaction.findFirst({ where: { ynabId: tx.id } })
+                    || await prisma.transaction.findFirst({
                         where: {
                             accountId,
                             date: new Date(tx.date),
@@ -377,8 +364,7 @@ export async function POST(request: NextRequest) {
                     });
 
                 if (!existing) {
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    await (prisma.transaction as any).create({
+                    await prisma.transaction.create({
                         data: {
                             date: new Date(tx.date),
                             amount: amountCents,
@@ -396,8 +382,7 @@ export async function POST(request: NextRequest) {
                     transactionCount++;
                 } else if (!existing.ynabId) {
                     // Backfill ynabId on existing transactions for delta sync
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    await (prisma.transaction as any).update({
+                    await prisma.transaction.update({
                         where: { id: existing.id },
                         data: { ynabId: tx.id },
                     });
@@ -471,8 +456,7 @@ export async function POST(request: NextRequest) {
                     
                     // For the most recent month, update category goal progress fields
                     if (monthInfo === sortedMonths[0]) {
-                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                        await (prisma.category as any).update({
+                        await prisma.category.update({
                             where: { id: categoryId },
                             data: {
                                 goalPercentageComplete: cat.goal_percentage_complete,
@@ -504,8 +488,7 @@ export async function POST(request: NextRequest) {
             toBeBudgeted = currentMonthData.data.month.to_be_budgeted;
             
             // Store in settings for the budget page to use
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            await (prisma.settings as any).upsert({
+            await prisma.settings.upsert({
                 where: { id: 'default' },
                 create: { 
                     id: 'default',
@@ -540,6 +523,7 @@ export async function POST(request: NextRequest) {
     } catch (error) {
         console.error('YNAB import error:', error);
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        return NextResponse.json({ error: 'Failed to import from YNAB', details: errorMessage }, { status: 500 });
+        console.error('YNAB import failed:', errorMessage, error);
+        return NextResponse.json({ error: 'Failed to import from YNAB' }, { status: 500 });
     }
 }

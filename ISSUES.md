@@ -244,11 +244,13 @@
 - [x] **FEAT-3: Transaction Search Debouncing**
   - Search input in transactions filters on every keystroke. Added 300ms debounce for smoother UX.
 
-- [ ] **FEAT-4: Proper Pagination**
-  - Currently hard-limited to ~100 transactions. Add infinite scroll or page navigation controls.
+- [x] **FEAT-4: Proper Pagination**
+  - Currently hard-limited to ~100 transactions. Added Prev/Next pagination controls below the Transactions list with "Page X of Y" + "N–M of total" indicator. Offset resets to 0 when filters/search change. API `?limit=100&offset=…` was already supported server-side — only the UI was missing.
 
-- [ ] **FEAT-5: Multi-Currency Consistency**
-  - Read `settings.currency` everywhere instead of hardcoding `'AUD'`. Affects dashboard, reports, and investments.
+- [x] **FEAT-5: Multi-Currency Consistency**
+  - **Problem:** Many components called `formatCurrency(cents)` without passing the user's home currency, so they always rendered as AUD regardless of the Settings → Currency choice.
+  - **Fix:** Introduced a module-level default in `src/lib/utils.ts` (`setDefaultCurrency` / `getDefaultCurrency`). `SettingsProvider` calls `setDefaultCurrency(data.currency)` whenever settings load or change. Every bare `formatCurrency(x)` call now follows the user's setting at render time, with **zero call-site edits** required.
+  - **MSFT/USD safe:** per-asset formatters in `investments/page.tsx` (lines 2069, 2075) keep passing `asset.currency` explicitly, so foreign-currency holdings (e.g. MSFT in USD) continue to display in their native currency. The backend `HOME_CURRENCY = 'AUD'` constants remain as the conversion target since the dataset's AUD-converted totals are pre-computed server-side.
 
 - [ ] **FEAT-6: PWA / Offline Support**
   - Since it's local-first, add a service worker + manifest for full offline-capable progressive web app.
@@ -259,8 +261,186 @@
 - [x] **FEAT-8: Global "New Transaction" Shortcut**
   - Wired global `N` in `KeyboardShortcutsProvider` to navigate to `/transactions?new=1`, and added handling in transactions page to auto-open the new transaction modal.
 
-- [ ] **FEAT-9: Budget Overspending Toasts**
-  - Show a notification/toast when a budget category goes negative after an assignment or transaction.
+- [x] **FEAT-9: Budget Overspending Toasts**
+  - **Scope:** When inline-editing a category assignment in the budget page, if the resulting `available` is negative *and* the previous available was non-negative (i.e. the category just became overspent), show a warning toast: `"<Category> is overspent by $X.XX"`.
+  - **File:** `src/app/budget/page.tsx` (`CategoryRow.handleSave`)
+  - **Note:** Transaction-driven overspend (creating a transaction that pushes a category negative) is not yet covered — would need the transactions POST to either return the affected `MonthlyBudget.available` or trigger a budget recompute. Tracked as `FEAT-9b`. The `BudgetTransferModal` already warns about overspending inline before the user confirms a transfer, so no toast added there.
 
-- [ ] **FEAT-10: CSV Transaction Export**
-  - Add CSV export of transactions alongside the existing JSON backup option.
+- [x] **FEAT-10: CSV Transaction Export**
+  - Added a **Download** button next to *Import CSV* on the Transactions page. Exports all transactions matching the current filters/search (RFC 4180 escaping, UTF-8 BOM so Excel detects encoding, paged fetch up to 50 000 rows). Filename `loot-council-transactions-YYYY-MM-DD.csv`. Columns: Date, Account, Payee, Category, Memo, Amount, Cleared.
+
+---
+
+## Lint & Hygiene Pass — 2026-05-15
+
+- [x] **LH-1: React 19 `setState`-in-effect violation (Sidebar)**
+  - **File:** `src/components/Sidebar.tsx`
+  - **Problem:** Indicator-positioning effect called `setIndicatorY` directly in the effect body, triggering `react-hooks/set-state-in-effect`. Caused cascading renders on every nav change.
+  - **Fix:** Rewrote the effect to subscribe via `requestAnimationFrame` + `ResizeObserver`; `setState` now only fires inside callbacks (idiomatic React 19 "subscribe to external system" pattern). Also auto-repositions when the nav is resized.
+  - **Priority:** Medium
+
+- [x] **LH-2: React 19 purity violation (Investments tax calculator)**
+  - **File:** `src/app/investments/page.tsx`
+  - **Problem:** `Date.now()` called inside the `calcs` `useMemo`, triggering `react-hooks/purity`. Memo could produce unstable results.
+  - **Fix:** Captured `now` once at mount via `useState(() => Date.now())` and added it to the memo deps. Stable per session, which matches the calculator's intent.
+  - **Priority:** Medium
+
+- [x] **LH-3: Stale ref in Toast cleanup**
+  - **File:** `src/components/Toast.tsx`
+  - **Problem:** `timersRef.current` read inside the unmount cleanup — value could differ from what the effect captured.
+  - **Fix:** Copy `timersRef.current` to a local variable inside the effect body.
+  - **Priority:** Low
+
+- [x] **LH-4: Dead unused-vars in budget API routes (7 warnings)**
+  - **Files:** `src/app/api/budget/auto-assign/route.ts`, `src/app/api/budget/forecast/route.ts`, `src/app/api/budget/route.ts`, `src/app/api/budget/transfer/route.ts`
+  - **Problem:** Stale local variables (`currentAssigned`, `forecastStart`, `remaining`, `totalInflow`, `oldAssigned`), an unused `profileId` capture in two POSTs, and an unused `calculateReadyToAssign` import.
+  - **Fix:** Removed dead reads and the unused import. `totalInflow` was tracked but never returned — also removed the two write sites.
+  - **Priority:** Low
+
+- [x] **LH-5: YNAB sync — 20× `(prisma.X as any)` casts**
+  - **File:** `src/app/api/import/ynab-api/sync/route.ts`
+  - **Problem:** Type casts dated from when the Prisma client lacked `ynabId`. Schema and migration now include it, so casts were suppressing real type safety on a mutation-heavy sync path. Also one stale `eslint-disable-next-line` directive.
+  - **Fix:** Stripped all 20 `(prisma.X as any)` casts plus accompanying `// eslint-disable-next-line @typescript-eslint/no-explicit-any` directives. Also dropped a leftover `: any[]` on `allCategories`. Type-check + lint pass clean.
+  - **Priority:** Medium — restored type safety on the import path
+
+- [x] **LH-6: Stray `tmp-*` files at repo root**
+  - **Files:** `tmp-verify.mts`, `tmp-verify-result.txt`
+  - **Problem:** Leftover debug scaffolding from a previous session, ~16 KB committed at the root.
+  - **Fix:** Deleted both.
+  - **Priority:** Low
+
+---
+
+## Open Follow-ups Surfaced During the Pass
+
+- [x] **SEC-5: Budget POST + Transfer — no profile-scope verification**
+  - **Files:** `src/app/api/budget/route.ts` (POST), `src/app/api/budget/transfer/route.ts` (POST)
+  - **Problem:** Both routes accepted a `categoryId` from the request body and operated on it without confirming the category belongs to the active profile. A user with two profiles could assign/transfer money to a category in the other profile by guessing a UUID.
+  - **Fix:** Both routes now call `getProfileId(request)` and replace the previous `findUnique({ where: { id } })` with `findFirst({ where: { id, group: { profileId } } })`. Cross-profile IDs return 404 (not 403) to avoid leaking existence. Applied to budget POST and all three transfer cases (cat→RTA, RTA→cat, cat→cat).
+  - **Priority:** Medium — data isolation between profiles
+
+- [x] **SEC-6: `xlsx@0.18.5` → `xlsx@0.20.3` + full dependency audit clean-up**
+  - **Original problem:** Prototype pollution (GHSA-4r6h-8v6p-xvw6) and ReDoS (GHSA-5pgg-2g60-mjqj). npm registry is stuck at 0.18.5; SheetJS publishes patched builds only via `cdn.sheetjs.com`.
+  - **Fix:** Switched `package.json` dependency to `"xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"` (SheetJS's documented install). All `XLSX.read` / `XLSX.utils.sheet_to_json` call sites in `src/app/api/import/ynab/route.ts` remain API-compatible.
+  - **Also fixed in the same sweep:**
+    - Bumped `next` and `eslint-config-next` from `16.1.6` to `^16.2.6`, clearing 8 high-severity Next.js advisories (HTTP smuggling, middleware/proxy bypass, SSRF via WS upgrades, RSC cache poisoning, image-cache exhaustion, etc.).
+    - Added `"overrides": { "postcss": "^8.5.10" }` to force-update Next's bundled postcss past the XSS-via-unescaped-`</style>` advisory.
+    - `npm audit fix` cleared picomatch ReDoS + method-injection advisories (transitive).
+  - **Result:** `npm audit` reports **0 vulnerabilities** (down from 11). `npm run build` succeeds in 3.1s with no warnings, lint clean.
+  - **Priority:** Low (local-first) — done anyway
+
+- [x] **PERF-2b: `Date.now()` inside `superAssetsNeedingUpdate` filter**
+  - **File:** `src/app/investments/page.tsx`
+  - **Problem:** Same React 19 purity smell as LH-2; impure call inside a render-time `.filter()` callback. ESLint missed it (the rule walks into callbacks differently), but the impurity is real.
+  - **Fix:** Added `const [nowMs] = useState(() => Date.now())` near the other state declarations in `InvestmentsPage` and reused it in the filter callback. Stable per session.
+  - **Priority:** Low
+
+---
+
+## Carry-over
+
+- [ ] **FEAT-9b: Overspending toast on transaction creation**
+  - **Problem:** FEAT-9 covers the budget-assignment path (inline edit on Budget page). When a transaction pushes a category negative, no toast fires.
+  - **Fix:** Extend `POST /api/transactions` to compute and return the affected category's post-transaction `available` value when it's now negative, then toast from `TransactionForm.onSuccess`. Needs to apply the same rollover+activity calculation the GET endpoint uses.
+  - **Priority:** Low
+
+---
+
+## Quick-Wins Pass — 2026-05-15
+
+- [x] **QW-1: `(prisma.X as any)` casts in remaining YNAB routes**
+  - **Files:** `src/app/api/import/ynab-api/route.ts`, `src/app/api/import/ynab/route.ts`
+  - **Problem:** LH-5 fixed only the `sync` sub-route; the parent YNAB import routes still had ~23 type casts and stale `// eslint-disable-next-line @typescript-eslint/no-explicit-any` directives.
+  - **Fix:** Bulk-stripped all casts, plus replaced the remaining `any` parameter types with a `YNABRow = Record<string, unknown>` helper and tightened the `data.data.budgets.map` callback to a structural type. `YNABTransaction` and `YNABBudget` got an `[key: string]: unknown` index signature so they remain assignable to `YNABRow`. Type-check + lint pass.
+  - **Priority:** Medium
+
+- [x] **QW-2: API error-detail leaks in YNAB routes**
+  - **Files:** `src/app/api/import/ynab-api/route.ts` (3 sites), `src/app/api/import/ynab-api/sync/route.ts` (1 site)
+  - **Problem:** SEC-4 was marked complete but missed four routes still returning raw `error` / `errorMessage` to the client (`details: error`).
+  - **Fix:** Removed `details:` from all four responses; the upstream error is now logged server-side via `console.error` (with full context) and the client sees only a generic `{ error: 'YNAB API error' }` / `{ error: 'Delta sync failed' }`.
+  - **Priority:** Medium
+
+- [x] **QW-3: Stale placeholder files deleted**
+  - Deleted `public/file.svg`, `public/globe.svg`, `public/next.svg`, `public/vercel.svg`, `public/window.svg` (default `create-next-app` placeholders, zero references in the codebase).
+  - Deleted `docs/project-scan-report.json` (one-off scan output from 2026-02-12).
+  - Deleted `copilot-instructions.md` at root (Claude-Code workflow rules referencing `tasks/lessons.md` etc — never read by GitHub Copilot, which uses `.github/copilot-instructions.md`).
+  - **Priority:** Low
+
+- [x] **QW-4: Favicon wired up**
+  - **Problem:** `loot-council.ico` was committed at the repo root (gitignored, but always present locally). Next.js never served it; every browser tab showed the default Next.js icon.
+  - **Fix:** Moved to `src/app/icon.ico` — Next 13+ App Router auto-detects this convention and emits `<link rel="icon">` automatically. No metadata changes needed.
+  - **Priority:** Low
+
+- [x] **QW-5: Native `alert()` / `confirm()` replaced with Toast + ConfirmDialog**
+  - **Problem:** 13 `alert()` calls (settings + scheduled-transactions) and 6 `confirm()` calls (settings, investments, transactions, budget templates, transaction rules, scheduled transactions) bypassed the polished UI system. Native dialogs break the dark theme, lose focus context, and are visually jarring.
+  - **Fix:** Adopted the previously-dead `useConfirmDialog()` hook and `useToast()` across **all six files**. Every status alert is now a typed toast (`success` / `error` / `info` / `warning`); every confirm is a themed `<ConfirmDialog>` with proper title, message, variant, and confirm button label. Dialog renderer (`<Dialog />`) added once per component near the JSX root.
+  - **Files touched:** `src/app/settings/page.tsx`, `src/app/transactions/page.tsx`, `src/app/investments/page.tsx`, `src/components/ScheduledTransactions.tsx`, `src/components/BudgetTemplatesModal.tsx`, `src/components/TransactionRulesSettings.tsx`
+  - **Result:** `grep "alert\\(|if \\(!?confirm\\("` returns zero matches across `src/`.
+  - **Priority:** Medium
+
+- [x] **QW-6: Drop dead unused exports**
+  - **`src/lib/utils.ts`** — Removed `getDefaultCurrency()` (added in FEAT-5, never imported externally).
+  - **`src/lib/prisma.ts`** — Initially removed the named `prisma` export then restored it after build surfaced 11 routes still importing `import { prisma }` (default and named both used). Cosmetic cleanup deferred.
+  - **Priority:** Low
+
+---
+
+## UX Improvements Pass — 2026-05-15
+
+- [x] **UX-1: Date-range presets on Transactions filter**
+  - **File:** `src/app/transactions/page.tsx`
+  - **Fix:** Added a "Quick range" row of 6 preset buttons inside the filters panel — *This month / Last month / Last 30 days / Last 90 days / This year / All time*. Each computes the start+end dates locally and sets the filter state. Resets through the existing "Clear All" button.
+  - **Priority:** Low — significant ergonomics win
+
+- [x] **UX-2: Persist Transactions filters per profile in localStorage**
+  - **File:** `src/app/transactions/page.tsx`
+  - **Problem:** Every page reload wiped the filter state — annoying when investigating one account/category over time.
+  - **Fix:** Filters and the *hide reconciliation adjustments* toggle now save to `localStorage` under `loot-council-tx-filters-{profileId}`. Loaded on profile change/mount, persisted on every change after hydration. Profile-scoped so households with separate profiles don't bleed filters into each other.
+  - **Priority:** Low
+
+- [x] **UX-3: Keyboard shortcuts help modal — already wired** ✓
+  - **File:** `src/components/KeyboardShortcutsProvider.tsx`
+  - **Status:** Investigated and the `?` keypress already opens a themed help modal listing 3 shortcut groups (Navigation, Actions, List Navigation). My audit was wrong — no work needed.
+  - **Priority:** —
+
+- [x] **UX-4: Dashboard delta widgets — net worth vs last month**
+  - **Files:** `src/app/page.tsx`, `src/app/api/networth/route.ts` (no changes needed; data already present)
+  - **Problem:** Dashboard already had a `netWorthChange` field hardcoded to `0` and an unused percentage badge slot.
+  - **Fix:** Switched dashboard fetch from `?months=1` to `?months=2` to receive the prior month-end snapshot. Computes `netWorthChange` (percent, 1-decimal) and `netWorthChangeAmount` (absolute cents). UI renders the percent badge (existing slot) plus a new sub-line showing the absolute delta — `+$2,400 vs last month` — and a hover title that mirrors the same. Uses arrow-up/arrow-down + success/danger colour for direction.
+  - **Priority:** Medium — high-visibility dashboard polish
+
+---
+
+## Reports Improvements Pass — 2026-05-16
+
+- [x] **RPT-1: Drill-down from chart segments**
+  - **Files:** `src/app/reports/page.tsx`, `src/app/transactions/page.tsx`
+  - **What:** Clicking a chart segment now navigates to `/transactions` with the relevant filters pre-applied — categoryId + date range for the spending pie and Budget vs Actual rows, search query + date range for Payee bars, date range only for Income/Expense bars.
+  - **Plumbing:** Enriched `SpendingData` with `categoryId` (was previously keyed only by name) and `IncomeExpenseData` with `startDate`/`endDate` ISO strings. Made the Transactions page honour `?accountId`, `?categoryId`, `?startDate`, `?endDate`, `?q` URL params (previously only `?new=1` was respected); when present, filters auto-apply, the filter panel auto-opens, and the URL is cleaned up via `history.replaceState`.
+  - **Net Worth and Category Trends** are not drill-down-enabled yet (no obvious transaction-level mapping for line points without a category-id legend join).
+  - **Priority:** Medium — most-requested usability win
+
+- [x] **RPT-2: Global "Exclude categories" filter persisted per profile**
+  - **Files:** `src/app/reports/page.tsx`, `src/app/api/reports/advanced/route.ts`
+  - **What:** Replaced the per-tab "Hide categories" dropdown on Spending Breakdown with a single global control that applies to **every** report tab. Defaults to `['Uncategorized']` (matching the previous Spending behaviour) and persists per profile in `localStorage` under `loot-council-reports-excluded-{profileId}`.
+  - **API:** `/api/reports/advanced` now accepts `?excludeCategories=Name1,Name2`. Each report type (income-expense, spending-by-payee, category-trends, budget-vs-actual, top-movers) drops matching transactions before aggregation. Budget-vs-actual also filters the `MonthlyBudget` query so excluded categories never show up in the budget side either.
+  - **Picker:** Populated from `/api/categories` (full list, including categories with no spending yet), sorted alphabetically with `Uncategorized` pinned first.
+  - **Priority:** Medium
+
+- [x] **RPT-3: Savings Rate over time tab**
+  - **Files:** `src/app/reports/_tabs/SavingsRateTab.tsx` (new), `src/app/reports/page.tsx`
+  - **What:** New tab. Reuses the income-expense endpoint, computes `(income − expense) / income × 100` per month. Line chart with a 20% target reference line, plus three summary cards: current month, 3-month rolling average, all-time average (income-weighted to avoid low-income months dominating). Detail table at the bottom listing each month's income, expense, savings, and rate.
+  - **Colour-coding:** Green ≥ 20% target, amber 0–20%, red below 0%.
+  - **Priority:** Medium
+
+- [x] **RPT-4: Top Movers vs Last Month / Last Year tab**
+  - **Files:** `src/app/reports/_tabs/TopMoversTab.tsx` (new), `src/app/api/reports/advanced/route.ts` (new `top-movers` report type), `src/app/reports/page.tsx`
+  - **What:** New tab that surfaces the categories whose spending changed most between two periods (current month vs last month, or current month vs same month last year). Three summary cards (current total, previous total, change %), then side-by-side cards for top 5 increases and top 5 decreases with old/new amounts. A full sortable table of all significant movers (≥ $5 absolute change) sits below.
+  - **Drill-down:** Every mover card and table row is clickable — opens that category's transactions for the relevant month.
+  - **Server-side noise filter:** Drops sub-$5 changes so the lists don't fill with rounding-level wiggles.
+  - **Priority:** Medium-High — best "actionable insight" addition
+
+- [ ] **RPT-5: Refactor `src/app/reports/page.tsx` into per-tab files**
+  - **Why:** Page is currently 1,400+ lines after additions. The two new tabs (Savings Rate, Top Movers) already live under `src/app/reports/_tabs/` as standalone components — this seeds the per-tab pattern. Remaining 6 tabs (Spending, Income/Expense, Budget vs Actual, Net Worth, By Payee, Category Trends) still inline in the parent.
+  - **Plan:** Extract each remaining tab to its own file under `_tabs/`, taking `currency` + `excludeCategoryNames` as props. Each tab manages its own data + UI state (range dropdown, etc.) internally. Parent shrinks to a tab switcher.
+  - **Priority:** Low — pure code-organisation, no user-visible change. Tackle in a fresh context window to keep the diff focused.

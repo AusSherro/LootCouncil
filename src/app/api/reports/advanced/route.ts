@@ -10,6 +10,16 @@ export async function GET(request: NextRequest) {
         const startDate = searchParams.get('startDate');
         const endDate = searchParams.get('endDate');
         const months = parseInt(searchParams.get('months') || '12');
+        // Comma-separated category names to drop from aggregation (e.g. 'Uncategorized,Transfers').
+        const excludeCategoriesParam = searchParams.get('excludeCategories') || '';
+        const excludeCategorySet = new Set(
+            excludeCategoriesParam
+                .split(',')
+                .map(s => s.trim())
+                .filter(Boolean)
+        );
+        const isExcluded = (name: string | null | undefined) =>
+            excludeCategorySet.has(name?.trim() || 'Uncategorized');
 
         // Calculate date range - months=0 means "all time"
         let start: Date | undefined;
@@ -28,15 +38,20 @@ export async function GET(request: NextRequest) {
         const dateFilter = start ? { gte: start, lte: end } : undefined;
 
         if (reportType === 'income-expense') {
-            // Monthly income vs expense trends
+            // Monthly income vs expense trends.
+            // Excludes transfer transactions and reconciliation adjustments —
+            // neither is real income or spending.
             const transactions = await prisma.transaction.findMany({
                 where: {
                     account: { profileId },
                     ...(dateFilter && { date: dateFilter }),
+                    transferId: null,
+                    NOT: { payee: { contains: 'Reconciliation Adjustment' } },
                 },
                 select: {
                     date: true,
                     amount: true,
+                    category: { select: { name: true } },
                 },
                 orderBy: { date: 'asc' },
             });
@@ -49,8 +64,12 @@ export async function GET(request: NextRequest) {
                 const existing = monthlyData.get(month) || { income: 0, expense: 0 };
 
                 if (t.amount > 0) {
+                    // Income always counts (we don't exclude positive amounts by category —
+                    // doing so hides paychecks that landed in 'Uncategorized').
                     existing.income += t.amount;
                 } else {
+                    // Apply category exclusion to expenses only.
+                    if (isExcluded(t.category?.name)) continue;
                     existing.expense += Math.abs(t.amount);
                 }
 
@@ -68,22 +87,27 @@ export async function GET(request: NextRequest) {
         }
 
         if (reportType === 'spending-by-payee') {
-            // Spending grouped by payee
+            // Spending grouped by payee. Skip transfers and reconciliation
+            // adjustments — they'd otherwise dominate the chart.
             const transactions = await prisma.transaction.findMany({
                 where: {
                     account: { profileId },
                     ...(dateFilter && { date: dateFilter }),
                     amount: { lt: 0 },
+                    transferId: null,
+                    NOT: { payee: { contains: 'Reconciliation Adjustment' } },
                 },
                 select: {
                     payee: true,
                     amount: true,
+                    category: { select: { name: true } },
                 },
             });
 
             const payeeData = new Map<string, { total: number; count: number }>();
 
             for (const t of transactions) {
+                if (isExcluded(t.category?.name)) continue;
                 // Handle null, undefined, or empty string payees
                 const payeeName = t.payee?.trim() || 'Unknown';
                 const existing = payeeData.get(payeeName) || { total: 0, count: 0 };
@@ -109,6 +133,8 @@ export async function GET(request: NextRequest) {
                     account: { profileId },
                     ...(dateFilter && { date: dateFilter }),
                     amount: { lt: 0 }, // Only expenses
+                    transferId: null,
+                    NOT: { payee: { contains: 'Reconciliation Adjustment' } },
                     ...(categoryId && { categoryId }),
                 },
                 select: {
@@ -124,8 +150,9 @@ export async function GET(request: NextRequest) {
             const allCategories = new Set<string>();
 
             for (const t of transactions) {
-                const month = t.date.toLocaleDateString('en-AU', { month: 'short', year: '2-digit' });
                 const catName = t.category?.name || 'Uncategorized';
+                if (excludeCategorySet.has(catName)) continue;
+                const month = t.date.toLocaleDateString('en-AU', { month: 'short', year: '2-digit' });
                 allCategories.add(catName);
 
                 if (!monthCategoryData.has(month)) {
@@ -180,6 +207,9 @@ export async function GET(request: NextRequest) {
                 where: {
                     month: { in: monthsToCheck },
                     category: { group: { profileId } },
+                    ...(excludeCategorySet.size > 0 && {
+                        category: { group: { profileId }, name: { notIn: Array.from(excludeCategorySet) } },
+                    }),
                 },
                 include: {
                     category: {
@@ -188,13 +218,20 @@ export async function GET(request: NextRequest) {
                 },
             });
 
-            // Get actual spending per category per month
+            // Get actual spending per category per month (skipping transfers —
+            // they have categoryId=null already, but keep the filter explicit —
+            // and reconciliation adjustments).
             const transactions = await prisma.transaction.findMany({
                 where: {
                     account: { profileId },
                     ...(dateFilter && { date: dateFilter }),
                     amount: { lt: 0 },
                     categoryId: { not: null },
+                    transferId: null,
+                    NOT: { payee: { contains: 'Reconciliation Adjustment' } },
+                    ...(excludeCategorySet.size > 0 && {
+                        category: { name: { notIn: Array.from(excludeCategorySet) } },
+                    }),
                 },
                 select: {
                     date: true,
@@ -372,6 +409,139 @@ export async function GET(request: NextRequest) {
                 .reverse();
 
             return NextResponse.json({ report: 'net-worth-trend', data });
+        }
+
+        if (reportType === 'top-movers') {
+            // Compare current period spending per category vs a previous period.
+            // Surfaces the categories that changed most (subscription creep,
+            // seasonal spikes, lifestyle inflation).
+            const monthParam = searchParams.get('month'); // 'YYYY-MM' — defaults to current
+            const compareWith = searchParams.get('compareWith') || 'last-month'; // 'last-month' | 'last-year'
+
+            const now = new Date();
+            const [curYear, curMonth] = monthParam
+                ? monthParam.split('-').map(Number)
+                : [now.getFullYear(), now.getMonth() + 1];
+
+            const currentStart = new Date(curYear, curMonth - 1, 1);
+            const currentEnd = new Date(curYear, curMonth, 0, 23, 59, 59);
+
+            let previousStart: Date;
+            let previousEnd: Date;
+            if (compareWith === 'last-year') {
+                previousStart = new Date(curYear - 1, curMonth - 1, 1);
+                previousEnd = new Date(curYear - 1, curMonth, 0, 23, 59, 59);
+            } else {
+                previousStart = new Date(curYear, curMonth - 2, 1);
+                previousEnd = new Date(curYear, curMonth - 1, 0, 23, 59, 59);
+            }
+
+            // Fetch both periods in parallel (excluding transfers and
+            // reconciliation adjustments — neither is real spending).
+            const [currentTxns, previousTxns] = await Promise.all([
+                prisma.transaction.findMany({
+                    where: {
+                        account: { profileId },
+                        date: { gte: currentStart, lte: currentEnd },
+                        amount: { lt: 0 },
+                        transferId: null,
+                        NOT: { payee: { contains: 'Reconciliation Adjustment' } },
+                    },
+                    select: {
+                        amount: true,
+                        categoryId: true,
+                        category: { select: { id: true, name: true } },
+                    },
+                }),
+                prisma.transaction.findMany({
+                    where: {
+                        account: { profileId },
+                        date: { gte: previousStart, lte: previousEnd },
+                        amount: { lt: 0 },
+                        transferId: null,
+                        NOT: { payee: { contains: 'Reconciliation Adjustment' } },
+                    },
+                    select: {
+                        amount: true,
+                        categoryId: true,
+                        category: { select: { id: true, name: true } },
+                    },
+                }),
+            ]);
+
+            // Group both by category, applying the global exclude filter.
+            const groupByCategory = (txns: typeof currentTxns) => {
+                const map = new Map<string, { categoryId: string | null; categoryName: string; total: number }>();
+                for (const t of txns) {
+                    const name = t.category?.name || 'Uncategorized';
+                    if (excludeCategorySet.has(name)) continue;
+                    const key = t.category?.id || `__uncat__`;
+                    const existing = map.get(key) || {
+                        categoryId: t.category?.id || null,
+                        categoryName: name,
+                        total: 0,
+                    };
+                    existing.total += Math.abs(t.amount);
+                    map.set(key, existing);
+                }
+                return map;
+            };
+
+            const currentMap = groupByCategory(currentTxns);
+            const previousMap = groupByCategory(previousTxns);
+
+            // Build the union of category keys.
+            const allKeys = new Set([...currentMap.keys(), ...previousMap.keys()]);
+            const movers = Array.from(allKeys).map(key => {
+                const cur = currentMap.get(key);
+                const prev = previousMap.get(key);
+                const currentTotal = (cur?.total || 0) / 100;
+                const previousTotal = (prev?.total || 0) / 100;
+                const delta = currentTotal - previousTotal;
+                const deltaPercent = previousTotal > 0
+                    ? (delta / previousTotal) * 100
+                    : (currentTotal > 0 ? 100 : 0);
+                return {
+                    categoryId: cur?.categoryId || prev?.categoryId || null,
+                    categoryName: cur?.categoryName || prev?.categoryName || 'Uncategorized',
+                    currentTotal,
+                    previousTotal,
+                    delta,
+                    deltaPercent,
+                };
+            });
+
+            // Drop micro-noise (< $5 absolute change) so the lists are meaningful.
+            const significant = movers.filter(m => Math.abs(m.delta) >= 5);
+
+            const topIncreases = significant
+                .filter(m => m.delta > 0)
+                .sort((a, b) => b.delta - a.delta)
+                .slice(0, 5);
+
+            const topDecreases = significant
+                .filter(m => m.delta < 0)
+                .sort((a, b) => a.delta - b.delta)
+                .slice(0, 5);
+
+            const totalCurrent = movers.reduce((sum, m) => sum + m.currentTotal, 0);
+            const totalPrevious = movers.reduce((sum, m) => sum + m.previousTotal, 0);
+
+            return NextResponse.json({
+                report: 'top-movers',
+                compareWith,
+                current: {
+                    month: `${curYear}-${String(curMonth).padStart(2, '0')}`,
+                    total: totalCurrent,
+                },
+                previous: {
+                    month: `${previousStart.getFullYear()}-${String(previousStart.getMonth() + 1).padStart(2, '0')}`,
+                    total: totalPrevious,
+                },
+                topIncreases,
+                topDecreases,
+                allMovers: significant.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta)),
+            });
         }
 
         return NextResponse.json({ error: 'Invalid report type' }, { status: 400 });

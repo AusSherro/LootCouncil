@@ -1,16 +1,18 @@
 'use client';
 
-import { ScrollText, Plus, Search, Filter, Check, X, RefreshCw, Calendar, Upload, CheckSquare, Square, Trash2, Tag, Inbox } from 'lucide-react';
+import { ScrollText, Plus, Search, Filter, Check, X, RefreshCw, Calendar, Upload, Download, CheckSquare, Square, Trash2, Tag, Inbox, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import TransactionForm from '@/components/TransactionForm';
 import ScheduledTransactions from '@/components/ScheduledTransactions';
 import CSVImportModal from '@/components/CSVImportModal';
 import { useToast } from '@/components/Toast';
+import { useConfirmDialog } from '@/components/ConfirmDialog';
 import { useKeyboardShortcuts } from '@/lib/useKeyboardShortcuts';
 import { SkeletonTransactionList } from '@/components/Skeleton';
 import { InlineCategorySelect } from '@/components/InlineEdit';
 import { formatCurrency } from '@/lib/utils';
 import { useSettings } from '@/components/SettingsProvider';
+import { useProfile } from '@/components/ProfileProvider';
 import { fetchJsonCached } from '@/lib/clientCache';
 
 interface Transaction {
@@ -176,7 +178,9 @@ function TransactionRow({
 
 export default function TransactionsPage() {
     const { showToast } = useToast();
+    const { confirm: confirmDialog, Dialog: ConfirmDialogModal } = useConfirmDialog();
     const { settings } = useSettings();
+    const { activeProfile } = useProfile();
     const currency = settings?.currency || 'AUD';
     const [activeTab, setActiveTab] = useState<'all' | 'scheduled'>('all');
     const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -205,6 +209,95 @@ export default function TransactionsPage() {
         cleared: 'all',
     });
     const [hideReconciliationAdjustments, setHideReconciliationAdjustments] = useState(true);
+    const filtersHydrated = useRef(false);
+
+    // Per-profile localStorage key for persisting filters across reloads.
+    const filterStorageKey = activeProfile ? `loot-council-tx-filters-${activeProfile.id}` : null;
+
+    // Load saved filters when profile changes.
+    useEffect(() => {
+        if (typeof window === 'undefined' || !filterStorageKey) return;
+        try {
+            const raw = localStorage.getItem(filterStorageKey);
+            if (raw) {
+                const parsed = JSON.parse(raw) as Partial<Filters> & { hideReconciliationAdjustments?: boolean };
+                setFilters(prev => ({
+                    accountId: parsed.accountId ?? prev.accountId,
+                    categoryId: parsed.categoryId ?? prev.categoryId,
+                    startDate: parsed.startDate ?? prev.startDate,
+                    endDate: parsed.endDate ?? prev.endDate,
+                    minAmount: parsed.minAmount ?? prev.minAmount,
+                    maxAmount: parsed.maxAmount ?? prev.maxAmount,
+                    cleared: parsed.cleared ?? prev.cleared,
+                }));
+                if (typeof parsed.hideReconciliationAdjustments === 'boolean') {
+                    setHideReconciliationAdjustments(parsed.hideReconciliationAdjustments);
+                }
+            }
+        } catch {
+            // Ignore corrupt JSON.
+        }
+        filtersHydrated.current = true;
+    }, [filterStorageKey]);
+
+    // Persist filters whenever they change (after the initial hydration).
+    useEffect(() => {
+        if (typeof window === 'undefined' || !filterStorageKey || !filtersHydrated.current) return;
+        try {
+            localStorage.setItem(
+                filterStorageKey,
+                JSON.stringify({ ...filters, hideReconciliationAdjustments })
+            );
+        } catch {
+            // Quota / privacy mode — silently ignore.
+        }
+    }, [filters, hideReconciliationAdjustments, filterStorageKey]);
+
+    // Date-range preset helpers (FEAT-4 ergonomics)
+    const fmtDate = (d: Date) => d.toISOString().slice(0, 10);
+    function applyDatePreset(preset: 'thisMonth' | 'lastMonth' | 'last30' | 'last90' | 'thisYear' | 'allTime') {
+        const now = new Date();
+        let start = '';
+        let end = fmtDate(now);
+        switch (preset) {
+            case 'thisMonth':
+                start = fmtDate(new Date(now.getFullYear(), now.getMonth(), 1));
+                break;
+            case 'lastMonth': {
+                const s = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                const e = new Date(now.getFullYear(), now.getMonth(), 0);
+                start = fmtDate(s);
+                end = fmtDate(e);
+                break;
+            }
+            case 'last30': {
+                const s = new Date(now);
+                s.setDate(s.getDate() - 29);
+                start = fmtDate(s);
+                break;
+            }
+            case 'last90': {
+                const s = new Date(now);
+                s.setDate(s.getDate() - 89);
+                start = fmtDate(s);
+                break;
+            }
+            case 'thisYear':
+                start = fmtDate(new Date(now.getFullYear(), 0, 1));
+                break;
+            case 'allTime':
+                start = '';
+                end = '';
+                break;
+        }
+        setFilters(prev => ({ ...prev, startDate: start, endDate: end }));
+    }
+
+    // FEAT-4: pagination state
+    const PAGE_SIZE = 100;
+    const [offset, setOffset] = useState(0);
+    const [total, setTotal] = useState(0);
+    const [exporting, setExporting] = useState(false);
 
     // Debounce search input by 300ms
     useEffect(() => {
@@ -218,6 +311,33 @@ export default function TransactionsPage() {
         const params = new URLSearchParams(window.location.search);
         if (params.get('new') === '1') {
             setShowForm(true);
+            window.history.replaceState({}, '', '/transactions');
+            return;
+        }
+
+        // Drill-down support: when navigated from Reports with filter params,
+        // pre-apply the filters and open the panel so the user sees the active state.
+        const next: Partial<Filters> = {};
+        const accountId = params.get('accountId');
+        const categoryId = params.get('categoryId');
+        const startDate = params.get('startDate');
+        const endDate = params.get('endDate');
+        const minAmount = params.get('minAmount');
+        const maxAmount = params.get('maxAmount');
+        const q = params.get('q');
+        if (accountId) next.accountId = accountId;
+        if (categoryId) next.categoryId = categoryId;
+        if (startDate) next.startDate = startDate;
+        if (endDate) next.endDate = endDate;
+        if (minAmount) next.minAmount = minAmount;
+        if (maxAmount) next.maxAmount = maxAmount;
+        if (Object.keys(next).length > 0) {
+            setFilters(prev => ({ ...prev, ...next }));
+            setShowFilters(true);
+            window.history.replaceState({}, '', '/transactions');
+        }
+        if (q) {
+            setSearchQuery(q);
             window.history.replaceState({}, '', '/transactions');
         }
     }, []);
@@ -270,30 +390,39 @@ export default function TransactionsPage() {
     }
 
     async function handleBulkDelete() {
-        if (!confirm(`Delete ${selectedIds.size} transactions?`)) return;
-
-        try {
-            const res = await fetch('/api/transactions/bulk', {
-                method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    transactionIds: Array.from(selectedIds),
-                }),
-            });
-            if (!res.ok) throw new Error('Server returned an error');
-            setSelectedIds(new Set());
-            fetchTransactions();
-        } catch (err) {
-            console.error('Bulk delete failed:', err);
-            showToast(`Failed to delete ${selectedIds.size} transactions. Please try again.`, 'error');
-        }
+        confirmDialog({
+            title: `Delete ${selectedIds.size} transaction${selectedIds.size === 1 ? '' : 's'}`,
+            message: 'These transactions will be permanently removed and account balances will be recalculated. This cannot be undone.',
+            variant: 'danger',
+            confirmText: 'Delete',
+            onConfirm: async () => {
+                try {
+                    const res = await fetch('/api/transactions/bulk', {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            transactionIds: Array.from(selectedIds),
+                        }),
+                    });
+                    if (!res.ok) throw new Error('Server returned an error');
+                    setSelectedIds(new Set());
+                    fetchTransactions();
+                } catch (err) {
+                    console.error('Bulk delete failed:', err);
+                    showToast(`Failed to delete ${selectedIds.size} transactions. Please try again.`, 'error');
+                }
+            },
+        });
     }
     const [activeFiltersCount, setActiveFiltersCount] = useState(0);
 
     const fetchTransactions = useCallback(async (signal?: AbortSignal) => {
         setLoading(true);
         try {
-            const params = new URLSearchParams({ limit: '100' });
+            const params = new URLSearchParams({
+                limit: String(PAGE_SIZE),
+                offset: String(offset),
+            });
 
             if (filters.accountId) params.set('accountId', filters.accountId);
             if (filters.categoryId) params.set('categoryId', filters.categoryId);
@@ -308,13 +437,14 @@ export default function TransactionsPage() {
             const res = await fetch(`/api/transactions?${params.toString()}`, { signal });
             const data = await res.json();
             setTransactions(data.transactions || []);
+            setTotal(typeof data.total === 'number' ? data.total : (data.transactions?.length ?? 0));
         } catch (err) {
             if (err instanceof DOMException && err.name === 'AbortError') return;
             console.error('Failed to fetch transactions:', err);
         } finally {
             setLoading(false);
         }
-    }, [filters, debouncedSearch, hideReconciliationAdjustments]);
+    }, [filters, debouncedSearch, hideReconciliationAdjustments, offset]);
 
     // Inline category change handler
     const handleInlineCategoryChange = useCallback(async (transactionId: string, categoryId: string) => {
@@ -340,6 +470,11 @@ export default function TransactionsPage() {
         fetchTransactions(controller.signal);
         return () => controller.abort();
     }, [fetchTransactions]);
+
+    // FEAT-4: reset to first page when filters/search/visibility toggle changes
+    useEffect(() => {
+        setOffset(0);
+    }, [filters, debouncedSearch, hideReconciliationAdjustments]);
 
     useEffect(() => {
         let cancelled = false;
@@ -457,6 +592,72 @@ export default function TransactionsPage() {
             maxAmount: '',
             cleared: 'all',
         });
+        setOffset(0);
+    }
+
+    // FEAT-10: CSV export of all transactions matching the current filters.
+    // Pulls every page (capped at 50k for safety) and serializes client-side.
+    async function handleExportCSV() {
+        if (exporting) return;
+        setExporting(true);
+        try {
+            const params = new URLSearchParams({ limit: '500', offset: '0' });
+            if (filters.accountId) params.set('accountId', filters.accountId);
+            if (filters.categoryId) params.set('categoryId', filters.categoryId);
+            if (filters.startDate) params.set('startDate', filters.startDate);
+            if (filters.endDate) params.set('endDate', filters.endDate);
+            if (filters.minAmount) params.set('minAmount', filters.minAmount);
+            if (filters.maxAmount) params.set('maxAmount', filters.maxAmount);
+            if (filters.cleared !== 'all') params.set('cleared', String(filters.cleared === 'cleared'));
+            if (debouncedSearch) params.set('q', debouncedSearch);
+            params.set('hideReconciliationAdjustments', String(hideReconciliationAdjustments));
+
+            const all: Transaction[] = [];
+            const MAX_ROWS = 50_000;
+            for (let off = 0; off < MAX_ROWS; off += 500) {
+                params.set('offset', String(off));
+                const res = await fetch(`/api/transactions?${params.toString()}`);
+                if (!res.ok) throw new Error('Fetch failed');
+                const data = await res.json();
+                const batch: Transaction[] = data.transactions || [];
+                all.push(...batch);
+                if (batch.length < 500) break;
+            }
+
+            // RFC 4180 escaping: wrap in quotes if the field contains a comma,
+            // quote, or newline; double internal quotes.
+            const esc = (v: unknown): string => {
+                const s = v == null ? '' : String(v);
+                return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+            };
+            const header = ['Date', 'Account', 'Payee', 'Category', 'Memo', 'Amount', 'Cleared'];
+            const rows = all.map(t => [
+                new Date(t.date).toISOString().slice(0, 10),
+                t.account?.name ?? '',
+                t.payee ?? '',
+                t.category?.name ?? '',
+                t.memo ?? '',
+                (t.amount / 100).toFixed(2),
+                t.cleared ? 'true' : 'false',
+            ]);
+            const csv = [header, ...rows].map(r => r.map(esc).join(',')).join('\r\n');
+            // Prepend UTF-8 BOM so Excel detects encoding correctly.
+            const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `loot-council-transactions-${new Date().toISOString().slice(0, 10)}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+            showToast(`Exported ${all.length} transactions to CSV`, 'success');
+        } catch (err) {
+            console.error('CSV export failed:', err);
+            showToast('CSV export failed. Please try again.', 'error');
+        } finally {
+            setExporting(false);
+        }
     }
 
     return (
@@ -476,6 +677,10 @@ export default function TransactionsPage() {
                 <div className="flex items-center gap-2">
                     <button onClick={() => fetchTransactions()} className="btn btn-ghost" disabled={loading}>
                         <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
+                    </button>
+                    <button onClick={handleExportCSV} className="btn btn-ghost" disabled={exporting || loading} aria-label="Export CSV" title="Export filtered transactions as CSV">
+                        <Download className={`w-5 h-5 ${exporting ? 'animate-pulse' : ''}`} />
+                        <span className="hidden sm:inline">{exporting ? 'Exporting…' : 'Export CSV'}</span>
                     </button>
                     <button onClick={() => setShowImport(true)} className="btn btn-secondary">
                         <Upload className="w-5 h-5" />
@@ -557,6 +762,28 @@ export default function TransactionsPage() {
                             Clear All
                         </button>
                     </div>
+
+                    {/* Date-range presets */}
+                    <div className="mb-4 flex flex-wrap items-center gap-2">
+                        <span className="text-xs text-neutral mr-1">Quick range:</span>
+                        {([
+                            ['thisMonth', 'This month'],
+                            ['lastMonth', 'Last month'],
+                            ['last30', 'Last 30 days'],
+                            ['last90', 'Last 90 days'],
+                            ['thisYear', 'This year'],
+                            ['allTime', 'All time'],
+                        ] as const).map(([key, label]) => (
+                            <button
+                                key={key}
+                                onClick={() => applyDatePreset(key)}
+                                className="px-3 py-1 text-xs rounded-md bg-background-tertiary/50 hover:bg-background-tertiary border border-border hover:border-border-hover text-neutral hover:text-foreground transition-colors"
+                            >
+                                {label}
+                            </button>
+                        ))}
+                    </div>
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                         <div>
                             <label className="block text-sm text-neutral mb-1">Account</label>
@@ -801,6 +1028,38 @@ export default function TransactionsPage() {
                             ))
                         )}
                     </div>
+
+                    {/* FEAT-4: Pagination */}
+                    {total > PAGE_SIZE && (
+                        <div className="flex items-center justify-between gap-3 mt-4 px-1 text-sm">
+                            <span className="text-neutral">
+                                {total === 0 ? '0 results' : `${offset + 1}–${Math.min(offset + filteredTransactions.length, total)} of ${total}`}
+                            </span>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
+                                    disabled={offset === 0 || loading}
+                                    className="btn btn-ghost"
+                                    aria-label="Previous page"
+                                >
+                                    <ChevronLeft className="w-4 h-4" />
+                                    <span className="hidden sm:inline">Previous</span>
+                                </button>
+                                <span className="text-neutral tabular-nums px-2">
+                                    Page {Math.floor(offset / PAGE_SIZE) + 1} of {Math.max(1, Math.ceil(total / PAGE_SIZE))}
+                                </span>
+                                <button
+                                    onClick={() => setOffset(offset + PAGE_SIZE)}
+                                    disabled={offset + PAGE_SIZE >= total || loading}
+                                    className="btn btn-ghost"
+                                    aria-label="Next page"
+                                >
+                                    <span className="hidden sm:inline">Next</span>
+                                    <ChevronRight className="w-4 h-4" />
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </>
             )}
             </>
@@ -829,6 +1088,7 @@ export default function TransactionsPage() {
                 onSuccess={fetchTransactions}
                 accounts={accounts}
             />
+            <ConfirmDialogModal />
         </div>
     );
 }

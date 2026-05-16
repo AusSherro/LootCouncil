@@ -1,6 +1,6 @@
 # Loot Council — Project Overview
 
-> **Generated:** 2026-03-04 | **Scan Level:** Comprehensive | **Mode:** Updated
+> **Generated:** 2026-03-04 (last updated 2026-05-16) | **Scan Level:** Comprehensive | **Mode:** Updated
 
 ---
 
@@ -32,7 +32,7 @@ The application is a full-stack monolith built with **Next.js 16** (App Router),
 
 | Layer | Technology | Version |
 |-------|------------|---------|
-| Framework | Next.js (App Router + Turbopack) | 16.1.6 |
+| Framework | Next.js (App Router + Turbopack) | 16.2.6 |
 | Language | TypeScript (strict mode) | 5.x |
 | Database | SQLite | Local file |
 | ORM | Prisma | 6.19.2 |
@@ -43,7 +43,7 @@ The application is a full-stack monolith built with **Next.js 16** (App Router),
 | Stock Data | Yahoo Finance (yahoo-finance2) | 3.13.0 |
 | Crypto Data | CoinGecko API | (via fetch) |
 | Crypto Sync | Binance API | (via fetch) |
-| Spreadsheet | xlsx + jszip | 0.18.5 / 3.10.1 |
+| Spreadsheet | xlsx + jszip | 0.20.3 (SheetJS CDN) / 3.10.1 |
 | Drag & Drop | dnd-kit | 6.3.1 |
 
 ---
@@ -53,11 +53,11 @@ The application is a full-stack monolith built with **Next.js 16** (App Router),
 ### Core Modules
 
 1. **Budgeting** — Zero-based envelope budgeting with category groups, monthly allocations, goals, rollover, templates, quick actions, auto-assign, budget transfers between categories, budget forecasting ("Can I afford it?")
-2. **Transactions** — Full CRUD with splits, transfers, reconciliation, bulk operations, scheduled recurring, auto-categorization rules, server-side filtering
+2. **Transactions** — Full CRUD with splits, transfers, reconciliation, bulk operations, scheduled recurring, auto-categorization rules, server-side filtering, pagination, CSV export, date-range presets, filters persisted per profile
 3. **Accounts** — Checking, savings, credit, investment accounts with linked credit card payment tracking
 4. **Investments** — Multi-asset portfolio (stocks, ETFs, crypto, property, super) with lots, CGT, dividends, allocation targets, live pricing
 5. **FIRE Calculator** — Financial Independence projections with Coast/Barista FIRE, customizable rates
-6. **Reports** — Spending breakdown, income vs expense, net worth, spending by payee, category trends
+6. **Reports** — 8 tabs (Spending Breakdown, Top Movers, Income vs Expense, Savings Rate, Budget vs Actual, Net Worth, By Payee, Category Trends), chart-segment drill-down to transactions, global per-profile category exclusion filter
 7. **AI Assistant** — OpenAI-powered chat advisor, spending insights, budget optimization (with data consent)
 8. **Data Management** — YNAB import (ZIP + API), CSV import, JSON backup/restore, payee management
 9. **Profiles** — Multiple user profiles with independent data isolation

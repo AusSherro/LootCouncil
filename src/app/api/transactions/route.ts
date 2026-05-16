@@ -63,7 +63,8 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         if (hideReconciliationAdjustments) {
             andFilters.push({
                 NOT: {
-                    payee: { contains: 'reconciliation balance adjustment' },
+                    // Matches the actual payee created by /api/reconcile ("Reconciliation Adjustment").
+                    payee: { contains: 'Reconciliation Adjustment' },
                 },
             });
         }

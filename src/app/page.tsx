@@ -28,6 +28,7 @@ import AnimatedNumber from '@/components/AnimatedNumber';
 interface DashboardData {
     netWorth: number;
     netWorthChange: number;
+    netWorthChangeAmount: number;
     readyToAssign: number;
     accountsTotal: number;
     assetsTotal: number;
@@ -45,6 +46,7 @@ interface NetWorthResponse {
     accountBalance?: number;
     assetValue?: number;
     currentNetWorth?: number;
+    history?: Array<{ month: string; netWorth: number; accountBalance: number; assetValue: number }>;
 }
 
 interface BudgetResponse {
@@ -92,7 +94,7 @@ export default function HomePage() {
             setLoading(true);
             try {
                 const [networthRes, budgetRes, transactionsRes, aomRes] = await Promise.allSettled([
-                    fetchJsonCached<NetWorthResponse>('/api/networth?months=1', 30_000),
+                    fetchJsonCached<NetWorthResponse>('/api/networth?months=2', 30_000),
                     fetchJsonCached<BudgetResponse>('/api/budget', 30_000),
                     fetchJsonCached<TransactionsResponse>('/api/transactions?limit=5', 15_000),
                     fetchJsonCached<AgeOfMoneyResponse>('/api/age-of-money', 30_000),
@@ -127,10 +129,22 @@ export default function HomePage() {
 
                 const accountsTotal = networth.accountBalance || 0;
                 const assetsTotal = networth.assetValue || 0;
+                const currentNetWorth = networth.currentNetWorth || 0;
+
+                // Net-worth delta vs end of last month.
+                // history[].netWorth is in dollars; currentNetWorth is in cents.
+                const history = networth.history || [];
+                const priorEntry = history.length >= 2 ? history[history.length - 2] : null;
+                const priorNetWorthCents = priorEntry ? Math.round(priorEntry.netWorth * 100) : 0;
+                const netWorthChangeAmount = priorEntry ? currentNetWorth - priorNetWorthCents : 0;
+                const netWorthChange = priorEntry && priorNetWorthCents !== 0
+                    ? Math.round((netWorthChangeAmount / Math.abs(priorNetWorthCents)) * 1000) / 10
+                    : 0;
 
                 setData({
-                    netWorth: networth.currentNetWorth || 0,
-                    netWorthChange: 0,
+                    netWorth: currentNetWorth,
+                    netWorthChange,
+                    netWorthChangeAmount,
                     readyToAssign: budget.totals?.readyToAssign || 0,
                     accountsTotal,
                     assetsTotal,
@@ -151,7 +165,7 @@ export default function HomePage() {
 
     // Retry handler
     function handleRetry() {
-        clearCachedJson('/api/networth?months=1');
+        clearCachedJson('/api/networth?months=2');
         clearCachedJson('/api/budget');
         clearCachedJson('/api/transactions?limit=5');
         clearCachedJson('/api/age-of-money');
@@ -204,7 +218,7 @@ export default function HomePage() {
                         </div>
                         <span className="text-neutral text-sm">Total Net Worth</span>
                     </div>
-                    <div className="flex items-end gap-3 mb-4">
+                    <div className="flex items-end gap-3 mb-1">
                         <p className="text-2xl font-semibold text-foreground">
                             <AnimatedNumber
                                 value={data?.netWorth || 0}
@@ -212,20 +226,30 @@ export default function HomePage() {
                             />
                         </p>
                         {data?.netWorthChange !== 0 && (
-                            <div className={`flex items-center gap-1 px-2 py-0.5 rounded text-sm font-medium ${
-                                (data?.netWorthChange || 0) >= 0 
-                                    ? 'bg-success/10 text-success' 
-                                    : 'bg-danger/10 text-danger'
-                            }`}>
+                            <div
+                                className={`flex items-center gap-1 px-2 py-0.5 rounded text-sm font-medium ${
+                                    (data?.netWorthChange || 0) >= 0
+                                        ? 'bg-success/10 text-success'
+                                        : 'bg-danger/10 text-danger'
+                                }`}
+                                title={`${(data?.netWorthChangeAmount || 0) >= 0 ? '+' : '−'}${formatDashboardCurrency(Math.abs(data?.netWorthChangeAmount || 0), currency)} vs last month`}
+                            >
                                 {(data?.netWorthChange || 0) >= 0 ? (
                                     <ArrowUpRight className="w-3.5 h-3.5" />
                                 ) : (
                                     <ArrowDownRight className="w-3.5 h-3.5" />
                                 )}
-                                {Math.abs(data?.netWorthChange || 0)}%
+                                {Math.abs(data?.netWorthChange || 0).toFixed(1)}%
                             </div>
                         )}
                     </div>
+                    {data && data.netWorthChangeAmount !== 0 && (
+                        <p className="text-xs text-neutral mb-4">
+                            {data.netWorthChangeAmount >= 0 ? '+' : '−'}
+                            {formatDashboardCurrency(Math.abs(data.netWorthChangeAmount), currency)}
+                            {' '}vs last month
+                        </p>
+                    )}
                     <div className="grid grid-cols-2 gap-3">
                         <div className="card-inset">
                             <p className="text-xs text-neutral mb-1">Cash & Accounts</p>

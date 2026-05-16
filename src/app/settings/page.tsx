@@ -4,6 +4,8 @@ import { Settings as SettingsIcon, Upload, Download, Trash2, Database, Palette, 
 import { useState, useEffect } from 'react';
 import { useSettings } from '@/components/SettingsProvider';
 import { useProfile } from '@/components/ProfileProvider';
+import { useToast } from '@/components/Toast';
+import { useConfirmDialog } from '@/components/ConfirmDialog';
 import TransactionRulesSettings from '@/components/TransactionRulesSettings';
 import PayeeManagement from '@/components/PayeeManagement';
 
@@ -24,6 +26,8 @@ interface Integration {
 export default function SettingsPage() {
   const { settings, loading, updateSettings } = useSettings();
   const { profiles, activeProfile, createProfile, deleteProfile, renameProfile, switchProfile } = useProfile();
+  const { showToast } = useToast();
+  const { confirm, Dialog: ConfirmDialogModal } = useConfirmDialog();
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [newProfileName, setNewProfileName] = useState('');
@@ -202,15 +206,23 @@ export default function SettingsPage() {
   };
 
   const disconnectBinance = async () => {
-    if (!confirm('Disconnect Binance? Your synced assets will remain.')) return;
-    
-    try {
-      await fetch('/api/integrations?provider=binance', { method: 'DELETE' });
-      setBinanceIntegration(null);
-      setBinanceStatus(null);
-    } catch {
-      setBinanceStatus('Failed to disconnect');
-    }
+    confirm({
+      title: 'Disconnect Binance',
+      message: 'Your synced assets will remain in the portfolio. You can reconnect later.',
+      variant: 'warning',
+      confirmText: 'Disconnect',
+      onConfirm: async () => {
+        try {
+          await fetch('/api/integrations?provider=binance', { method: 'DELETE' });
+          setBinanceIntegration(null);
+          setBinanceStatus(null);
+          showToast('Binance disconnected', 'success');
+        } catch {
+          setBinanceStatus('Failed to disconnect');
+          showToast('Failed to disconnect Binance', 'error');
+        }
+      },
+    });
   };
 
   const fetchYNABBudgets = async () => {
@@ -408,11 +420,13 @@ export default function SettingsPage() {
                   </button>
                   {profiles.length > 1 && (
                     <button
-                      onClick={async () => {
-                        if (confirm(`Delete profile "${profile.name}"? All data for this profile will be permanently deleted.`)) {
-                          await deleteProfile(profile.id);
-                        }
-                      }}
+                      onClick={() => confirm({
+                        title: `Delete profile “${profile.name}”`,
+                        message: 'All accounts, transactions, categories, and assets for this profile will be permanently deleted. This cannot be undone.',
+                        variant: 'danger',
+                        confirmText: 'Delete profile',
+                        onConfirm: () => deleteProfile(profile.id),
+                      })}
                       className="text-neutral hover:text-danger transition-colors"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -870,11 +884,12 @@ export default function SettingsPage() {
                   a.click();
                   document.body.removeChild(a);
                   URL.revokeObjectURL(url);
+                  showToast('Backup downloaded', 'success');
                 } else {
-                  alert('Failed to export data.');
+                  showToast('Failed to export data.', 'error');
                 }
               } catch {
-                alert('Export failed. Please try again.');
+                showToast('Export failed. Please try again.', 'error');
               }
             }}
             className="btn btn-secondary"
@@ -899,36 +914,45 @@ export default function SettingsPage() {
               onChange={async (e) => {
                 const file = e.target.files?.[0];
                 if (!file) return;
-                
-                if (!confirm('This will replace ALL current data with the backup. Are you sure you want to continue?')) {
-                  e.target.value = '';
-                  return;
-                }
-                
-                try {
-                  const text = await file.text();
-                  const backup = JSON.parse(text);
-                  
-                  const res = await fetch('/api/import/backup', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(backup),
-                  });
-                  
-                  const data = await res.json();
-                  
-                  if (res.ok) {
-                    alert(`Backup restored successfully!\n\nRestored from: ${data.restoredFrom}\nAccounts: ${data.stats.accounts}\nCategories: ${data.stats.categories}\nTransactions: ${data.stats.transactions}\nAssets: ${data.stats.assets}`);
-                    window.location.reload();
-                  } else {
-                    alert(`Restore failed: ${data.error}`);
-                  }
-                } catch (err) {
-                  alert('Failed to parse backup file. Make sure it is a valid Loot Council backup.');
-                  console.error('Restore error:', err);
-                }
-                
-                e.target.value = '';
+                const inputEl = e.target;
+
+                confirm({
+                  title: 'Restore Backup',
+                  message: 'This will replace ALL current data with the backup. Are you sure you want to continue?',
+                  variant: 'danger',
+                  confirmText: 'Replace all data',
+                  onConfirm: async () => {
+                    try {
+                      const text = await file.text();
+                      const backup = JSON.parse(text);
+
+                      const res = await fetch('/api/import/backup', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(backup),
+                      });
+
+                      const data = await res.json();
+
+                      if (res.ok) {
+                        showToast(
+                          `Restored ${data.stats.transactions} transactions, ${data.stats.accounts} accounts, ${data.stats.categories} categories from ${data.restoredFrom}`,
+                          'success'
+                        );
+                        setTimeout(() => window.location.reload(), 1200);
+                      } else {
+                        showToast(`Restore failed: ${data.error}`, 'error');
+                      }
+                    } catch (err) {
+                      showToast('Failed to parse backup file. Make sure it is a valid Loot Council backup.', 'error');
+                      console.error('Restore error:', err);
+                    }
+                    inputEl.value = '';
+                  },
+                });
+
+                // Reset input value if user cancels (so they can pick the same file again)
+                inputEl.value = '';
               }}
               className="hidden"
             />
@@ -944,21 +968,25 @@ export default function SettingsPage() {
                 Clear all budget data (accounts, transactions, categories, payees) but <strong className="text-foreground">keep investments, assets, and integrations</strong>.
               </p>
               <button
-                onClick={async () => {
-                  if (confirm('Clear all budget data? Investments and integrations will be preserved. This cannot be undone.')) {
+                onClick={() => confirm({
+                  title: 'Clear Budget Data',
+                  message: 'This deletes all accounts, transactions, categories, and payees. Investments and integrations will be preserved. This cannot be undone.',
+                  variant: 'danger',
+                  confirmText: 'Clear budget data',
+                  onConfirm: async () => {
                     try {
                       const res = await fetch('/api/reset/budget', { method: 'DELETE' });
                       if (res.ok) {
-                        alert('Budget data cleared. Investments preserved.');
-                        window.location.href = '/';
+                        showToast('Budget data cleared. Investments preserved.', 'success');
+                        setTimeout(() => { window.location.href = '/'; }, 800);
                       } else {
-                        alert('Failed to clear budget data.');
+                        showToast('Failed to clear budget data.', 'error');
                       }
                     } catch {
-                      alert('Error clearing budget data.');
+                      showToast('Error clearing budget data.', 'error');
                     }
-                  }
-                }}
+                  },
+                })}
                 className="btn bg-warning/20 text-warning hover:bg-warning/30 border border-warning/30"
               >
                 <Trash2 className="w-5 h-5" />
@@ -970,21 +998,25 @@ export default function SettingsPage() {
                 Permanently delete <strong className="text-danger">everything</strong> — budget, investments, integrations, all of it.
               </p>
               <button
-                onClick={async () => {
-                  if (confirm('Are you sure you want to delete ALL data? This cannot be undone.')) {
+                onClick={() => confirm({
+                  title: 'Delete All Data',
+                  message: 'This permanently deletes EVERYTHING — budget, accounts, transactions, investments, integrations. This cannot be undone.',
+                  variant: 'danger',
+                  confirmText: 'Delete everything',
+                  onConfirm: async () => {
                     try {
                       const res = await fetch('/api/reset', { method: 'DELETE' });
                       if (res.ok) {
-                        alert('All data has been reset.');
-                        window.location.href = '/';
+                        showToast('All data has been reset.', 'success');
+                        setTimeout(() => { window.location.href = '/'; }, 800);
                       } else {
-                        alert('Failed to reset data.');
+                        showToast('Failed to reset data.', 'error');
                       }
                     } catch {
-                      alert('Error resetting data.');
+                      showToast('Error resetting data.', 'error');
                     }
-                  }
-                }}
+                  },
+                })}
                 className="btn bg-danger/20 text-danger hover:bg-danger/30 border border-danger/30"
               >
                 <Trash2 className="w-5 h-5" />
@@ -995,6 +1027,7 @@ export default function SettingsPage() {
         </div>
         </div>
       </section>
+      <ConfirmDialogModal />
     </div>
   );
 }

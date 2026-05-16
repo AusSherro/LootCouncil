@@ -4,6 +4,52 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.4.0] — 2026-05-16
+
+### 📊 Reports — Refactor, Drill-Down & Two New Tabs
+
+The reports page is now a thin shell (~212 lines, down from 1,443) that delegates to eight self-contained tab components under `src/app/reports/_tabs/`. Two new tabs join the lineup, and every chart segment is now a drill-down link into Transactions.
+
+- **New: Savings Rate tab** — line chart of monthly `(income − expense) / income × 100` with a 20% target reference line, three summary cards (current, 3-month rolling, all-time income-weighted), and a detailed table. Green ≥ 20% target, amber 0–20%, red below 0%.
+- **New: Top Movers tab** — surfaces the categories whose spending changed most between two periods (this month vs last month, or vs same month last year). Three KPI cards (current, previous, change %), side-by-side cards for top-5 increases and top-5 decreases, and a sortable table of all movers ≥ $5. Every row is clickable.
+- **Chart drill-down** — click any segment on Spending Breakdown, Budget vs Actual, By Payee, or Income/Expense to navigate to `/transactions` with categoryId / date-range / search query pre-applied. Filter panel auto-opens, URL is cleaned up.
+- **Global "Exclude categories" filter** — single control that applies to *every* report tab, persisted per profile in localStorage. Defaults to `['Uncategorized']`. API: `?excludeCategories=Name1,Name2` on `/api/reports/advanced`.
+- **Per-tab extraction** — Spending Breakdown, Income vs Expense, Budget vs Actual, Net Worth, By Payee, Category Trends, Savings Rate, Top Movers each live in their own file taking `currency` + `excludeCategoryNames` as props.
+
+### 🧾 Transactions — Pagination, Export, Presets, Persistence
+
+- **Pagination** — Prev/Next controls below the list with "Page X of Y" + "N–M of total" indicator. Offset resets to 0 when filters/search change. Removes the previous hard 100-row ceiling on visibility.
+- **CSV export** — Download button next to *Import CSV* exports all transactions matching current filters/search (RFC 4180 escaping, UTF-8 BOM for Excel, paged fetch up to 50 000 rows). Filename `loot-council-transactions-YYYY-MM-DD.csv`.
+- **Date-range presets** — six "Quick range" buttons inside the filter panel: *This month / Last month / Last 30 days / Last 90 days / This year / All time*.
+- **Filters persisted per profile** — all filters + the "hide reconciliation adjustments" toggle now save to `localStorage` under `loot-council-tx-filters-{profileId}`, scoped so two-person households don't bleed filters across profiles.
+- **URL params honoured** — `?accountId`, `?categoryId`, `?startDate`, `?endDate`, `?q` are now applied on load (previously only `?new=1` was respected) — enables the chart drill-down above.
+
+### ✨ Dashboard & UX
+
+- **Net worth delta widget** — dashboard now fetches 2 months of net worth and shows the prior-month percentage badge plus a `+$2,400 vs last month` sub-line with up/down arrow and success/danger colour.
+- **Native `alert()` / `confirm()` purged** — adopted the `useConfirmDialog()` and `useToast()` hooks across Settings, Transactions, Investments, ScheduledTransactions, BudgetTemplatesModal, TransactionRulesSettings. 13 alerts and 6 confirms gone; every status message is now a typed themed toast.
+- **Multi-currency consistency** — introduced a module-level default in `src/lib/utils.ts`; `SettingsProvider` calls `setDefaultCurrency()` on load. Every bare `formatCurrency(x)` call now follows the user's setting at render time with zero call-site edits. Foreign-currency assets (e.g. MSFT in USD) still display in their native currency.
+- **Budget overspending toast** — inline-editing an assignment that pushes a category negative now fires `"<Category> is overspent by $X.XX"`.
+- **Favicon wired up** — moved `loot-council.ico` to `src/app/icon.ico` so Next 13+'s App Router auto-emits the `<link rel="icon">` tag.
+
+### 🔒 Security & Dependency Hygiene
+
+- **`npm audit` clean** — was 11 vulnerabilities, now 0.
+  - `xlsx` 0.18.5 → 0.20.3 (via `cdn.sheetjs.com`) — clears prototype pollution + ReDoS advisories.
+  - `next` + `eslint-config-next` 16.1.6 → 16.2.6 — clears 8 high-severity Next.js advisories (HTTP smuggling, middleware/proxy bypass, SSRF, RSC cache poisoning, image-cache exhaustion).
+  - `overrides: { postcss: "^8.5.10" }` — forces past the XSS-via-unescaped-`</style>` advisory in Next's bundled postcss.
+- **Profile-scope verification on Budget POST + Transfer** — both routes now confirm `categoryId` belongs to the active profile before mutating. Cross-profile IDs return 404 (not 403) to avoid leaking existence.
+- **YNAB error-detail leak fixed** — three `/api/import/ynab-api` routes and one `/sync` route were still returning raw upstream errors to the client. Now logged server-side only.
+
+### 🧹 Code Quality
+
+- **Restored YNAB type safety** — stripped ~43 `(prisma.X as any)` casts across `import/ynab/`, `import/ynab-api/`, and `import/ynab-api/sync/` (no longer needed since the schema includes `ynabId`). Replaced remaining `any` parameter types with a `YNABRow = Record<string, unknown>` helper.
+- **39 debug `console.log` statements removed** — including one in `binance/route.ts` that logged API key metadata.
+- **React 19 lint fixes** — Sidebar `setState`-in-effect (rewrote with `requestAnimationFrame` + `ResizeObserver`), Investments tax calculator `Date.now()`-in-`useMemo` (captured at mount), Toast stale-ref cleanup.
+- **Stale files purged** — 5 default `create-next-app` placeholder SVGs from `public/`, `docs/project-scan-report.json`, root `copilot-instructions.md` (Claude-Code workflow, never read by GitHub Copilot), and two `tmp-*` debug files.
+
+---
+
 ## [0.3.9] — 2026-03-18
 
 ### 🪥 Polish — Final Quality Pass

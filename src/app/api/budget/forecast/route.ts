@@ -142,7 +142,6 @@ export async function GET(request: NextRequest) {
 
         // 5. Get scheduled transactions for future months
         const forecastEnd = new Date(`${getMonthOffset(effectiveEndMonth, 1)}-01T00:00:00.000Z`);
-        const forecastStart = new Date(`${currentMonth}-01T00:00:00.000Z`);
 
         const scheduledTransactions = await prisma.scheduledTransaction.findMany({
             where: {
@@ -201,8 +200,6 @@ export async function GET(request: NextRequest) {
                                 const dueMonth = `${cat.goalDueDate.getFullYear()}-${String(cat.goalDueDate.getMonth() + 1).padStart(2, '0')}`;
                                 const monthsLeft = monthsBetween(projMonth, dueMonth);
                                 if (monthsLeft > 0) {
-                                    // Remaining = target - what's already saved (available)
-                                    const remaining = Math.max(0, cat.goalTarget - cat.available - (i * Math.ceil(Math.max(0, cat.goalTarget - cat.available) / monthsBetween(currentMonth, dueMonth))));
                                     const perMonth = Math.ceil(Math.max(0, cat.goalTarget - cat.available) / monthsBetween(currentMonth, dueMonth));
                                     monthlyExpenses += perMonth;
                                 }

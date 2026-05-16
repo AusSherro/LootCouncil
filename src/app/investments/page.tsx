@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
     TrendingUp, RefreshCw, Plus, DollarSign,
     PieChart, Target, Wallet, ChevronDown, ChevronRight,
-    Trash2, X, AlertCircle, ArrowUpRight, ArrowDownRight, Edit
+    Trash2, X, AlertCircle, ArrowUpRight, ArrowDownRight, Edit,
+    Calculator, Info
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import { useSettings } from '@/components/SettingsProvider';
@@ -20,6 +21,7 @@ import {
     Legend,
 } from 'recharts';
 import ChartTooltip from '@/components/ChartTooltip';
+import { useConfirmDialog } from '@/components/ConfirmDialog';
 
 interface Asset {
     id: string;
@@ -143,6 +145,10 @@ export default function InvestmentsPage() {
     const [excludeSuperFromNetWorth, setExcludeSuperFromNetWorth] = useState(false);
     const [dismissedSuperReminder, setDismissedSuperReminder] = useState(false);
 
+    // PERF-2b: Capture `now` once at mount so render-time derivations stay pure.
+    // Stable per session; "30+ days old" doesn't need millisecond precision.
+    const [nowMs] = useState(() => Date.now());
+
     const fetchData = useCallback(async () => {
         try {
             const [investRes, allocRes, netWorthRes] = await Promise.all([
@@ -246,7 +252,7 @@ export default function InvestmentsPage() {
         if (a.assetClass !== 'super') return false;
         if (!a.lastUpdated) return true;
         const lastUpdated = new Date(a.lastUpdated);
-        const daysSinceUpdate = Math.floor((Date.now() - lastUpdated.getTime()) / (1000 * 60 * 60 * 24));
+        const daysSinceUpdate = Math.floor((nowMs - lastUpdated.getTime()) / (1000 * 60 * 60 * 24));
         return daysSinceUpdate >= 30;
     }) || [];
 
@@ -608,14 +614,23 @@ function PortfolioView({
     onAddLot: (asset: Asset) => void;
     formatMoney: (cents: number) => string;
 }) {
+    const { confirm, Dialog: ConfirmDialogModal } = useConfirmDialog();
+
     async function handleDelete(assetId: string, symbol: string) {
-        if (!confirm(`Delete ${symbol}?`)) return;
-        try {
-            await fetch(`/api/investments/${assetId}`, { method: 'DELETE' });
-            onRefresh();
-        } catch (err) {
-            console.error('Failed to delete asset:', err);
-        }
+        confirm({
+            title: `Delete ${symbol}`,
+            message: `Permanently remove ${symbol} from your portfolio? Lots and price history for this asset will be deleted.`,
+            variant: 'danger',
+            confirmText: 'Delete asset',
+            onConfirm: async () => {
+                try {
+                    await fetch(`/api/investments/${assetId}`, { method: 'DELETE' });
+                    onRefresh();
+                } catch (err) {
+                    console.error('Failed to delete asset:', err);
+                }
+            },
+        });
     }
 
     return (
@@ -817,6 +832,7 @@ function PortfolioView({
                     </button>
                 </div>
             )}
+            <ConfirmDialogModal />
         </div>
     );
 }
@@ -1140,6 +1156,433 @@ function CapitalGainsView({ assets, formatMoney }: { assets: Asset[]; formatMone
                     </div>
                 )}
             </div>
+
+            {/* 2026-27 Budget CGT reform calculator */}
+            <CGTReformCalculator assets={assets} formatMoney={formatMoney} />
+        </div>
+    );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// 2026-27 Federal Budget CGT reform calculator
+//
+// Proposed change (Treasury announcement, May 2026 — still pending legislation):
+// From 1 July 2027 the 50% CGT discount for individuals/trusts/partnerships is
+// replaced with:
+//   • CPI cost-base indexation (only the *real* gain is taxed), AND
+//   • A 30% minimum effective tax rate on the net capital gain.
+//
+// Assets held on 1 Jul 2027 and sold after use a transitional split:
+//   • Gain accrued pre-1 Jul 2027 → existing 50% discount
+//   • Gain accrued post-1 Jul 2027 → indexed + 30% floor
+// The split uses ATO time-apportionment (or formal valuation).
+//
+// Super funds keep their 1/3 discount; main residence is unaffected; this
+// calculator targets individuals holding ETFs / shares / crypto / property.
+// ────────────────────────────────────────────────────────────────────────────
+
+const REFORM_DATE = new Date('2027-07-01T00:00:00Z');
+const REFORM_TS = REFORM_DATE.getTime();
+const MIN_RATE = 0.30; // 30% minimum effective rate on post-reform gains
+const DISCOUNT = 0.5;  // existing 50% individual discount
+const DAY_MS = 1000 * 60 * 60 * 24;
+
+// AU resident marginal rates 2024-25 (Stage 3). Medicare levy added separately.
+const MARGINAL_BRACKETS = [
+    { label: 'Tax-free ($0 – $18,200)', rate: 0.00 },
+    { label: '16% ($18,201 – $45,000)', rate: 0.16 },
+    { label: '30% ($45,001 – $135,000)', rate: 0.30 },
+    { label: '37% ($135,001 – $190,000)', rate: 0.37 },
+    { label: '45% ($190,001+)', rate: 0.45 },
+];
+
+interface LotCalc {
+    symbol: string;
+    purchaseDate: string;
+    holdingDays: number;
+    nominalGain: number;       // cents — value − cost (no inflation)
+    taxCurrent: number;        // cents — sale at chosen date under CURRENT law (50% discount if eligible)
+    taxProposed: number;       // cents — sale at chosen date under PROPOSED law (indexation + 30% min)
+    taxRushSale: number;       // cents — sale TODAY under current law (timing option)
+    indexedCostBase: number;   // cents — cost base after inflation indexation
+    realGain: number;          // cents — gain after inflation indexation
+    transitional: boolean;     // straddles 1 Jul 2027?
+}
+
+function CGTReformCalculator({ assets, formatMoney }: { assets: Asset[]; formatMoney: (cents: number) => string }) {
+    const [marginalRate, setMarginalRate] = useState(0.37);
+    const [includeMedicare, setIncludeMedicare] = useState(true);
+    const [inflation, setInflation] = useState(0.03);
+    const [futureSaleDate, setFutureSaleDate] = useState(() => {
+        // default to 1 year after the reform starts
+        const d = new Date(REFORM_TS);
+        d.setUTCFullYear(d.getUTCFullYear() + 1);
+        return d.toISOString().split('T')[0];
+    });
+    const [includeLosses, setIncludeLosses] = useState(false);
+
+    // Captured once at mount so the useMemo below stays pure (react-hooks/purity).
+    // Stable for the session; the tax projection doesn't need millisecond accuracy.
+    const [now] = useState(() => Date.now());
+
+    const effectiveRate = marginalRate + (marginalRate > 0 && includeMedicare ? 0.02 : 0);
+
+    // Flatten lots with remaining units. Use AUD-converted figures when present so
+    // foreign-currency assets contribute consistently to the Aussie tax estimate.
+    const lots = useMemo(() => {
+        return assets.flatMap(a =>
+            a.lots
+                .filter(l => l.remainingUnits > 0)
+                .map(l => {
+                    // Pro-rate AUD totals back to this lot using its share of cost basis
+                    const costShare = a.totalCostBasis > 0 ? l.totalCost / a.totalCostBasis : 0;
+                    const aud = a.currency !== 'AUD' && a.totalCostBasisAUD > 0;
+                    const costAUD = aud ? Math.round(a.totalCostBasisAUD * costShare) : l.totalCost;
+                    const valueAUD = aud ? Math.round(a.currentValueAUD * costShare) : l.currentValue;
+                    return {
+                        id: l.id,
+                        symbol: a.symbol,
+                        purchaseDate: l.purchaseDate,
+                        purchaseTs: new Date(l.purchaseDate).getTime(),
+                        holdingDays: l.holdingDays,
+                        cost: costAUD,
+                        value: valueAUD,
+                        nominalGain: valueAUD - costAUD,
+                    };
+                })
+        );
+    }, [assets]);
+
+    const sellLaterTs = new Date(futureSaleDate + 'T00:00:00Z').getTime();
+    const sellLaterIsAfterReform = sellLaterTs >= REFORM_TS;
+
+    const calcs: LotCalc[] = useMemo(() => {
+        return lots
+            .filter(l => includeLosses || l.nominalGain > 0)
+            .map(l => {
+                const gain = l.nominalGain;
+
+                // ── Scenario "rush sale": sell TODAY under current law (timing reference).
+                //    Useful for "should I crystallise before the reform?" decisions.
+                const heldOver12moNow = (now - l.purchaseTs) / DAY_MS >= 365;
+                const rushTaxable = gain > 0 && heldOver12moNow ? gain * DISCOUNT : Math.max(0, gain);
+                const taxRushSale = rushTaxable * effectiveRate;
+
+                // ── Scenario "current law": sell at the chosen `futureSaleDate` under
+                //    today's 50% discount rules (the regime that exists right now).
+                const heldOver12moAtSale = (sellLaterTs - l.purchaseTs) / DAY_MS >= 365;
+                const currentTaxable = gain > 0 && heldOver12moAtSale ? gain * DISCOUNT : Math.max(0, gain);
+                const taxCurrent = currentTaxable * effectiveRate;
+
+                // ── Scenario "proposed law": sell at the same chosen `futureSaleDate`
+                //    under the new indexed + 30%-minimum regime.
+                let taxProposed = 0;
+                let indexedCostBase = l.cost;
+                let realGain = gain;
+                let transitional = false;
+
+                if (!sellLaterIsAfterReform) {
+                    // Reform hasn't started by the chosen date — proposed law doesn't apply yet.
+                    // Match the current-law result so Δ is exactly zero.
+                    taxProposed = taxCurrent;
+                    realGain = gain;
+                } else if (l.purchaseTs >= REFORM_TS) {
+                    // Acquired AFTER reform — pure new regime: index cost base by CPI.
+                    const years = (sellLaterTs - l.purchaseTs) / (DAY_MS * 365.25);
+                    indexedCostBase = l.cost * Math.pow(1 + inflation, years);
+                    realGain = l.value - indexedCostBase;
+                    if (realGain > 0) {
+                        taxProposed = realGain * Math.max(effectiveRate, MIN_RATE);
+                    }
+                } else {
+                    // Transitional: lot acquired before reform, sold after — gain straddles 1 Jul 2027.
+                    transitional = true;
+                    const totalDays = (sellLaterTs - l.purchaseTs) / DAY_MS;
+                    const preDays = Math.max(0, (REFORM_TS - l.purchaseTs) / DAY_MS);
+                    const postDays = Math.max(0, (sellLaterTs - REFORM_TS) / DAY_MS);
+                    const preShare = totalDays > 0 ? preDays / totalDays : 0;
+
+                    // Notional value at 1 Jul 2027 = cost + apportioned share of nominal gain.
+                    const valueAtReform = l.cost + gain * preShare;
+                    const heldOver12moAtReform = preDays >= 365;
+
+                    // Pre portion — old 50% discount, taxed at marginal.
+                    const preGain = gain * preShare;
+                    const preTaxable = preGain > 0 && heldOver12moAtReform ? preGain * DISCOUNT : Math.max(0, preGain);
+                    const preTax = preTaxable * effectiveRate;
+
+                    // Post portion — indexed cost base + 30% floor.
+                    const postYears = postDays / 365.25;
+                    const indexedPostCost = valueAtReform * Math.pow(1 + inflation, postYears);
+                    indexedCostBase = indexedPostCost;
+                    const postRealGain = Math.max(0, l.value - indexedPostCost);
+                    const postTax = postRealGain * Math.max(effectiveRate, MIN_RATE);
+
+                    realGain = preGain + postRealGain;
+                    taxProposed = preTax + postTax;
+                }
+
+                return {
+                    symbol: l.symbol,
+                    purchaseDate: l.purchaseDate,
+                    holdingDays: l.holdingDays,
+                    nominalGain: gain,
+                    taxCurrent: Math.round(taxCurrent),
+                    taxProposed: Math.round(taxProposed),
+                    taxRushSale: Math.round(taxRushSale),
+                    indexedCostBase: Math.round(indexedCostBase),
+                    realGain: Math.round(realGain),
+                    transitional,
+                };
+            });
+    }, [lots, effectiveRate, inflation, sellLaterTs, sellLaterIsAfterReform, includeLosses, now]);
+
+    const totals = useMemo(() => {
+        const sum = (key: keyof LotCalc) => calcs.reduce((s, c) => s + (c[key] as number), 0);
+        const gross = sum('nominalGain');
+        const taxCurrent = sum('taxCurrent');
+        const taxProposed = sum('taxProposed');
+        const taxRush = sum('taxRushSale');
+        return {
+            gross,
+            taxCurrent,
+            taxProposed,
+            taxRush,
+            delta: taxProposed - taxCurrent,
+            netCurrent: gross - taxCurrent,
+            netProposed: gross - taxProposed,
+        };
+    }, [calcs]);
+
+    const formatPct = (n: number) => `${(n * 100).toFixed(1)}%`;
+
+    return (
+        <div className="card">
+            <div className="flex items-start gap-3 mb-1">
+                <div className="p-2 rounded-lg bg-gold/10">
+                    <Calculator className="w-5 h-5 text-gold" />
+                </div>
+                <div className="flex-1">
+                    <h3 className="text-lg font-semibold text-foreground">
+                        2026-27 Budget CGT reform calculator
+                    </h3>
+                    <p className="text-sm text-neutral">
+                        Estimate the impact of replacing the 50% discount with CPI indexation
+                        + a 30% minimum tax rate, starting 1 July 2027.
+                    </p>
+                </div>
+            </div>
+
+            <div className="mt-3 p-3 rounded-lg bg-info/5 border border-info/20 flex gap-2 text-xs text-neutral">
+                <Info className="w-4 h-4 text-info flex-shrink-0 mt-0.5" />
+                <span>
+                    Proposed only — still pending legislation. Estimates ignore prior-year
+                    capital losses, the CGT main-residence exemption, super (1/3 discount),
+                    and companies (unaffected). Foreign-currency assets are converted to AUD
+                    using current rates. Not tax advice.
+                </span>
+            </div>
+
+            {/* Inputs */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
+                <div>
+                    <label className="block text-xs text-neutral mb-1">Your marginal tax bracket</label>
+                    <select
+                        value={marginalRate}
+                        onChange={(e) => setMarginalRate(parseFloat(e.target.value))}
+                        className="w-full px-3 py-2 rounded-lg bg-background-tertiary border border-border text-foreground text-sm"
+                    >
+                        {MARGINAL_BRACKETS.map(b => (
+                            <option key={b.rate} value={b.rate}>{b.label}</option>
+                        ))}
+                    </select>
+                    <label className="flex items-center gap-2 mt-2 text-xs text-neutral cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={includeMedicare}
+                            onChange={(e) => setIncludeMedicare(e.target.checked)}
+                            className="accent-gold"
+                        />
+                        Include 2% Medicare levy
+                    </label>
+                </div>
+                <div>
+                    <label className="block text-xs text-neutral mb-1">
+                        Assumed annual inflation (CPI) — {formatPct(inflation)}
+                    </label>
+                    <input
+                        type="range"
+                        min="0"
+                        max="0.08"
+                        step="0.005"
+                        value={inflation}
+                        onChange={(e) => setInflation(parseFloat(e.target.value))}
+                        className="w-full accent-gold"
+                    />
+                    <p className="text-xs text-neutral mt-1">
+                        Used to index the cost base under the new rules.
+                    </p>
+                </div>
+                <div>
+                    <label className="block text-xs text-neutral mb-1">Hypothetical sale date</label>
+                    <input
+                        type="date"
+                        value={futureSaleDate}
+                        onChange={(e) => setFutureSaleDate(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg bg-background-tertiary border border-border text-foreground text-sm"
+                    />
+                    <p className="text-xs text-neutral mt-1">
+                        {sellLaterIsAfterReform
+                            ? 'After 1 Jul 2027 — proposed law applies (with transitional split for lots acquired earlier).'
+                            : 'Before 1 Jul 2027 — current law still applies on this date.'}
+                    </p>
+                </div>
+                <div className="flex flex-col justify-end">
+                    <label className="flex items-center gap-2 text-xs text-neutral cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={includeLosses}
+                            onChange={(e) => setIncludeLosses(e.target.checked)}
+                            className="accent-gold"
+                        />
+                        Include loss-making lots
+                    </label>
+                    <p className="text-xs text-neutral mt-1">
+                        Effective rate used: <span className="text-foreground font-medium">{formatPct(effectiveRate)}</span>
+                    </p>
+                </div>
+            </div>
+
+            {/* Summary cards — apples-to-apples: same sale date, both regimes */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+                <div className="rounded-lg border border-border bg-background-tertiary/40 p-4">
+                    <p className="text-xs text-neutral uppercase tracking-wide">
+                        Tax under current law
+                    </p>
+                    <p className="text-2xl font-bold text-foreground mt-1">{formatMoney(totals.taxCurrent)}</p>
+                    <p className="text-xs text-neutral mt-1">
+                        Selling on {new Date(sellLaterTs).toLocaleDateString('en-AU')} with 50% discount
+                        · net {formatMoney(totals.netCurrent)}
+                    </p>
+                </div>
+                <div className="rounded-lg border border-border bg-background-tertiary/40 p-4">
+                    <p className="text-xs text-neutral uppercase tracking-wide">
+                        Tax under proposed law
+                    </p>
+                    <p className="text-2xl font-bold text-foreground mt-1">{formatMoney(totals.taxProposed)}</p>
+                    <p className="text-xs text-neutral mt-1">
+                        {sellLaterIsAfterReform
+                            ? <>Indexed cost base + 30% floor · net {formatMoney(totals.netProposed)}</>
+                            : <>Reform not yet in force on this date · net {formatMoney(totals.netProposed)}</>}
+                    </p>
+                </div>
+                <div className={`rounded-lg border p-4 ${
+                    totals.delta > 0
+                        ? 'border-danger/30 bg-danger/5'
+                        : totals.delta < 0
+                            ? 'border-positive/30 bg-positive/5'
+                            : 'border-border bg-background-tertiary/40'
+                }`}>
+                    <p className="text-xs text-neutral uppercase tracking-wide">Impact of the reform</p>
+                    <p className={`text-2xl font-bold mt-1 ${
+                        totals.delta > 0 ? 'text-danger' : totals.delta < 0 ? 'text-positive' : 'text-foreground'
+                    }`}>
+                        {totals.delta > 0 ? '+' : ''}{formatMoney(totals.delta)}
+                    </p>
+                    <p className="text-xs text-neutral mt-1">
+                        {totals.taxCurrent > 0
+                            ? `${totals.delta >= 0 ? '+' : ''}${((totals.delta / totals.taxCurrent) * 100).toFixed(1)}% vs current law`
+                            : 'No taxable gains'}
+                        {totals.delta < 0 && ' — indexation beats the 50% discount for short holds in low-inflation periods.'}
+                    </p>
+                </div>
+            </div>
+
+            {/* Timing reference: rush-sale (sell today, current law) */}
+            <div className="mt-3 p-3 rounded-lg bg-background-tertiary/30 border border-border flex items-center justify-between gap-3 flex-wrap">
+                <div className="text-sm">
+                    <span className="text-neutral">For reference, selling </span>
+                    <span className="text-foreground font-medium">today</span>
+                    <span className="text-neutral"> under current law would cost </span>
+                    <span className="text-foreground font-semibold">{formatMoney(totals.taxRush)}</span>
+                    <span className="text-neutral"> in tax.</span>
+                </div>
+                <div className="text-xs text-neutral">
+                    {totals.taxRush > totals.taxCurrent
+                        ? `That's ${formatMoney(totals.taxRush - totals.taxCurrent)} more than holding to your chosen date (lots haven't hit 12 months yet).`
+                        : totals.taxRush < totals.taxCurrent
+                            ? `That's ${formatMoney(totals.taxCurrent - totals.taxRush)} less than your chosen date — beating the reform by selling early.`
+                            : 'Same as your chosen date.'}
+                </div>
+            </div>
+
+            {/* Per-lot breakdown */}
+            {calcs.length > 0 && (
+                <div className="mt-6">
+                    <h4 className="text-sm font-medium text-foreground mb-2">Per-lot breakdown</h4>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                            <thead>
+                                <tr className="border-b border-border text-neutral">
+                                    <th className="text-left py-2 px-3 font-medium">Asset</th>
+                                    <th className="text-left py-2 px-3 font-medium">Acquired</th>
+                                    <th className="text-right py-2 px-3 font-medium">Nominal gain</th>
+                                    <th className="text-right py-2 px-3 font-medium">Real gain (proposed)</th>
+                                    <th className="text-right py-2 px-3 font-medium">Current law</th>
+                                    <th className="text-right py-2 px-3 font-medium">Proposed law</th>
+                                    <th className="text-right py-2 px-3 font-medium">Δ</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {calcs.map((c, i) => (
+                                    <tr key={i} className="border-b border-border/50 hover:bg-background-tertiary">
+                                        <td className="py-2 px-3 text-foreground font-medium">
+                                            {c.symbol}
+                                            {c.transitional && (
+                                                <span
+                                                    className="ml-2 text-xs px-1.5 py-0.5 rounded bg-warning/10 text-warning"
+                                                    title="Straddles 1 Jul 2027 — gain is apportioned between regimes"
+                                                >
+                                                    split
+                                                </span>
+                                            )}
+                                        </td>
+                                        <td className="py-2 px-3 text-neutral">
+                                            {new Date(c.purchaseDate).toLocaleDateString('en-AU')}
+                                        </td>
+                                        <td className={`py-2 px-3 text-right ${c.nominalGain >= 0 ? 'text-foreground' : 'text-danger'}`}>
+                                            {formatMoney(c.nominalGain)}
+                                        </td>
+                                        <td className="py-2 px-3 text-right text-foreground">
+                                            {sellLaterIsAfterReform ? formatMoney(c.realGain) : '—'}
+                                        </td>
+                                        <td className="py-2 px-3 text-right text-foreground">{formatMoney(c.taxCurrent)}</td>
+                                        <td className="py-2 px-3 text-right text-foreground">{formatMoney(c.taxProposed)}</td>
+                                        <td className={`py-2 px-3 text-right font-medium ${
+                                            c.taxProposed - c.taxCurrent > 0
+                                                ? 'text-danger'
+                                                : c.taxProposed - c.taxCurrent < 0
+                                                    ? 'text-positive'
+                                                    : 'text-neutral'
+                                        }`}>
+                                            {c.taxProposed - c.taxCurrent > 0 ? '+' : ''}
+                                            {formatMoney(c.taxProposed - c.taxCurrent)}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+
+            {calcs.length === 0 && (
+                <div className="text-center py-6 text-neutral text-sm">
+                    {lots.length === 0
+                        ? 'No lots to analyse. Add purchase lots to see the impact.'
+                        : 'No gain-making lots. Tick "Include loss-making lots" to see all.'}
+                </div>
+            )}
         </div>
     );
 }

@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useToast } from '@/components/Toast';
 import { useProfile } from '@/components/ProfileProvider';
+import { setDefaultCurrency } from '@/lib/utils';
 
 interface Settings {
     id: string;
@@ -53,14 +54,17 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
                 if (res.ok) {
                     const data = await res.json();
                     setSettings(data);
+                    setDefaultCurrency(data.currency);
                     applyTheme(data.theme);
                 } else {
                     setSettings(defaultSettings);
+                    setDefaultCurrency(defaultSettings.currency);
                     applyTheme(defaultSettings.theme);
                 }
             } catch (error) {
                 console.error('Failed to load settings:', error);
                 setSettings(defaultSettings);
+                setDefaultCurrency(defaultSettings.currency);
                 applyTheme(defaultSettings.theme);
             } finally {
                 setLoading(false);
@@ -102,7 +106,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
             if (res.ok) {
                 const data = await res.json();
                 setSettings(data);
-                
+                setDefaultCurrency(data.currency);
+
                 if (newSettings.theme) {
                     applyTheme(newSettings.theme);
                 }

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { withErrorHandler } from '@/lib/apiHandler';
 import { getProfileId } from '@/lib/profile';
-import { getMonthOffset, calculateActivity, calculateReadyToAssign, isInflowGroup, isHiddenCategoriesGroup, calculateGoalUnderFunded } from '@/lib/budgetHelpers';
+import { getMonthOffset, calculateActivity, isInflowGroup, isHiddenCategoriesGroup, calculateGoalUnderFunded } from '@/lib/budgetHelpers';
 
 // GET budget for a specific month with proper envelope calculations
 export async function GET(request: NextRequest) {
@@ -114,7 +114,6 @@ export async function GET(request: NextRequest) {
         let totalAssigned = 0;
         let totalActivity = 0;
         let totalAvailable = 0;
-        let totalInflow = 0;
 
         // Track categories needing Tier 3 (full history) calculation
         const tier3CategoryIds: string[] = [];
@@ -156,9 +155,6 @@ export async function GET(request: NextRequest) {
                     totalAssigned += assigned;
                     totalActivity += activity;
                     totalAvailable += available;
-                } else if (isInflow) {
-                    // Track inflow (positive activity in inflow categories = income)
-                    totalInflow += available;
                 }
 
                 // Dynamically calculate goalUnderFunded from current available
@@ -221,8 +217,6 @@ export async function GET(request: NextRequest) {
                         // Adjust totals (placeholder was 0, so just add the real value)
                         if (!cat.isInflow && !group.isHidden) {
                             totalAvailable += realAvailable;
-                        } else if (cat.isInflow) {
-                            totalInflow += realAvailable;
                         }
                     }
                 }
@@ -334,13 +328,17 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        const amountCents = Math.round(amount * 100);
-
-        // Fetch old assigned value BEFORE upserting to correctly calculate difference
-        const oldBudget = await prisma.monthlyBudget.findUnique({
-            where: { month_categoryId: { month, categoryId } },
+        // SEC-5: Verify the category belongs to the active profile.
+        // 404 (not 403) to avoid leaking the existence of cross-profile IDs.
+        const ownedCategory = await prisma.category.findFirst({
+            where: { id: categoryId, group: { profileId } },
+            select: { id: true },
         });
-        const oldAssigned = oldBudget?.assigned ?? 0;
+        if (!ownedCategory) {
+            return NextResponse.json({ error: 'Category not found' }, { status: 404 });
+        }
+
+        const amountCents = Math.round(amount * 100);
 
         // Calculate what the available should be:
         // Rollover from previous month + assigned this month + activity this month

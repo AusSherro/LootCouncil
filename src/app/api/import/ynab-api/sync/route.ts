@@ -90,8 +90,7 @@ async function ynabFetch(path: string, token: string) {
 // GET - Check sync status
 export async function GET() {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const settings = await (prisma.settings as any).findUnique({ where: { id: 'default' } });
+    const settings = await prisma.settings.findUnique({ where: { id: 'default' } });
 
     return NextResponse.json({
       hasSynced: !!settings?.lastYnabSync,
@@ -117,8 +116,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get stored sync state
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const settings = await (prisma.settings as any).findUnique({ where: { id: 'default' } });
+    const settings = await prisma.settings.findUnique({ where: { id: 'default' } });
 
     if (!settings?.ynabBudgetId) {
       return NextResponse.json(
@@ -152,14 +150,12 @@ export async function POST(request: NextRequest) {
     newServerKnowledge = Math.max(newServerKnowledge, accountsData.data.server_knowledge);
 
     for (const acc of deltaAccounts) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const existing = await (prisma.account as any).findFirst({ where: { ynabId: acc.id } });
+      const existing = await prisma.account.findFirst({ where: { ynabId: acc.id } });
 
       if (acc.deleted) {
         if (existing) {
           // Don't hard-delete accounts with transactions — just mark closed
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (prisma.account as any).update({
+          await prisma.account.update({
             where: { id: existing.id },
             data: { closed: true },
           });
@@ -169,8 +165,7 @@ export async function POST(request: NextRequest) {
       }
 
       if (existing) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await (prisma.account as any).update({
+        await prisma.account.update({
           where: { id: existing.id },
           data: {
             name: acc.name,
@@ -184,11 +179,9 @@ export async function POST(request: NextRequest) {
         stats.accounts.updated++;
       } else {
         // Also check by name for accounts created before delta sync was added
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const byName = await (prisma.account as any).findFirst({ where: { name: acc.name } });
+        const byName = await prisma.account.findFirst({ where: { name: acc.name } });
         if (byName) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (prisma.account as any).update({
+          await prisma.account.update({
             where: { id: byName.id },
             data: {
               ynabId: acc.id,
@@ -201,8 +194,7 @@ export async function POST(request: NextRequest) {
           });
           stats.accounts.updated++;
         } else {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (prisma.account as any).create({
+          await prisma.account.create({
             data: {
               name: acc.name,
               type: acc.type.toLowerCase().replace('_', ''),
@@ -219,13 +211,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Build account lookup map (ynabId -> our id)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const allAccounts = await (prisma.account as any).findMany({
+    const allAccounts = await prisma.account.findMany({
       where: { ynabId: { not: null } },
       select: { id: true, ynabId: true },
     });
     const accountMap = new Map<string, string>();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     for (const a of allAccounts) accountMap.set(a.ynabId!, a.id);
 
     // ==========================================
@@ -245,23 +235,19 @@ export async function POST(request: NextRequest) {
     let groupSortOrder = 0;
     for (const group of deltaGroups) {
       if (group.name === 'Internal Master Category') continue;
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const existingGroup = await (prisma.categoryGroup as any).findFirst({ where: { ynabId: group.id } });
+      const existingGroup = await prisma.categoryGroup.findFirst({ where: { ynabId: group.id } });
 
       if (group.deleted) {
         if (existingGroup) {
           // Delete group and its categories cascade
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (prisma.categoryGroup as any).delete({ where: { id: existingGroup.id } });
+          await prisma.categoryGroup.delete({ where: { id: existingGroup.id } });
           stats.categoryGroups.deleted++;
         }
         continue;
       }
 
       if (existingGroup) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await (prisma.categoryGroup as any).update({
+        await prisma.categoryGroup.update({
           where: { id: existingGroup.id },
           data: { name: group.name, isHidden: group.hidden },
         });
@@ -269,19 +255,16 @@ export async function POST(request: NextRequest) {
         stats.categoryGroups.updated++;
       } else {
         // Check by name for pre-delta records
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const byName = await (prisma.categoryGroup as any).findFirst({ where: { name: group.name } });
+        const byName = await prisma.categoryGroup.findFirst({ where: { name: group.name } });
         if (byName) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (prisma.categoryGroup as any).update({
+          await prisma.categoryGroup.update({
             where: { id: byName.id },
             data: { ynabId: group.id, isHidden: group.hidden },
           });
           categoryGroupMap.set(group.id, byName.id);
           stats.categoryGroups.updated++;
         } else {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const created = await (prisma.categoryGroup as any).create({
+          const created = await prisma.categoryGroup.create({
             data: {
               name: group.name,
               sortOrder: groupSortOrder++,
@@ -298,14 +281,11 @@ export async function POST(request: NextRequest) {
       for (const cat of group.categories || []) {
         const groupId = categoryGroupMap.get(group.id);
         if (!groupId) continue;
-
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const existingCat = await (prisma.category as any).findFirst({ where: { ynabId: cat.id } });
+        const existingCat = await prisma.category.findFirst({ where: { ynabId: cat.id } });
 
         if (cat.deleted) {
           if (existingCat) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            await (prisma.category as any).delete({ where: { id: existingCat.id } });
+            await prisma.category.delete({ where: { id: existingCat.id } });
             stats.categories.deleted++;
           }
           continue;
@@ -327,8 +307,7 @@ export async function POST(request: NextRequest) {
         };
 
         if (existingCat) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (prisma.category as any).update({
+          await prisma.category.update({
             where: { id: existingCat.id },
             data: { ...catData, groupId },
           });
@@ -336,21 +315,18 @@ export async function POST(request: NextRequest) {
           stats.categories.updated++;
         } else {
           // Check by name + group for pre-delta records
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const byName = await (prisma.category as any).findFirst({
+          const byName = await prisma.category.findFirst({
             where: { name: cat.name, groupId },
           });
           if (byName) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            await (prisma.category as any).update({
+            await prisma.category.update({
               where: { id: byName.id },
               data: { ...catData, ynabId: cat.id },
             });
             categoryMap.set(cat.id, byName.id);
             stats.categories.updated++;
           } else {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const created = await (prisma.category as any).create({
+            const created = await prisma.category.create({
               data: {
                 ...catData,
                 groupId,
@@ -366,8 +342,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Build full category map for transactions (need ALL categories, not just changed ones)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const allCategories: any[] = await (prisma.category as any).findMany({
+    const allCategories = await prisma.category.findMany({
       where: { ynabId: { not: null } },
       select: { id: true, ynabId: true },
     });
@@ -462,13 +437,11 @@ export async function POST(request: NextRequest) {
       const amountCents = Math.round(tx.amount / 10);
 
       // Look up by ynabId first
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const existing = await (prisma.transaction as any).findFirst({ where: { ynabId: tx.id } });
+      const existing = await prisma.transaction.findFirst({ where: { ynabId: tx.id } });
 
       if (tx.deleted) {
         if (existing) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (prisma.transaction as any).delete({ where: { id: existing.id } });
+          await prisma.transaction.delete({ where: { id: existing.id } });
           stats.transactions.deleted++;
         }
         continue;
@@ -489,16 +462,14 @@ export async function POST(request: NextRequest) {
       };
 
       if (existing) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        await (prisma.transaction as any).update({
+        await prisma.transaction.update({
           where: { id: existing.id },
           data: txDataObj,
         });
         stats.transactions.updated++;
       } else {
         // For first delta sync after migration, try matching by date+amount+account
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const byLegacy = await (prisma.transaction as any).findFirst({
+        const byLegacy = await prisma.transaction.findFirst({
           where: {
             accountId,
             date: new Date(tx.date),
@@ -508,15 +479,13 @@ export async function POST(request: NextRequest) {
         });
 
         if (byLegacy) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (prisma.transaction as any).update({
+          await prisma.transaction.update({
             where: { id: byLegacy.id },
             data: { ...txDataObj, ynabId: tx.id },
           });
           stats.transactions.updated++;
         } else {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (prisma.transaction as any).create({
+          await prisma.transaction.create({
             data: { ...txDataObj, ynabId: tx.id },
           });
           stats.transactions.created++;
@@ -525,8 +494,7 @@ export async function POST(request: NextRequest) {
 
       // Handle subtransactions
       if (tx.subtransactions && tx.subtransactions.length > 0) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const parentTx = await (prisma.transaction as any).findFirst({ where: { ynabId: tx.id } });
+        const parentTx = await prisma.transaction.findFirst({ where: { ynabId: tx.id } });
         if (parentTx) {
           // Delete existing subtransactions and recreate
           await prisma.subTransaction.deleteMany({ where: { transactionId: parentTx.id } });
@@ -589,8 +557,7 @@ export async function POST(request: NextRequest) {
 
         // Update "Ready to Assign" from current month
         if (monthStr === currentMonth) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (prisma.settings as any).update({
+          await prisma.settings.update({
             where: { id: 'default' },
             data: {
               toBeBudgeted: Math.round(month.to_be_budgeted / 10),
@@ -605,8 +572,7 @@ export async function POST(request: NextRequest) {
     // ==========================================
     // 6. Update sync state
     // ==========================================
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await (prisma.settings as any).update({
+    await prisma.settings.update({
       where: { id: 'default' },
       data: {
         lastYnabSync: new Date(),
@@ -620,8 +586,8 @@ export async function POST(request: NextRequest) {
       stats,
     });
   } catch (error) {
-    console.error('Delta sync error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return NextResponse.json({ error: 'Delta sync failed', details: errorMessage }, { status: 500 });
+    console.error('YNAB delta sync failed:', errorMessage, error);
+    return NextResponse.json({ error: 'Delta sync failed' }, { status: 500 });
   }
 }

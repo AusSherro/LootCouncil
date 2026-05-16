@@ -13,8 +13,8 @@ async function getPreviousMonthAvailable(categoryId: string, month: string): Pro
 
 // POST - Transfer funds between budget categories (or to/from Ready to Assign)
 export async function POST(request: NextRequest) {
-    const profileId = await getProfileId(request);
     try {
+        const profileId = await getProfileId(request);
         const body = await request.json();
         const { fromCategoryId, toCategoryId, amount, month } = body;
 
@@ -49,7 +49,11 @@ export async function POST(request: NextRequest) {
 
         // Case 1: Category → Ready to Assign (reduce category assignment)
         if (fromCategoryId && !toCategoryId) {
-            const category = await prisma.category.findUnique({ where: { id: fromCategoryId } });
+            // SEC-5: scope lookup to the active profile so cross-profile IDs 404.
+            const category = await prisma.category.findFirst({
+                where: { id: fromCategoryId, group: { profileId } },
+                select: { id: true },
+            });
             if (!category) {
                 return NextResponse.json({ error: 'Category not found' }, { status: 404 });
             }
@@ -82,7 +86,11 @@ export async function POST(request: NextRequest) {
 
         // Case 2: Ready to Assign → Category (increase category assignment)
         if (!fromCategoryId && toCategoryId) {
-            const category = await prisma.category.findUnique({ where: { id: toCategoryId } });
+            // SEC-5: scope lookup to the active profile so cross-profile IDs 404.
+            const category = await prisma.category.findFirst({
+                where: { id: toCategoryId, group: { profileId } },
+                select: { id: true },
+            });
             if (!category) {
                 return NextResponse.json({ error: 'Category not found' }, { status: 404 });
             }
@@ -114,10 +122,16 @@ export async function POST(request: NextRequest) {
         }
 
         // Case 3: Category → Category (original behavior)
-        // Verify both categories exist
+        // SEC-5: scope both lookups to the active profile so cross-profile IDs 404.
         const [fromCategory, toCategory] = await Promise.all([
-            prisma.category.findUnique({ where: { id: fromCategoryId } }),
-            prisma.category.findUnique({ where: { id: toCategoryId } }),
+            prisma.category.findFirst({
+                where: { id: fromCategoryId, group: { profileId } },
+                select: { id: true },
+            }),
+            prisma.category.findFirst({
+                where: { id: toCategoryId, group: { profileId } },
+                select: { id: true },
+            }),
         ]);
 
         if (!fromCategory || !toCategory) {

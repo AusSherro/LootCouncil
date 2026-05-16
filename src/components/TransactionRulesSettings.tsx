@@ -2,6 +2,7 @@
 
 import { Wand2, Plus, Trash2, AlertCircle, Check, PlayCircle } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import { useConfirmDialog } from '@/components/ConfirmDialog';
 
 interface Category {
     id: string;
@@ -29,6 +30,7 @@ export default function TransactionRulesSettings() {
     const [editingRule, setEditingRule] = useState<TransactionRule | null>(null);
     const [applying, setApplying] = useState(false);
     const [applyResult, setApplyResult] = useState<string | null>(null);
+    const { confirm, Dialog: ConfirmDialogModal } = useConfirmDialog();
 
     // Form state
     const [name, setName] = useState('');
@@ -135,18 +137,24 @@ export default function TransactionRulesSettings() {
     }
 
     async function handleDelete(id: string) {
-        if (!confirm('Are you sure you want to delete this rule?')) return;
-        
-        try {
-            await fetch('/api/rules', {
-                method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id }),
-            });
-            fetchRules();
-        } catch (err) {
-            console.error('Failed to delete rule:', err);
-        }
+        confirm({
+            title: 'Delete rule',
+            message: 'Are you sure you want to delete this transaction rule? Existing transactions categorised by this rule will keep their categories.',
+            variant: 'danger',
+            confirmText: 'Delete',
+            onConfirm: async () => {
+                try {
+                    await fetch('/api/rules', {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id }),
+                    });
+                    fetchRules();
+                } catch (err) {
+                    console.error('Failed to delete rule:', err);
+                }
+            },
+        });
     }
 
     async function applyRules() {
@@ -353,6 +361,7 @@ export default function TransactionRulesSettings() {
             <p className="text-xs text-neutral mt-4">
                 Rules are applied in order. New transactions will be auto-categorized when imported.
             </p>
+            <ConfirmDialogModal />
         </section>
     );
 }
