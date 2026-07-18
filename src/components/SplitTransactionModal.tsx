@@ -4,6 +4,7 @@ import { X, Plus, Trash2, Split, AlertCircle } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { formatCurrency } from '@/lib/utils';
 import { useSettings } from '@/components/SettingsProvider';
+import ModalDialog from './ModalDialog';
 
 interface Category {
     id: string;
@@ -133,7 +134,12 @@ export default function SplitTransactionModal({ isOpen, onClose, onSuccess, tran
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="bg-background-secondary rounded-xl w-full max-w-2xl shadow-2xl animate-scale-in">
+            <ModalDialog
+                isOpen={isOpen}
+                onClose={onClose}
+                aria-label="Split transaction"
+                className="bg-background-secondary rounded-xl w-full max-w-2xl shadow-2xl animate-scale-in"
+            >
                 <div className="flex items-center justify-between p-6 border-b border-border">
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-lg bg-secondary/20 flex items-center justify-center">
@@ -239,7 +245,7 @@ export default function SplitTransactionModal({ isOpen, onClose, onSuccess, tran
                         {loading ? 'Splitting...' : 'Split Transaction'}
                     </button>
                 </div>
-            </div>
+            </ModalDialog>
         </div>
     );
 }

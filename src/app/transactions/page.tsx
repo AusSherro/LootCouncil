@@ -14,6 +14,7 @@ import { formatCurrency } from '@/lib/utils';
 import { useSettings } from '@/components/SettingsProvider';
 import { useProfile } from '@/components/ProfileProvider';
 import { fetchJsonCached } from '@/lib/clientCache';
+import ModalDialog from '@/components/ModalDialog';
 
 interface Transaction {
     id: string;
@@ -84,7 +85,7 @@ function TransactionRow({
             {/* Desktop table row — hidden on mobile */}
             <div 
                 onClick={() => onEdit(transaction)}
-                className={`hidden lg:grid table-row table-row-zebra ${gridCols} group cursor-pointer transition-colors ${isSelected ? 'bg-gold/10' : ''} ${selectedIndex !== undefined && selectedIndex >= 0 ? 'ring-1 ring-gold' : ''}`}>
+                className={`hidden lg:grid lc-table-row table-row-zebra ${gridCols} group cursor-pointer transition-colors ${isSelected ? 'bg-gold/10' : ''} ${selectedIndex !== undefined && selectedIndex >= 0 ? 'ring-1 ring-gold' : ''}`}>
                 <div className="flex items-center justify-center" onClick={(e) => { e.stopPropagation(); onToggleSelect?.(transaction.id); }}>
                     {isSelected ? (
                         <CheckSquare className="w-4 h-4 text-gold" />
@@ -675,7 +676,7 @@ export default function TransactionsPage() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                    <button onClick={() => fetchTransactions()} className="btn btn-ghost" disabled={loading}>
+                    <button onClick={() => fetchTransactions()} className="btn btn-ghost" disabled={loading} aria-label="Refresh transactions">
                         <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
                     </button>
                     <button onClick={handleExportCSV} className="btn btn-ghost" disabled={exporting || loading} aria-label="Export CSV" title="Export filtered transactions as CSV">
@@ -914,7 +915,12 @@ export default function TransactionsPage() {
             {/* Bulk Edit Modal */}
             {showBulkEdit && (
                 <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-[70] p-4 animate-fade-in" onClick={() => setShowBulkEdit(false)}>
-                    <div className="bg-background-secondary rounded-xl p-6 w-full sm:w-96 shadow-xl animate-scale-in" onClick={(e) => e.stopPropagation()}>
+                    <ModalDialog
+                        isOpen={showBulkEdit}
+                        onClose={() => setShowBulkEdit(false)}
+                        aria-label={`Edit ${selectedIds.size} transactions`}
+                        className="bg-background-secondary rounded-xl p-6 w-full sm:w-96 shadow-xl animate-scale-in"
+                    >
                         <h3 className="text-lg font-semibold text-foreground mb-4">Edit {selectedIds.size} Transactions</h3>
                         <div className="space-y-4">
                             <div>
@@ -923,6 +929,7 @@ export default function TransactionsPage() {
                                     value={bulkCategory}
                                     onChange={(e) => setBulkCategory(e.target.value)}
                                     className="input w-full"
+                                    aria-label="Bulk category"
                                 >
                                     <option value="">Don&apos;t change</option>
                                     {categories.map(c => (
@@ -936,6 +943,7 @@ export default function TransactionsPage() {
                                     value={bulkCleared}
                                     onChange={(e) => setBulkCleared(e.target.value as '' | 'true' | 'false')}
                                     className="input w-full"
+                                    aria-label="Bulk cleared status"
                                 >
                                     <option value="">Don&apos;t change</option>
                                     <option value="true">Cleared</option>
@@ -951,7 +959,7 @@ export default function TransactionsPage() {
                                 Apply
                             </button>
                         </div>
-                    </div>
+                    </ModalDialog>
                 </div>
             )}
 
@@ -959,7 +967,7 @@ export default function TransactionsPage() {
             {(loading || transactions.length > 0) && (
                 <>
                     {/* Desktop table header — hidden on mobile */}
-                    <div className={`hidden lg:grid table-row table-header ${filters.accountId ? 'grid-cols-[32px_80px_1fr_1fr_1fr_120px_120px_40px]' : 'grid-cols-[32px_80px_1fr_1fr_1fr_120px_40px]'} rounded-t-lg`}>
+                    <div className={`hidden lg:grid lc-table-row table-header ${filters.accountId ? 'grid-cols-[32px_80px_1fr_1fr_1fr_120px_120px_40px]' : 'grid-cols-[32px_80px_1fr_1fr_1fr_120px_40px]'} rounded-t-lg`}>
                         <div className="flex items-center justify-center">
                             <button onClick={selectAll} aria-label="Select all transactions" className="p-1 hover:bg-background-tertiary rounded">
                                 {selectedIds.size === filteredTransactions.length && filteredTransactions.length > 0 ? (

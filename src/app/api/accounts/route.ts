@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { withErrorHandler } from '@/lib/apiHandler';
 import { getProfileId } from '@/lib/profile';
+import { findOwnedAccount } from '@/lib/profileOwnership';
 
 // GET all accounts
 export const GET = withErrorHandler(async (request: NextRequest) => {
@@ -74,6 +75,7 @@ export async function POST(request: NextRequest) {
 // PATCH - Update account or reconcile
 export async function PATCH(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         const body = await request.json();
         const { id, action, updates, reconcileBalance, reconcileDate } = body;
 
@@ -81,13 +83,13 @@ export async function PATCH(request: NextRequest) {
             return NextResponse.json({ error: 'Account ID required' }, { status: 400 });
         }
 
+        const account = await findOwnedAccount(profileId, id);
+        if (!account) {
+            return NextResponse.json({ error: 'Account not found' }, { status: 404 });
+        }
+
         if (action === 'reconcile') {
             // Reconcile account: lock in cleared balance and mark past transactions as reconciled
-            const account = await prisma.account.findUnique({ where: { id } });
-            if (!account) {
-                return NextResponse.json({ error: 'Account not found' }, { status: 404 });
-            }
-
             // Mark all cleared transactions before/on reconcileDate as reconciled
             const cutoffDate = reconcileDate ? new Date(reconcileDate) : new Date();
             await prisma.transaction.updateMany({
@@ -137,6 +139,9 @@ export async function PATCH(request: NextRequest) {
         } else if (action === 'link') {
             // Link credit card to payment account
             const { linkedAccountId } = body;
+            if (linkedAccountId && !(await findOwnedAccount(profileId, linkedAccountId))) {
+                return NextResponse.json({ error: 'Linked account not found' }, { status: 404 });
+            }
             const updated = await prisma.account.update({
                 where: { id },
                 data: { linkedAccountId: linkedAccountId || null },
@@ -172,11 +177,17 @@ export async function PATCH(request: NextRequest) {
 // DELETE - Close/delete an account
 export async function DELETE(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         const { searchParams } = new URL(request.url);
         const id = searchParams.get('id');
 
         if (!id) {
             return NextResponse.json({ error: 'Account ID required' }, { status: 400 });
+        }
+
+        const account = await findOwnedAccount(profileId, id);
+        if (!account) {
+            return NextResponse.json({ error: 'Account not found' }, { status: 404 });
         }
 
         // Check for transactions

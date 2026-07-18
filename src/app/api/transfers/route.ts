@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
+import { findOwnedAccount } from '@/lib/profileOwnership';
 
 // GET - List transfers
 export async function GET(request: NextRequest) {
     const profileId = await getProfileId(request);
     const { searchParams } = new URL(request.url);
-    const limit = parseInt(searchParams.get('limit') || '50');
+    const parsedLimit = Number.parseInt(searchParams.get('limit') || '50', 10);
+    const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 200) : 50;
 
     try {
         const transfers = await prisma.transfer.findMany({
@@ -23,7 +25,7 @@ export async function GET(request: NextRequest) {
         });
 
         const accounts = await prisma.account.findMany({
-            where: { id: { in: Array.from(accountIds) } },
+            where: { id: { in: Array.from(accountIds) }, profileId },
             select: { id: true, name: true },
         });
 
@@ -64,24 +66,26 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        const amountCents = Math.round(parseFloat(amount) * 100);
-        if (amountCents <= 0) {
+        const parsedAmount = typeof amount === 'number' ? amount : Number.parseFloat(amount);
+        const amountCents = Math.round(parsedAmount * 100);
+        if (!Number.isFinite(amountCents) || amountCents <= 0) {
             return NextResponse.json({ error: 'Amount must be positive' }, { status: 400 });
         }
 
         // Verify both accounts exist
-        const sourceAccount = await prisma.account.findUnique({
-            where: { id: sourceAccountId },
-        });
-        const destAccount = await prisma.account.findUnique({
-            where: { id: destinationAccountId },
-        });
+        const [sourceAccount, destAccount] = await Promise.all([
+            findOwnedAccount(profileId, sourceAccountId),
+            findOwnedAccount(profileId, destinationAccountId),
+        ]);
 
         if (!sourceAccount || !destAccount) {
             return NextResponse.json({ error: 'One or both accounts not found' }, { status: 404 });
         }
 
         const transferDate = date ? new Date(date) : new Date();
+        if (Number.isNaN(transferDate.getTime())) {
+            return NextResponse.json({ error: 'Invalid transfer date' }, { status: 400 });
+        }
 
         // Use transaction for atomicity
         const result = await prisma.$transaction(async (tx) => {
@@ -166,13 +170,13 @@ export async function POST(request: NextRequest) {
         }, { status: 201 });
     } catch (error) {
         console.error('Error creating transfer:', error);
-        const message = error instanceof Error ? error.message : 'Unknown error';
-        return NextResponse.json({ error: 'Failed to create transfer', details: message }, { status: 500 });
+        return NextResponse.json({ error: 'Failed to create transfer' }, { status: 500 });
     }
 }
 
 // DELETE - Delete a transfer and its linked transactions
 export async function DELETE(request: NextRequest) {
+    const profileId = await getProfileId(request);
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
@@ -181,8 +185,8 @@ export async function DELETE(request: NextRequest) {
     }
 
     try {
-        const transfer = await prisma.transfer.findUnique({
-            where: { id },
+        const transfer = await prisma.transfer.findFirst({
+            where: { id, profileId },
         });
 
         if (!transfer) {

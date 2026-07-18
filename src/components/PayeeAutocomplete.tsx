@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useId } from 'react';
 
 interface Payee {
     id: string;
@@ -14,6 +14,7 @@ interface PayeeAutocompleteProps {
     onPayeeSelect?: (payee: Payee | null) => void;
     placeholder?: string;
     className?: string;
+    id?: string;
 }
 
 export default function PayeeAutocomplete({
@@ -22,7 +23,11 @@ export default function PayeeAutocomplete({
     onPayeeSelect,
     placeholder = "Enter payee...",
     className = "",
+    id,
 }: PayeeAutocompleteProps) {
+    const generatedId = useId();
+    const inputId = id ?? `payee-${generatedId}`;
+    const listboxId = `${inputId}-listbox`;
     const [suggestions, setSuggestions] = useState<Payee[]>([]);
     const [isOpen, setIsOpen] = useState(false);
     const [highlightedIndex, setHighlightedIndex] = useState(0);
@@ -105,6 +110,9 @@ export default function PayeeAutocomplete({
         }
     };
 
+    const showCreateOption = Boolean(value.trim() && !suggestions.find(s => s.name.toLowerCase() === value.trim().toLowerCase()));
+    const optionCount = suggestions.length + (showCreateOption ? 1 : 0);
+
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (!isOpen) {
             if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
@@ -116,24 +124,19 @@ export default function PayeeAutocomplete({
         switch (e.key) {
             case 'ArrowDown':
                 e.preventDefault();
-                setHighlightedIndex((prev) =>
-                    prev < suggestions.length ? prev + 1 : 0
-                );
+                setHighlightedIndex((prev) => optionCount > 0 && prev < optionCount - 1 ? prev + 1 : 0);
                 break;
             case 'ArrowUp':
                 e.preventDefault();
-                setHighlightedIndex((prev) =>
-                    prev > 0 ? prev - 1 : suggestions.length
-                );
+                setHighlightedIndex((prev) => optionCount > 0 && prev > 0 ? prev - 1 : Math.max(0, optionCount - 1));
                 break;
             case 'Enter':
                 e.preventDefault();
-                if (highlightedIndex === 0 && value.trim() && !suggestions.find(s => s.name.toLowerCase() === value.toLowerCase())) {
+                if (showCreateOption && highlightedIndex === 0) {
                     handleCreateNew();
-                } else if (highlightedIndex > 0 && suggestions[highlightedIndex - 1]) {
-                    handleSelectPayee(suggestions[highlightedIndex - 1]);
-                } else if (suggestions.length > 0 && highlightedIndex === 0) {
-                    handleSelectPayee(suggestions[0]);
+                } else {
+                    const suggestionIndex = highlightedIndex - (showCreateOption ? 1 : 0);
+                    if (suggestions[suggestionIndex]) handleSelectPayee(suggestions[suggestionIndex]);
                 }
                 break;
             case 'Escape':
@@ -142,11 +145,14 @@ export default function PayeeAutocomplete({
         }
     };
 
-    const showCreateOption = value.trim() && !suggestions.find(s => s.name.toLowerCase() === value.trim().toLowerCase());
+    const activeOptionId = isOpen && optionCount > 0
+        ? `${listboxId}-option-${highlightedIndex}`
+        : undefined;
 
     return (
         <div className="relative">
             <input
+                id={inputId}
                 ref={inputRef}
                 type="text"
                 value={value}
@@ -155,20 +161,31 @@ export default function PayeeAutocomplete({
                 onKeyDown={handleKeyDown}
                 placeholder={placeholder}
                 className={`input ${className}`}
+                role="combobox"
+                aria-autocomplete="list"
+                aria-expanded={isOpen}
+                aria-controls={listboxId}
+                aria-activedescendant={activeOptionId}
             />
             
             {isOpen && (suggestions.length > 0 || showCreateOption) && (
                 <div
+                    id={listboxId}
                     ref={dropdownRef}
-                    className="absolute z-[200] w-full mt-1 bg-background-secondary border border-border rounded-lg shadow-xl max-h-60 overflow-y-auto"
+                    className="absolute z-20 w-full mt-1 bg-background-secondary border border-border rounded-lg shadow-xl max-h-60 overflow-y-auto"
+                    role="listbox"
+                    aria-label="Payee suggestions"
                 >
                     {showCreateOption && (
                         <button
+                            id={`${listboxId}-option-0`}
                             type="button"
                             onClick={handleCreateNew}
                             className={`w-full px-3 py-2 text-left text-sm flex items-center gap-2 hover:bg-background-tertiary ${
                                 highlightedIndex === 0 ? 'bg-background-tertiary' : ''
                             }`}
+                            role="option"
+                            aria-selected={highlightedIndex === 0}
                         >
                             <span className="text-gold">+</span>
                             <span className="text-neutral">Create &quot;{value.trim()}&quot;</span>
@@ -178,11 +195,14 @@ export default function PayeeAutocomplete({
                     {suggestions.map((payee, index) => (
                         <button
                             key={payee.id}
+                            id={`${listboxId}-option-${index + (showCreateOption ? 1 : 0)}`}
                             type="button"
                             onClick={() => handleSelectPayee(payee)}
                             className={`w-full px-3 py-2 text-left text-sm text-foreground hover:bg-background-tertiary ${
                                 highlightedIndex === (showCreateOption ? index + 1 : index) ? 'bg-background-tertiary' : ''
                             }`}
+                            role="option"
+                            aria-selected={highlightedIndex === (showCreateOption ? index + 1 : index)}
                         >
                             {payee.name}
                         </button>

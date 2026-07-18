@@ -15,6 +15,7 @@ import {
     ResponsiveContainer,
 } from 'recharts';
 import ChartTooltip from '@/components/ChartTooltip';
+import ModalDialog from './ModalDialog';
 
 interface MonthProjection {
     month: string;
@@ -198,9 +199,11 @@ export default function ForecastModal({
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] animate-fade-in" onClick={onClose}>
-            <div
-                className="bg-background-secondary rounded-xl shadow-xl w-[720px] max-h-[90vh] overflow-y-auto animate-scale-in"
-                onClick={(e) => e.stopPropagation()}
+            <ModalDialog
+                isOpen={isOpen}
+                onClose={onClose}
+                aria-label="Budget forecast"
+                className="bg-background-secondary rounded-xl shadow-xl w-full max-w-[720px] mx-4 max-h-[90vh] overflow-y-auto animate-scale-in"
             >
                 {/* Header */}
                 <div className="flex items-center justify-between p-6 pb-4 border-b border-border">
@@ -446,7 +449,7 @@ export default function ForecastModal({
                             <div className="bg-background-tertiary rounded-xl p-4">
                                 <h4 className="text-sm font-medium text-foreground mb-3">Projected Balance</h4>
                                 <div className="h-64">
-                                    <ResponsiveContainer width="100%" height="100%">
+                                    <ResponsiveContainer width="100%" height="100%" minWidth={0} initialDimension={{ width: 1, height: 1 }}>
                                         <AreaChart data={chartData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
                                             <defs>
                                                 <linearGradient id="balanceGradient" x1="0" y1="0" x2="0" y2="1">
@@ -632,7 +635,7 @@ export default function ForecastModal({
                         </div>
                     )}
                 </div>
-            </div>
+            </ModalDialog>
         </div>
     );
 }

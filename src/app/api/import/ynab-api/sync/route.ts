@@ -88,9 +88,10 @@ async function ynabFetch(path: string, token: string) {
 }
 
 // GET - Check sync status
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const settings = await prisma.settings.findUnique({ where: { id: 'default' } });
+    const profileId = await getProfileId(request);
+    const settings = await prisma.settings.findFirst({ where: { profileId } });
 
     return NextResponse.json({
       hasSynced: !!settings?.lastYnabSync,
@@ -116,7 +117,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get stored sync state
-    const settings = await prisma.settings.findUnique({ where: { id: 'default' } });
+    const settings = await prisma.settings.findFirst({ where: { profileId } });
 
     if (!settings?.ynabBudgetId) {
       return NextResponse.json(
@@ -150,7 +151,7 @@ export async function POST(request: NextRequest) {
     newServerKnowledge = Math.max(newServerKnowledge, accountsData.data.server_knowledge);
 
     for (const acc of deltaAccounts) {
-      const existing = await prisma.account.findFirst({ where: { ynabId: acc.id } });
+      const existing = await prisma.account.findFirst({ where: { ynabId: acc.id, profileId } });
 
       if (acc.deleted) {
         if (existing) {
@@ -179,7 +180,7 @@ export async function POST(request: NextRequest) {
         stats.accounts.updated++;
       } else {
         // Also check by name for accounts created before delta sync was added
-        const byName = await prisma.account.findFirst({ where: { name: acc.name } });
+        const byName = await prisma.account.findFirst({ where: { name: acc.name, profileId } });
         if (byName) {
           await prisma.account.update({
             where: { id: byName.id },
@@ -203,6 +204,7 @@ export async function POST(request: NextRequest) {
               clearedBalance: Math.round(acc.cleared_balance / 10),
               closed: acc.closed,
               ynabId: acc.id,
+              profileId,
             },
           });
           stats.accounts.created++;
@@ -212,7 +214,7 @@ export async function POST(request: NextRequest) {
 
     // Build account lookup map (ynabId -> our id)
     const allAccounts = await prisma.account.findMany({
-      where: { ynabId: { not: null } },
+      where: { ynabId: { not: null }, profileId },
       select: { id: true, ynabId: true },
     });
     const accountMap = new Map<string, string>();
@@ -235,7 +237,7 @@ export async function POST(request: NextRequest) {
     let groupSortOrder = 0;
     for (const group of deltaGroups) {
       if (group.name === 'Internal Master Category') continue;
-      const existingGroup = await prisma.categoryGroup.findFirst({ where: { ynabId: group.id } });
+      const existingGroup = await prisma.categoryGroup.findFirst({ where: { ynabId: group.id, profileId } });
 
       if (group.deleted) {
         if (existingGroup) {
@@ -255,7 +257,7 @@ export async function POST(request: NextRequest) {
         stats.categoryGroups.updated++;
       } else {
         // Check by name for pre-delta records
-        const byName = await prisma.categoryGroup.findFirst({ where: { name: group.name } });
+        const byName = await prisma.categoryGroup.findFirst({ where: { name: group.name, profileId } });
         if (byName) {
           await prisma.categoryGroup.update({
             where: { id: byName.id },
@@ -270,6 +272,7 @@ export async function POST(request: NextRequest) {
               sortOrder: groupSortOrder++,
               isHidden: group.hidden,
               ynabId: group.id,
+              profileId,
             },
           });
           categoryGroupMap.set(group.id, created.id);
@@ -281,7 +284,9 @@ export async function POST(request: NextRequest) {
       for (const cat of group.categories || []) {
         const groupId = categoryGroupMap.get(group.id);
         if (!groupId) continue;
-        const existingCat = await prisma.category.findFirst({ where: { ynabId: cat.id } });
+        const existingCat = await prisma.category.findFirst({
+          where: { ynabId: cat.id, group: { profileId } },
+        });
 
         if (cat.deleted) {
           if (existingCat) {
@@ -343,7 +348,7 @@ export async function POST(request: NextRequest) {
 
     // Build full category map for transactions (need ALL categories, not just changed ones)
     const allCategories = await prisma.category.findMany({
-      where: { ynabId: { not: null } },
+      where: { ynabId: { not: null }, group: { profileId } },
       select: { id: true, ynabId: true },
     });
     for (const c of allCategories) {
@@ -366,7 +371,7 @@ export async function POST(request: NextRequest) {
       payeeNameMap.set(payee.id, payee.name);
 
       if (payee.deleted) {
-        const existing = await prisma.payee.findFirst({ where: { ynabId: payee.id } });
+        const existing = await prisma.payee.findFirst({ where: { ynabId: payee.id, profileId } });
         if (existing) {
           await prisma.payee.delete({ where: { id: existing.id } });
           stats.payees.deleted++;
@@ -375,7 +380,7 @@ export async function POST(request: NextRequest) {
       }
 
       const transferAccId = payee.transfer_account_id ? accountMap.get(payee.transfer_account_id) : null;
-      const existing = await prisma.payee.findFirst({ where: { ynabId: payee.id } });
+      const existing = await prisma.payee.findFirst({ where: { ynabId: payee.id, profileId } });
 
       if (existing) {
         await prisma.payee.update({
@@ -388,7 +393,7 @@ export async function POST(request: NextRequest) {
         stats.payees.updated++;
       } else {
         // Check by name for pre-delta records
-        const byName = await prisma.payee.findFirst({ where: { name: payee.name } });
+        const byName = await prisma.payee.findFirst({ where: { name: payee.name, profileId } });
         if (byName) {
           await prisma.payee.update({
             where: { id: byName.id },
@@ -411,7 +416,7 @@ export async function POST(request: NextRequest) {
 
     // Build full payee name map for transactions
     const allPayees = await prisma.payee.findMany({
-      where: { ynabId: { not: null } },
+      where: { ynabId: { not: null }, profileId },
       select: { ynabId: true, name: true },
     });
     for (const p of allPayees) {
@@ -437,7 +442,9 @@ export async function POST(request: NextRequest) {
       const amountCents = Math.round(tx.amount / 10);
 
       // Look up by ynabId first
-      const existing = await prisma.transaction.findFirst({ where: { ynabId: tx.id } });
+      const existing = await prisma.transaction.findFirst({
+        where: { ynabId: tx.id, account: { profileId } },
+      });
 
       if (tx.deleted) {
         if (existing) {
@@ -494,7 +501,9 @@ export async function POST(request: NextRequest) {
 
       // Handle subtransactions
       if (tx.subtransactions && tx.subtransactions.length > 0) {
-        const parentTx = await prisma.transaction.findFirst({ where: { ynabId: tx.id } });
+        const parentTx = await prisma.transaction.findFirst({
+          where: { ynabId: tx.id, account: { profileId } },
+        });
         if (parentTx) {
           // Delete existing subtransactions and recreate
           await prisma.subTransaction.deleteMany({ where: { transactionId: parentTx.id } });
@@ -558,7 +567,7 @@ export async function POST(request: NextRequest) {
         // Update "Ready to Assign" from current month
         if (monthStr === currentMonth) {
           await prisma.settings.update({
-            where: { id: 'default' },
+            where: { id: settings.id },
             data: {
               toBeBudgeted: Math.round(month.to_be_budgeted / 10),
             },
@@ -573,7 +582,7 @@ export async function POST(request: NextRequest) {
     // 6. Update sync state
     // ==========================================
     await prisma.settings.update({
-      where: { id: 'default' },
+      where: { id: settings.id },
       data: {
         lastYnabSync: new Date(),
         ynabServerKnowledge: newServerKnowledge,

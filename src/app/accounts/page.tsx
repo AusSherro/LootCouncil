@@ -8,6 +8,7 @@ import CreditCardPaymentModal from '@/components/CreditCardPaymentModal';
 import TransactionForm from '@/components/TransactionForm';
 import { formatCurrency } from '@/lib/utils';
 import GoldCoinSpinner from '@/components/GoldCoinSpinner';
+import ModalDialog from '@/components/ModalDialog';
 
 interface Account {
     id: string;
@@ -419,7 +420,12 @@ export default function AccountsPage() {
             {/* Add Account Modal */}
             {showAddForm && (
                 <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] animate-fade-in">
-                    <div className="bg-background-secondary border border-border rounded-xl w-full max-w-md mx-4 p-6">
+                    <ModalDialog
+                        isOpen={showAddForm}
+                        onClose={() => setShowAddForm(false)}
+                        aria-label="Add account"
+                        className="bg-background-secondary border border-border rounded-xl w-full max-w-md mx-4 p-6"
+                    >
                         <h2 className="text-lg font-semibold text-foreground mb-4">Add Account</h2>
                         <form onSubmit={handleAddAccount} className="space-y-4">
                             <div>
@@ -430,6 +436,7 @@ export default function AccountsPage() {
                                     onChange={(e) => setNewAccount({ ...newAccount, name: e.target.value })}
                                     placeholder="e.g., Main Checking"
                                     className="input"
+                                    aria-label="Account name"
                                     required
                                 />
                             </div>
@@ -439,6 +446,7 @@ export default function AccountsPage() {
                                     value={newAccount.type}
                                     onChange={(e) => setNewAccount({ ...newAccount, type: e.target.value })}
                                     className="input"
+                                    aria-label="Account type"
                                 >
                                     <option value="checking">Checking</option>
                                     <option value="savings">Savings</option>
@@ -455,6 +463,7 @@ export default function AccountsPage() {
                                     onChange={(e) => setNewAccount({ ...newAccount, balance: e.target.value })}
                                     placeholder="0.00"
                                     className="input"
+                                    aria-label="Starting balance"
                                 />
                             </div>
                             <div className="flex gap-3 pt-2">
@@ -470,7 +479,7 @@ export default function AccountsPage() {
                                 </button>
                             </div>
                         </form>
-                    </div>
+                    </ModalDialog>
                 </div>
             )}
 

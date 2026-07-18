@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { X, ArrowRight, ArrowDownUp, Search, PiggyBank } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
+import ModalDialog from './ModalDialog';
 
 const READY_TO_ASSIGN_ID = '__READY_TO_ASSIGN__';
 
@@ -159,7 +160,12 @@ export default function BudgetTransferModal({
 
     return (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] animate-fade-in" onClick={onClose}>
-            <div className="bg-background-secondary border border-border rounded-xl w-full max-w-lg mx-4 shadow-lg" onClick={(e) => e.stopPropagation()}>
+            <ModalDialog
+                isOpen={isOpen}
+                onClose={onClose}
+                aria-label="Move money"
+                className="bg-background-secondary border border-border rounded-xl w-full max-w-lg mx-4 shadow-lg"
+            >
                 {/* Header */}
                 <div className="flex items-center justify-between p-4 border-b border-border">
                     <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
@@ -184,9 +190,12 @@ export default function BudgetTransferModal({
                         <div className="flex-1" ref={fromRef}>
                             <label className="block text-sm text-neutral mb-1">From</label>
                             <div className="relative">
-                                <div
+                                <button
+                                    type="button"
                                     className="input cursor-pointer flex items-center justify-between min-h-[38px]"
                                     onClick={() => { setShowFromDropdown(!showFromDropdown); setShowToDropdown(false); }}
+                                    aria-label="Select source category"
+                                    aria-expanded={showFromDropdown}
                                 >
                                     {fromCategory ? (
                                         <div className="truncate flex items-center gap-1.5">
@@ -197,7 +206,7 @@ export default function BudgetTransferModal({
                                     ) : (
                                         <span className="text-neutral text-sm">Select source...</span>
                                     )}
-                                </div>
+                                </button>
 
                                 {showFromDropdown && (
                                     <div className="absolute left-0 right-0 top-full mt-1 bg-background-secondary border border-border rounded-lg shadow-xl z-[80] max-h-72 overflow-hidden">
@@ -284,9 +293,12 @@ export default function BudgetTransferModal({
                         <div className="flex-1" ref={toRef}>
                             <label className="block text-sm text-neutral mb-1">To</label>
                             <div className="relative">
-                                <div
+                                <button
+                                    type="button"
                                     className="input cursor-pointer flex items-center justify-between min-h-[38px]"
                                     onClick={() => { setShowToDropdown(!showToDropdown); setShowFromDropdown(false); }}
+                                    aria-label="Select destination category"
+                                    aria-expanded={showToDropdown}
                                 >
                                     {toCategory ? (
                                         <div className="truncate flex items-center gap-1.5">
@@ -297,7 +309,7 @@ export default function BudgetTransferModal({
                                     ) : (
                                         <span className="text-neutral text-sm">Select destination...</span>
                                     )}
-                                </div>
+                                </button>
 
                                 {showToDropdown && (
                                     <div className="absolute left-0 right-0 top-full mt-1 bg-background-secondary border border-border rounded-lg shadow-xl z-[80] max-h-72 overflow-hidden">
@@ -403,6 +415,7 @@ export default function BudgetTransferModal({
                                 onChange={(e) => setAmount(e.target.value)}
                                 placeholder="0.00"
                                 className="input pl-7 w-full text-lg font-medium tabular-nums"
+                                aria-label="Transfer amount"
                                 required
                             />
                         </div>
@@ -431,7 +444,7 @@ export default function BudgetTransferModal({
                         </button>
                     </div>
                 </form>
-            </div>
+            </ModalDialog>
         </div>
     );
 }

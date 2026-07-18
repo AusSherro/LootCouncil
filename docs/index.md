@@ -1,6 +1,6 @@
 # Loot Council — Documentation Index
 
-> **Generated:** 2026-03-04 (last updated 2026-05-16) | **Mode:** Updated | **Scan Level:** Comprehensive
+> **Generated:** 2026-03-04 (last verified 2026-07-18) | **Mode:** Updated | **Scan Level:** Comprehensive
 
 ---
 
@@ -16,8 +16,8 @@
 
 - **Tech Stack:** Next.js 16.2.6 · TypeScript 5 · SQLite · Prisma 6 · Tailwind CSS 4 · Recharts · Lucide React · OpenAI
 - **Entry Point:** `src/app/layout.tsx` (root layout) → `src/app/page.tsx` (dashboard)
-- **API Gateway:** `src/app/api/*/route.ts` (46 route files, 28 domains)
-- **Database:** `prisma/schema.prisma` (18 models) → `prisma/loot-council.db`
+- **API Gateway:** `src/app/api/*/route.ts` (47 route files, 26 top-level domains)
+- **Database:** `prisma/schema.prisma` (20 models) → `data/loot-council.db`
 - **Architecture Pattern:** Client-side rendered React pages fetching from co-located API routes over SQLite
 - **Multi-Profile:** Each profile has independent budgets, accounts, transactions, and settings
 - **Reports:** 8 tab components under `src/app/reports/_tabs/` (Spending Breakdown, Top Movers, Income/Expense, Savings Rate, Budget vs Actual, Net Worth, By Payee, Category Trends)
@@ -29,19 +29,19 @@
 - [Project Overview](./project-overview.md) — Executive summary, tech stack, feature list, codebase stats
 - [Architecture](./architecture.md) — Architecture pattern, technology choices, data flow, security
 - [Source Tree Analysis](./source-tree-analysis.md) — Annotated directory structure with all critical paths
-- [Component Inventory](./component-inventory.md) — 26 UI components cataloged by category
-- [API Contracts](./api-contracts.md) — 46 API endpoints across 26 domains
-- [Data Models](./data-models.md) — 17 Prisma models with field definitions and relationships
+- [Component Inventory](./component-inventory.md) — 32 UI components cataloged by category
+- [API Contracts](./api-contracts.md) — 47 route files across 26 top-level domains
+- [Data Models](./data-models.md) — 20 Prisma models with field definitions and relationships
 - [Development Guide](./development-guide.md) — Setup, commands, conventions, debugging
 
 ---
 
 ## Existing Project Documentation
 
-- [README.md](../loot-council/README.md) — Project overview, features, getting started, keyboard shortcuts
-- [ai_context.md](../loot-council/ai_context.md) — Comprehensive AI developer context (tech stack, patterns, feature status)
-- [ISSUES.md](../loot-council/ISSUES.md) — Issue tracker (critical, security, performance, code quality, features)
-- [schema.prisma](../loot-council/prisma/schema.prisma) — Full database schema
+- [README.md](../README.md) — Project overview, features, getting started, keyboard shortcuts
+- [ai_context.md](../ai_context.md) — Comprehensive AI developer context (tech stack, patterns, feature status)
+- [ISSUES.md](../ISSUES.md) — Issue tracker (critical, security, performance, code quality, features)
+- [schema.prisma](../prisma/schema.prisma) — Full database schema
 
 ---
 
@@ -65,9 +65,9 @@
 
 When working with AI coding assistants, provide these files as context:
 1. **This index** — `docs/index.md` (navigation and overview)
-2. **AI Context** — `loot-council/ai_context.md` (detailed patterns and conventions)
+2. **AI Context** — `ai_context.md` (detailed patterns and conventions)
 3. **Relevant domain docs** — Architecture, API, Data Models as needed
-4. **Issue tracker** — `loot-council/ISSUES.md` for known issues and planned features
+4. **Issue tracker** — `ISSUES.md` for known issues and planned features
 
 ---
 
@@ -76,7 +76,7 @@ When working with AI coding assistants, provide these files as context:
 | Property | Value |
 |----------|-------|
 | Scan Date | 2026-03-04 |
+| Last Verification | 2026-07-18 |
 | Scan Level | Comprehensive |
 | Mode | Updated |
 | Documents Generated | 7 |
-| State File | [project-scan-report.json](./project-scan-report.json) |

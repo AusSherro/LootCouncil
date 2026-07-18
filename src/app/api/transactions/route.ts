@@ -4,6 +4,18 @@ import prisma from '@/lib/prisma';
 import { withErrorHandler } from '@/lib/apiHandler';
 import { getProfileId } from '@/lib/profile';
 import { matchesRule } from '@/lib/ruleEngine';
+import { findOwnedAccount, findOwnedCategory, findOwnedTransaction } from '@/lib/profileOwnership';
+
+function parseBoundedInteger(value: string | null, fallback: number, min: number, max: number): number {
+    const parsed = Number.parseInt(value ?? '', 10);
+    return Number.isFinite(parsed) ? Math.min(Math.max(parsed, min), max) : fallback;
+}
+
+function parseDate(value: string | null): Date | null {
+    if (!value) return null;
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
 
 // GET all transactions
 export const GET = withErrorHandler(async (request: NextRequest) => {
@@ -13,8 +25,8 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     const categoryId = searchParams.get('categoryId');
     const cleared = searchParams.get('cleared');
     const query = searchParams.get('q');
-    const limit = Math.min(Math.max(parseInt(searchParams.get('limit') || '100'), 1), 500);
-    const offset = Math.max(parseInt(searchParams.get('offset') || '0'), 0);
+    const limit = parseBoundedInteger(searchParams.get('limit'), 100, 1, 500);
+    const offset = parseBoundedInteger(searchParams.get('offset'), 0, 0, 1_000_000);
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
     const minAmount = searchParams.get('minAmount');
@@ -39,13 +51,19 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
             where.cleared = false;
         }
         
-        if (startDate || endDate) {
+        const parsedStartDate = parseDate(startDate);
+        const parsedEndDate = parseDate(endDate);
+        if ((startDate && !parsedStartDate) || (endDate && !parsedEndDate)) {
+            return NextResponse.json({ error: 'Invalid date filter' }, { status: 400 });
+        }
+
+        if (parsedStartDate || parsedEndDate) {
             const dateFilter: Prisma.DateTimeFilter = {};
-            if (startDate) {
-                dateFilter.gte = new Date(startDate);
+            if (parsedStartDate) {
+                dateFilter.gte = parsedStartDate;
             }
-            if (endDate) {
-                dateFilter.lte = new Date(endDate);
+            if (parsedEndDate) {
+                dateFilter.lte = parsedEndDate;
             }
             where.date = dateFilter;
         }
@@ -108,7 +126,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
                     },
                 },
             },
-            orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+            orderBy: [{ date: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
             take: limit,
             skip: offset,
         });
@@ -116,23 +134,28 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
     const total = await prisma.transaction.count({ where });
 
         // Calculate running balance if requested and filtering by account
-    if (includeRunningBalance && accountId) {
-        const account = await prisma.account.findUnique({ where: { id: accountId } });
+    if (includeRunningBalance && accountId && transactions.length > 0) {
+        const account = await findOwnedAccount(profileId, accountId);
         if (account) {
-            // Get all transactions for this account to calculate running balance
-            const allTransactions = await prisma.transaction.findMany({
-                where: { accountId },
-                orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
-                select: { id: true, amount: true },
-            });
-
-            // Build running balance map
-            let runningBalance = 0;
-            const balanceMap = new Map<string, number>();
-            for (const t of allTransactions) {
-                runningBalance += t.amount;
-                balanceMap.set(t.id, runningBalance);
-            }
+            const transactionIds = transactions.map(transaction => transaction.id);
+            const runningBalances = await prisma.$queryRaw<Array<{ id: string; runningBalance: number | bigint }>>(Prisma.sql`
+                WITH running_balances AS (
+                    SELECT
+                        id,
+                        SUM(amount) OVER (
+                            ORDER BY date ASC, createdAt ASC, id ASC
+                            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+                        ) AS runningBalance
+                    FROM "Transaction"
+                    WHERE accountId = ${accountId}
+                )
+                SELECT id, runningBalance
+                FROM running_balances
+                WHERE id IN (${Prisma.join(transactionIds)})
+            `);
+            const balanceMap = new Map(
+                runningBalances.map(row => [row.id, Number(row.runningBalance)])
+            );
 
             // Add running balance to each transaction
             const transactionsWithBalance = transactions.map(t => ({
@@ -149,6 +172,7 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
 
 // POST create new transaction
 export const POST = withErrorHandler(async (request: NextRequest) => {
+    const profileId = await getProfileId(request);
     const body = await request.json();
     const { date, amount, accountId, cleared, applyRules } = body;
     let { payee, memo, categoryId } = body;
@@ -172,10 +196,15 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         return NextResponse.json({ error: 'Memo too long (max 500 characters)' }, { status: 400 });
     }
 
+    const account = await findOwnedAccount(profileId, accountId);
+    if (!account) {
+        return NextResponse.json({ error: 'Account not found' }, { status: 404 });
+    }
+
     // Apply transaction rules if requested and no category set
     if (applyRules !== false && !categoryId) {
         const rules = await prisma.transactionRule.findMany({
-            where: { isActive: true },
+            where: { isActive: true, profileId },
             orderBy: { priority: 'desc' },
         });
 
@@ -200,6 +229,10 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
                 break;
             }
         }
+    }
+
+    if (categoryId && !(await findOwnedCategory(profileId, categoryId))) {
+        return NextResponse.json({ error: 'Category not found' }, { status: 404 });
     }
 
     const amountCents = Math.round(amount * 100);
@@ -239,6 +272,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 
 // PUT update transaction
 export const PUT = withErrorHandler(async (request: NextRequest) => {
+    const profileId = await getProfileId(request);
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
@@ -250,12 +284,17 @@ export const PUT = withErrorHandler(async (request: NextRequest) => {
     const { date, amount, payee, memo, accountId, categoryId, cleared } = body;
 
     // Get existing transaction to calculate balance difference
-    const existing = await prisma.transaction.findUnique({
-        where: { id },
-    });
+    const existing = await findOwnedTransaction(profileId, id);
 
     if (!existing) {
         return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
+    }
+
+    if (!accountId || !(await findOwnedAccount(profileId, accountId))) {
+        return NextResponse.json({ error: 'Account not found' }, { status: 404 });
+    }
+    if (categoryId && !(await findOwnedCategory(profileId, categoryId))) {
+        return NextResponse.json({ error: 'Category not found' }, { status: 404 });
     }
 
     const newAmountCents = Math.round(amount * 100);
@@ -329,6 +368,7 @@ export const PUT = withErrorHandler(async (request: NextRequest) => {
 
 // DELETE transaction
 export const DELETE = withErrorHandler(async (request: NextRequest) => {
+    const profileId = await getProfileId(request);
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
@@ -337,9 +377,7 @@ export const DELETE = withErrorHandler(async (request: NextRequest) => {
     }
 
     // Get existing transaction to reverse balance
-    const existing = await prisma.transaction.findUnique({
-        where: { id },
-    });
+    const existing = await findOwnedTransaction(profileId, id);
 
     if (!existing) {
         return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });

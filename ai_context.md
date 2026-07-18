@@ -1,11 +1,11 @@
 # Loot Council - AI Context & Developer Guide
 
-## ⚔️ Project Overview
-**Loot Council** is a local-first personal finance application. It combines serious zero-based budgeting (envelope method) with a fantasy RPG aesthetic.
+## Project Overview
+**Loot Council** is a local-first personal finance application for serious zero-based budgeting (envelope method). Its default Finance theme is clean and work-focused; optional themes provide more personality, including the original dark Dungeon palette.
 
 ### Core Philosophy
 1. **Local-First**: Data lives on the user's machine (`sqlite`). Privacy first. No cloud dependency.
-2. **Aesthetic**: "Dungeons & Dragons" meets "High Finance". Dark mode with gold accents, premium feel.
+2. **Aesthetic**: Trustworthy, modern, and factual. Finance light is the default; six optional themes are available.
 3. **YNAB-Inspired**: Envelope budgeting, "Ready to Assign", category goals - all inspired by YNAB methodology.
 
 ---
@@ -15,7 +15,7 @@
 |-------|------------|-------|
 | Framework | Next.js 16 | App Router with Turbopack |
 | Language | TypeScript 5 | Strict mode |
-| Database | SQLite | Local file: `loot-council.db` |
+| Database | SQLite | Local file: `data/loot-council.db` |
 | ORM | Prisma 6 | Do NOT upgrade to 7 (driver issues) |
 | Styling | Tailwind CSS 4 | Custom CSS variables in globals.css |
 | Icons | Lucide React | Consistent icon library |
@@ -26,6 +26,7 @@
 | Crypto Data | CoinGecko API | Crypto prices and names |
 | Exchange Rates | exchangerate-api.com | Currency conversion, 1hr cache |
 | Binance | Binance API | Direct wallet sync |
+| Testing | Vitest 4 | Unit and isolated SQLite integration tests |
 
 ---
 
@@ -84,7 +85,7 @@ src/
 │   ├── budget/                 # Budget page
 │   ├── transactions/           # Transactions page
 │   ├── accounts/               # Accounts page
-│   ├── reports/                # Reports page (5 report types)
+│   ├── reports/                # Reports page (8 tabs)
 │   ├── investments/            # Investment portfolio page
 │   ├── fire/                   # FIRE calculator page
 │   ├── assistant/              # AI assistant
@@ -95,6 +96,7 @@ src/
 │   ├── Sidebar.tsx             # Navigation (desktop + mobile)
 │   ├── MobileNav.tsx           # Bottom navigation for mobile
 │   ├── TransactionForm.tsx     # Add/edit transactions
+│   ├── ModalDialog.tsx         # Shared accessible dialog shell
 │   ├── SplitTransactionModal.tsx # Split transaction editing
 │   ├── GoalEditorModal.tsx     # Category goal editing
 │   ├── GoalProgress.tsx        # Goal progress display
@@ -105,6 +107,7 @@ src/
 │   ├── BudgetTemplatesModal.tsx # Budget template management
 │   ├── BudgetTransferModal.tsx # Transfer between budget categories
 │   ├── BudgetFlowBar.tsx       # Budget flow visualization
+│   ├── ForecastModal.tsx       # Budget affordability forecast
 │   ├── CSVImportModal.tsx      # CSV file import UI
 │   ├── ReconciliationModeModal.tsx # Reconciliation workflow
 │   ├── ScheduledTransactions.tsx # Scheduled transaction list
@@ -112,6 +115,9 @@ src/
 │   ├── ConfirmDialog.tsx       # Reusable confirmation dialog
 │   ├── InlineEdit.tsx          # Inline text editing component
 │   ├── Skeleton.tsx            # Loading skeleton component
+│   ├── AnimatedNumber.tsx      # Smooth numeric transitions
+│   ├── ChartTooltip.tsx        # Shared chart tooltip
+│   ├── StatusPill.tsx          # Reusable status badge
 │   ├── ErrorBoundary.tsx       # Error handling wrapper
 │   ├── KeyboardShortcutsProvider.tsx # Global keyboard shortcuts
 │   ├── ProfileProvider.tsx     # Multi-profile context provider
@@ -123,15 +129,20 @@ src/
 │   ├── openai.ts               # OpenAI client + getOpenAIClient() accessor
 │   ├── utils.ts                # Helper functions
 │   ├── apiHandler.ts           # Centralized API error handler
-│   ├── clientCache.ts          # Lightweight in-memory TTL cache
+│   ├── clientCache.ts          # TTL cache for slow-changing form metadata
 │   ├── navigation.ts           # Shared nav items (Sidebar/MobileNav)
 │   ├── profile.ts              # Profile ID resolution (cookie/query/fallback)
+│   ├── profileOwnership.ts     # Profile-scoped entity lookup helpers
 │   ├── budgetUtils.ts          # Pure budget helpers (client+server safe)
 │   ├── budgetHelpers.ts        # Budget helpers w/ DB access (server-only, re-exports budgetUtils)
 │   ├── exchangeRate.ts         # Shared exchange rate fetcher w/ 1hr cache
 │   ├── ruleEngine.ts           # Shared rule matching w/ unified ReDoS protection
+│   ├── useModalA11y.ts         # Dialog focus, Escape, and scroll behavior
 │   ├── useUndo.tsx             # Undo/redo provider and hooks
-│   └── useKeyboardShortcuts.tsx # Keyboard shortcut hook
+│   ├── useKeyboardShortcuts.tsx # Keyboard shortcut hook
+│   ├── budgetUtils.test.ts     # Budget helper unit tests
+│   ├── ruleEngine.test.ts      # Rule matcher unit tests
+│   └── profileIsolation.integration.test.ts # Profile boundary integration tests
 └── generated/prisma/           # Generated Prisma client
 ```
 
@@ -141,15 +152,15 @@ src/
 
 ### 1. Database & Prisma
 - **Version**: Use **Prisma 6**. Do NOT upgrade to Prisma 7 (driver adapter issues with Next.js 16 Turbopack).
-- **Connection**: `DATABASE_URL="file:./loot-council.db"` in `.env`
+- **Connection**: `DATABASE_URL="file:../data/loot-council.db"` in `.env`
 - **Schema changes**: Always run `npx prisma generate` after changing `schema.prisma`
 - **Client location**: Generated to `src/generated/prisma` (custom output path)
-- **Multi-profile**: All data models have optional `profileId` FK. Use `getProfileId()` from `src/lib/profile.ts` in API routes.
+- **Multi-profile**: Scope records through a direct `profileId` or an owned parent. Use `getProfileId()` plus `src/lib/profileOwnership.ts`; payee names are unique per profile.
 - **Error handling**: Wrap API route handlers with `withErrorHandler()` from `src/lib/apiHandler.ts`
 
 ### 1.5. Environment Variables
 ```env
-DATABASE_URL="file:./loot-council.db"
+DATABASE_URL="file:../data/loot-council.db"
 OPENAI_API_KEY="sk-..."           # Optional: AI wizard features
 HOME_CURRENCY="AUD"               # Default currency for totals
 BINANCE_API_KEY="..."             # Optional: Binance wallet sync
@@ -175,7 +186,7 @@ text-success, text-danger, text-warning, text-info
 ### 3. Component Patterns
 - All pages are client components (`'use client'`)
 - Use `useState` + `useEffect` for data fetching (not server components)
-- Modal pattern: Fixed overlay with `z-50+`, centered card
+- Modal pattern: Fixed overlay with `z-50+` and shared `ModalDialog`; use `useModalA11y` directly only when needed
 - Form pattern: Controlled inputs with state, async submit handlers
 
 ### 4. API Route Patterns
@@ -218,7 +229,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 | **Transfer Matching** | Track account-to-account moves |
 | **YNAB Import** | ZIP file import support |
 | **Multiple Goal Types** | TB, TBD, MF, NEED, DEBT |
-| **Advanced Reports** | 5 report types with charts, All Time view |
+| **Advanced Reports** | 8 tabs with charts, category exclusions, transaction drill-down, and All Time views |
 | **Payee Management** | Merge, rename, delete payees |
 | **Bulk Transactions** | Select and edit multiple |
 | **Keyboard Shortcuts** | Arrow navigation, Ctrl+Z undo |
@@ -226,7 +237,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 | **Undo/Redo System** | Action history with revert |
 | **Loading Skeletons** | Smooth loading states |
 | **Error Boundaries** | Graceful error handling |
-| **5 Color Themes** | Dungeon, Forest, Ocean, Crimson, Royal |
+| **7 Color Themes** | Finance, Dungeon, Forest, Ocean, Crimson, Royal, Kawaii |
 | **Quick Budget Actions** | Last month, average, underfunded |
 | **Copy Budget** | Clone between months |
 | **Overspending Alerts** | Visual warnings |
@@ -249,7 +260,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 | **Budget Transfers** | Transfer funds between budget categories |
 | **Budget Flow Bar** | Visual income → assigned → available flow |
 | **Server-Side Filtering** | Transaction filtering on the API |
-| **Client Cache** | Lightweight in-memory TTL cache for API reads |
+| **Client Cache** | Selective in-memory TTL cache for slow-changing form metadata |
 | **API Error Handler** | Centralized error handling via withErrorHandler |
 | **Shared Navigation** | Sidebar/MobileNav use shared nav config |
 | **AI Data Consent** | Consent modal before sending data to OpenAI |
@@ -490,6 +501,13 @@ npx prisma db push
 
 # Build for production
 npm run build
+
+# Lint and run the isolated Vitest suite
+npm run lint
+npm test
+
+# Recreate the test database and start Vitest watch mode
+npm run test:watch
 ```
 
 ---
@@ -497,12 +515,13 @@ npm run build
 ## 🎨 Theme System
 
 Themes are CSS class-based (applied to `<html>`):
-- `theme-dungeon` — Default dark with gold
+- `theme-finance` — Default clean professional finance look
+- `theme-dungeon` — Dark with gold
 - `theme-forest` — Green accents
 - `theme-ocean` — Blue accents
 - `theme-crimson` — Red/warm accents
 - `theme-royal` — Purple accents
-- `theme-finance` — Clean professional finance look
+- `theme-kawaii` — Warm pink accents
 
 Theme is stored in `localStorage` as `loot-council-theme`.
 
@@ -543,7 +562,9 @@ When working on specific features, these files are most relevant:
 | Payee management | `components/PayeeManagement.tsx`, `api/payees/manage/route.ts` |
 | CSV import | `components/CSVImportModal.tsx`, `api/import/csv/route.ts` |
 | AI features | `api/ai/chat/route.ts`, `api/ai/insights/route.ts`, `lib/openai.ts` |
-| Profiles | `components/ProfileProvider.tsx`, `api/profiles/route.ts`, `lib/profile.ts` |
+| Profiles | `components/ProfileProvider.tsx`, `api/profiles/route.ts`, `lib/profile.ts`, `lib/profileOwnership.ts` |
+| Modal accessibility | `components/ModalDialog.tsx`, `lib/useModalA11y.ts` |
+| Tests | `vitest.config.ts`, `scripts/prepare-test-db.mjs`, `lib/*.test.ts` |
 | Settings | `app/settings/page.tsx`, `components/SettingsProvider.tsx` |
 | Mobile UI | `components/Sidebar.tsx`, `components/MobileNav.tsx`, `lib/navigation.ts` |
 | Undo/Redo | `lib/useUndo.tsx`, `components/UndoToast.tsx` |

@@ -1,12 +1,12 @@
 # Loot Council — Component Inventory
 
-> **Generated:** 2026-03-04 | **Scan Level:** Comprehensive
+> **Generated:** 2026-03-04 (last verified 2026-07-18) | **Scan Level:** Comprehensive
 
 ---
 
 ## Overview
 
-The application has **31 React components** in `src/components/`, all client-side (`'use client'`). Components follow a consistent pattern of modals, forms, and context providers with no component library — all custom-built with Tailwind CSS.
+The application has **32 React components** in `src/components/`. Components follow a consistent pattern of modals, forms, and context providers with no component library — all custom-built with Tailwind CSS.
 
 ---
 
@@ -23,6 +23,7 @@ The application has **31 React components** in `src/components/`, all client-sid
 
 | Component | File | Description |
 |-----------|------|-------------|
+| ModalDialog | `ModalDialog.tsx` | Accessible dialog shell shared by modal surfaces |
 | TransactionForm | `TransactionForm.tsx` | Add/edit transaction modal with account/category selection |
 | SplitTransactionModal | `SplitTransactionModal.tsx` | Split transaction across multiple categories |
 | GoalEditorModal | `GoalEditorModal.tsx` | Category goal configuration (TB, TBD, MF, NEED, DEBT) |
@@ -45,6 +46,7 @@ The application has **31 React components** in `src/components/`, all client-sid
 | StatusPill | `StatusPill.tsx` | Reusable status badge component |
 | GoldCoinSpinner | `GoldCoinSpinner.tsx` | Themed loading spinner |
 | ChartTooltip | `ChartTooltip.tsx` | Reusable Recharts tooltip with currency formatting |
+| Skeleton | `Skeleton.tsx` | Stable loading placeholders for pages and panels |
 
 ### Input Components
 
@@ -83,17 +85,32 @@ The application has **31 React components** in `src/components/`, all client-sid
 
 - **No component library** — All components are custom-built
 - **Styling:** Tailwind CSS 4 with CSS custom properties for theming
-- **Modal pattern:** Fixed overlay (`z-50+`) with centered card
+- **Modal pattern:** Fixed overlay (`z-50+`) with `ModalDialog` or the shared `useModalA11y` hook
 - **Form pattern:** Controlled inputs with `useState`, async submit handlers
 - **Icons:** Lucide React (consistent across all components)
-- **Themes:** 6 CSS class-based themes applied to `<html>` element
-  - `theme-dungeon` (default) — Dark with gold accents
+- **Themes:** 7 CSS class-based themes applied to `<html>` element
+  - `theme-finance` (default) — Clean professional finance look
+  - `theme-dungeon` — Dark with gold accents
   - `theme-forest` — Green accents
   - `theme-ocean` — Blue accents
   - `theme-crimson` — Red/warm accents
   - `theme-royal` — Purple accents
-  - `theme-finance` — Clean professional finance look
+  - `theme-kawaii` — Warm pink accents
 - **Color tokens:** `text-gold`, `bg-background`, `bg-background-secondary`, `text-foreground`, `text-success`, `text-danger`, etc.
+
+---
+
+## Modal Accessibility
+
+`ModalDialog` composes `useModalA11y(isOpen, onClose)` and supplies `role="dialog"`, `aria-modal="true"`, and a programmatically focusable container. While open, the hook:
+
+- Moves focus to `[data-autofocus]`, the first focusable control, or the dialog itself
+- Traps Tab and Shift+Tab within the topmost dialog
+- Closes the topmost dialog on Escape
+- Uses a reference-counted body scroll lock so closing one stacked dialog cannot unlock the page behind another
+- Restores focus to the element that opened the dialog
+
+Most modal components render `ModalDialog`; `TransactionForm` uses the hook directly because its dialog markup is integrated with the form.
 
 ---
 

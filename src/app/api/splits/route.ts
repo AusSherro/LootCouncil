@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
+import { ownsAllCategories } from '@/lib/profileOwnership';
 
 // POST - Create splits for a transaction
 export async function POST(request: NextRequest) {
@@ -11,6 +12,17 @@ export async function POST(request: NextRequest) {
 
         if (!transactionId || !splits || !Array.isArray(splits) || splits.length < 2) {
             return NextResponse.json({ error: 'Need transactionId and at least 2 splits' }, { status: 400 });
+        }
+        if (splits.some((split: { amount?: unknown }) =>
+            typeof split.amount !== 'number' || !Number.isFinite(split.amount) || !Number.isInteger(split.amount)
+        )) {
+            return NextResponse.json({ error: 'Split amounts must be integer cents' }, { status: 400 });
+        }
+        const categoryIds = splits
+            .map((split: { categoryId?: string }) => split.categoryId)
+            .filter((categoryId: string | undefined): categoryId is string => Boolean(categoryId));
+        if (!(await ownsAllCategories(profileId, categoryIds))) {
+            return NextResponse.json({ error: 'One or more categories were not found' }, { status: 404 });
         }
 
         // Get the parent transaction (verify profile ownership)
@@ -85,6 +97,7 @@ export async function POST(request: NextRequest) {
 
 // GET - Get splits for a transaction
 export async function GET(request: NextRequest) {
+    const profileId = await getProfileId(request);
     const { searchParams } = new URL(request.url);
     const transactionId = searchParams.get('transactionId');
 
@@ -93,6 +106,14 @@ export async function GET(request: NextRequest) {
     }
 
     try {
+        const transaction = await prisma.transaction.findFirst({
+            where: { id: transactionId, account: { profileId } },
+            select: { id: true },
+        });
+        if (!transaction) {
+            return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
+        }
+
         const splits = await prisma.subTransaction.findMany({
             where: { transactionId },
             orderBy: { createdAt: 'asc' },
@@ -101,7 +122,7 @@ export async function GET(request: NextRequest) {
         // Get category names
         const categoryIds = splits.filter(s => s.categoryId).map(s => s.categoryId!);
         const categories = await prisma.category.findMany({
-            where: { id: { in: categoryIds } },
+            where: { id: { in: categoryIds }, group: { profileId } },
             select: { id: true, name: true },
         });
         const categoryMap = Object.fromEntries(categories.map(c => [c.id, c.name]));

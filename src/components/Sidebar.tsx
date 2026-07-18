@@ -66,7 +66,7 @@ export default function Sidebar() {
     }, []);
 
     return (
-        <aside className="hidden lg:flex w-64 bg-background-secondary border-r border-border flex-col">
+        <aside className="hidden md:flex w-64 bg-background-secondary border-r border-border flex-col">
             {/* Logo */}
             <Link href="/" className="h-16 flex items-center gap-3 px-5 border-b border-border hover:bg-background-tertiary/50 transition-colors">
                 <div className="w-10 h-10 rounded-lg bg-primary/15 flex items-center justify-center">

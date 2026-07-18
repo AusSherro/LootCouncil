@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { randomUUID } from 'node:crypto';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
+import { findOwnedTransaction } from '@/lib/profileOwnership';
+
+class TransferMatchConflictError extends Error {}
 
 // GET - Find potential transfer matches
 export async function GET(request: NextRequest) {
+    const profileId = await getProfileId(request);
     const { searchParams } = new URL(request.url);
     const transactionId = searchParams.get('transactionId');
     const findUnmatched = searchParams.get('findUnmatched') === 'true';
@@ -11,7 +16,6 @@ export async function GET(request: NextRequest) {
     try {
         // Find all unmatched potential transfers
         if (findUnmatched) {
-            const profileId = await getProfileId(request);
             // Get all transactions that could be transfers (no category, not already matched)
             const potentialTransfers = await prisma.transaction.findMany({
                 where: {
@@ -67,8 +71,8 @@ export async function GET(request: NextRequest) {
 
         // Find matches for a specific transaction
         if (transactionId) {
-            const transaction = await prisma.transaction.findUnique({
-                where: { id: transactionId },
+            const transaction = await prisma.transaction.findFirst({
+                where: { id: transactionId, account: { profileId } },
                 include: { account: true },
             });
 
@@ -90,6 +94,7 @@ export async function GET(request: NextRequest) {
                     accountId: { not: transaction.accountId },
                     transferId: null,
                     date: { gte: startDate, lte: endDate },
+                    account: { profileId },
                 },
                 include: { account: true },
             });
@@ -110,6 +115,7 @@ export async function GET(request: NextRequest) {
 // POST - Link two transactions as a transfer
 export async function POST(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         const body = await request.json();
         const { outflowId, inflowId } = body;
 
@@ -119,43 +125,55 @@ export async function POST(request: NextRequest) {
 
         // Get both transactions
         const [outflow, inflow] = await Promise.all([
-            prisma.transaction.findUnique({ where: { id: outflowId } }),
-            prisma.transaction.findUnique({ where: { id: inflowId } }),
+            findOwnedTransaction(profileId, outflowId),
+            findOwnedTransaction(profileId, inflowId),
         ]);
 
         if (!outflow || !inflow) {
             return NextResponse.json({ error: 'Transaction(s) not found' }, { status: 404 });
         }
 
-        // Validate they're opposite amounts
-        if (outflow.amount + inflow.amount !== 0) {
+        if (outflow.accountId === inflow.accountId || outflow.transferId || inflow.transferId) {
+            return NextResponse.json({ error: 'Transactions must be unmatched and use different accounts' }, { status: 400 });
+        }
+
+        // Validate direction and opposite amounts
+        if (outflow.amount >= 0 || inflow.amount <= 0 || outflow.amount + inflow.amount !== 0) {
             return NextResponse.json({ 
-                error: 'Transactions must have opposite amounts',
+                error: 'Outflow must be negative, inflow must be positive, and amounts must be opposite',
                 outflowAmount: outflow.amount,
                 inflowAmount: inflow.amount,
             }, { status: 400 });
         }
 
         // Generate a transfer ID
-        const transferId = `transfer_${Date.now()}`;
+        const transferId = `transfer_${randomUUID()}`;
 
-        // Update both transactions
-        await prisma.transaction.updateMany({
-            where: { id: { in: [outflowId, inflowId] } },
-            data: { transferId },
-        });
+        await prisma.$transaction(async (tx) => {
+            const updated = await tx.transaction.updateMany({
+                where: {
+                    id: { in: [outflowId, inflowId] },
+                    account: { profileId },
+                    transferId: null,
+                },
+                data: { transferId },
+            });
+            if (updated.count !== 2) {
+                throw new TransferMatchConflictError();
+            }
 
-        // Create a Transfer record for tracking
-        await prisma.transfer.create({
-            data: {
-                amount: Math.abs(outflow.amount),
-                date: outflow.date,
-                memo: outflow.memo || inflow.memo || null,
-                sourceAccountId: outflow.accountId,
-                destinationAccountId: inflow.accountId,
-                sourceTransactionId: outflowId,
-                destTransactionId: inflowId,
-            },
+            await tx.transfer.create({
+                data: {
+                    amount: Math.abs(outflow.amount),
+                    date: outflow.date,
+                    memo: outflow.memo || inflow.memo || null,
+                    sourceAccountId: outflow.accountId,
+                    destinationAccountId: inflow.accountId,
+                    sourceTransactionId: outflowId,
+                    destTransactionId: inflowId,
+                    profileId,
+                },
+            });
         });
 
         return NextResponse.json({ 
@@ -163,6 +181,9 @@ export async function POST(request: NextRequest) {
             transferId,
         });
     } catch (error) {
+        if (error instanceof TransferMatchConflictError) {
+            return NextResponse.json({ error: 'One or both transactions are already matched' }, { status: 409 });
+        }
         console.error('Error linking transfer:', error);
         return NextResponse.json({ error: 'Failed to link transfer' }, { status: 500 });
     }
@@ -170,6 +191,7 @@ export async function POST(request: NextRequest) {
 
 // DELETE - Unlink a transfer
 export async function DELETE(request: NextRequest) {
+    const profileId = await getProfileId(request);
     const { searchParams } = new URL(request.url);
     const transferId = searchParams.get('transferId');
 
@@ -178,21 +200,30 @@ export async function DELETE(request: NextRequest) {
     }
 
     try {
-        // Remove transferId from both transactions
-        await prisma.transaction.updateMany({
-            where: { transferId },
-            data: { transferId: null },
+        const linkedTransactions = await prisma.transaction.findMany({
+            where: { transferId, account: { profileId } },
+            select: { id: true },
         });
+        if (linkedTransactions.length === 0) {
+            return NextResponse.json({ error: 'Transfer not found' }, { status: 404 });
+        }
 
-        // Delete the Transfer record
-        await prisma.transfer.deleteMany({
-            where: {
-                OR: [
-                    { sourceTransactionId: { not: null } },
-                    { destTransactionId: { not: null } },
-                ],
-            },
-        });
+        const transactionIds = linkedTransactions.map(transaction => transaction.id);
+        await prisma.$transaction([
+            prisma.transaction.updateMany({
+                where: { id: { in: transactionIds }, account: { profileId } },
+                data: { transferId: null },
+            }),
+            prisma.transfer.deleteMany({
+                where: {
+                    profileId,
+                    OR: [
+                        { sourceTransactionId: { in: transactionIds } },
+                        { destTransactionId: { in: transactionIds } },
+                    ],
+                },
+            }),
+        ]);
 
         return NextResponse.json({ success: true });
     } catch (error) {

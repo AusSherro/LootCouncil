@@ -123,7 +123,7 @@ export default function CategoryTrendsTab({ currency, excludeCategoryNames }: Pr
                     </div>
                 ) : (
                     <div className="h-96">
-                        <ResponsiveContainer width="100%" height="100%">
+                        <ResponsiveContainer width="100%" height="100%" minWidth={0} initialDimension={{ width: 1, height: 1 }}>
                             <LineChart data={data}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.5} />
                                 <XAxis dataKey="month" stroke="var(--neutral)" fontSize={11} tickLine={false} />

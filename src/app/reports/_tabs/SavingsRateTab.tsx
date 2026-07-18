@@ -204,7 +204,7 @@ export default function SavingsRateTab({ currency, excludeCategoryNames }: Props
                     </div>
                 ) : (
                     <div className="h-80">
-                        <ResponsiveContainer width="100%" height="100%">
+                        <ResponsiveContainer width="100%" height="100%" minWidth={0} initialDimension={{ width: 1, height: 1 }}>
                             <LineChart data={data}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.5} />
                                 <XAxis dataKey="monthLabel" stroke="var(--neutral)" fontSize={11} tickLine={false} />

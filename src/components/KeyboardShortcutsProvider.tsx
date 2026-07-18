@@ -3,6 +3,7 @@
 import { useEffect, useState, createContext, useContext, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { X } from 'lucide-react';
+import ModalDialog from './ModalDialog';
 
 interface ShortcutGroup {
     name: string;
@@ -139,7 +140,12 @@ export function KeyboardShortcutsProvider({ children }: { children: ReactNode })
             {/* Help Modal */}
             {showHelp && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fade-in" onClick={() => setShowHelp(false)}>
-                    <div className="bg-background-secondary border border-border rounded-xl shadow-xl max-w-lg w-full mx-4 max-h-[80vh] overflow-auto animate-scale-in" onClick={e => e.stopPropagation()}>
+                    <ModalDialog
+                        isOpen={showHelp}
+                        onClose={() => setShowHelp(false)}
+                        aria-label="Keyboard shortcuts"
+                        className="bg-background-secondary border border-border rounded-xl shadow-xl max-w-lg w-full mx-4 max-h-[80vh] overflow-auto animate-scale-in"
+                    >
                         <div className="flex items-center justify-between p-4 border-b border-border">
                             <h2 className="text-lg font-semibold text-foreground">Keyboard Shortcuts</h2>
                             <button onClick={() => setShowHelp(false)} className="p-1 hover:bg-background-tertiary rounded" aria-label="Close">
@@ -166,7 +172,7 @@ export function KeyboardShortcutsProvider({ children }: { children: ReactNode })
                         <div className="p-4 border-t border-border">
                             <p className="text-xs text-neutral text-center">Press <kbd className="px-1.5 py-0.5 bg-background-tertiary rounded">?</kbd> anytime to show this help</p>
                         </div>
-                    </div>
+                    </ModalDialog>
                 </div>
             )}
         </KeyboardContext.Provider>

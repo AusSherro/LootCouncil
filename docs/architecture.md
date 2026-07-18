@@ -1,6 +1,6 @@
 # Loot Council — Architecture Document
 
-> **Generated:** 2026-03-04 | **Scan Level:** Comprehensive
+> **Generated:** 2026-03-04 (last verified 2026-07-18) | **Scan Level:** Comprehensive
 
 ---
 
@@ -50,7 +50,7 @@ Loot Council is a **local-first personal finance application** built as a monoli
 | Data Layer | Local SQLite via Prisma | Privacy-first, no cloud dependency, zero infrastructure |
 | API Style | REST-like Next.js API routes | Simple, co-located with frontend, no separate backend |
 | State Management | React `useState` + `useEffect` | No global store (Redux/Zustand); page-level state |
-| Caching | Lightweight client cache | `src/lib/clientCache.ts` — in-memory TTL cache for dashboard & filter metadata |
+| Caching | Selective client cache | Dashboard reads revalidate on each mount; slow-changing transaction form metadata uses an in-memory TTL cache |
 | Authentication | None | Local-first design; single user per installation |
 | Multi-Profile | Cookie/query param scoping | `Profile` model; `profileId` FK on all data models |
 | Styling | Tailwind CSS + CSS variables | Theme system via CSS custom properties |
@@ -64,7 +64,7 @@ Loot Council is a **local-first personal finance application** built as a monoli
 | Layer | Technology | Version | Purpose |
 |-------|------------|---------|---------|
 | **Runtime** | Node.js | 18+ | Server runtime |
-| **Framework** | Next.js (App Router) | 16.1.6 | Full-stack React framework |
+| **Framework** | Next.js (App Router) | 16.2.6 | Full-stack React framework |
 | **Language** | TypeScript | 5.x | Type-safe development |
 | **Database** | SQLite | — | Local file-based database |
 | **ORM** | Prisma | 6.19.2 | Database access & migrations |
@@ -73,7 +73,8 @@ Loot Council is a **local-first personal finance application** built as a monoli
 | **Icons** | Lucide React | 0.563.0 | Icon library |
 | **AI** | OpenAI SDK | 6.17.0 | Chat, categorization, insights |
 | **Finance Data** | yahoo-finance2 | 3.13.0 | Stock/ETF pricing |
-| **Spreadsheet** | xlsx + jszip | 0.18.5 | YNAB import parsing |
+| **Spreadsheet** | xlsx + jszip | 0.20.3 | YNAB import parsing |
+| **Testing** | Vitest | 4.x | Unit and SQLite integration tests |
 | **Drag & Drop** | dnd-kit | 6.3.1 | Sortable UI elements |
 | **Build** | Turbopack | Built-in | Fast dev builds |
 | **Linting** | ESLint | 9.x | Code quality |
@@ -83,7 +84,7 @@ Loot Council is a **local-first personal finance application** built as a monoli
 ## 4. Data Architecture
 
 ### Storage Strategy
-- **Primary Store:** SQLite file (`prisma/loot-council.db`)
+- **Primary Store:** SQLite file (`data/loot-council.db`)
 - **Schema Management:** Prisma Migrate (1 migration: initial schema)
 - **Monetary Values:** All stored as integers in cents to avoid floating-point errors
 - **IDs:** CUID strings (Prisma default)
@@ -98,7 +99,7 @@ User Action → React State → fetch() → API Route → Prisma → SQLite
                           (OpenAI, Yahoo, CoinGecko)
 ```
 
-### Model Count: 18 models across 8 domains
+### Model Count: 20 models across 8 domains
 
 1. **Profiles** (1): Profile
 2. **Core Budgeting** (4): Account, CategoryGroup, Category, MonthlyBudget
@@ -116,11 +117,11 @@ See [Data Models](./data-models.md) for complete schema documentation.
 ## 5. API Architecture
 
 ### Design
-- **46 API route files** across **28 domains**
+- **47 API route files** across **26 top-level domains**
 - Standard REST patterns (GET/POST/PUT/PATCH/DELETE)
 - Centralized error handling via `withErrorHandler` wrapper (`src/lib/apiHandler.ts`)
 - No authentication layer
-- No request validation framework (ad-hoc checks)
+- Route-specific validation and mutation-field whitelists; no declarative validation framework
 - Profile-scoped queries via `getProfileId()` helper (`src/lib/profile.ts`)
 
 ### External Integrations
@@ -147,7 +148,7 @@ See [API Contracts](./api-contracts.md) for complete endpoint documentation.
 | Budget | `/budget` | Envelope view, category management, goals, templates, budget transfers |
 | Transactions | `/transactions` | List, server-side filter, bulk ops, add/edit |
 | Accounts | `/accounts` | Account list, balances, reconciliation |
-| Reports | `/reports` | 5 chart types (spending, income, net worth, payee, trends) |
+| Reports | `/reports` | 8 tabs with charts, category exclusions, and transaction drill-downs |
 | Investments | `/investments` | Portfolio, lots, allocation, live pricing |
 | FIRE | `/fire` | Calculator with interactive sliders |
 | Assistant | `/assistant` | AI chat interface (with data consent) |
@@ -170,11 +171,12 @@ See [API Contracts](./api-contracts.md) for complete endpoint documentation.
 
 ## 7. Testing Strategy
 
-**Current state:** No test files detected in the project.
+Vitest runs pure utility tests and isolated SQLite integration tests. The integration database is recreated at `data/loot-council-test.db` and never touches the working budget database.
 
-- No `__tests__/` directories found
-- No `*.test.ts`, `*.spec.ts`, or `*.test.tsx` files found
-- No test runner configured in `package.json`
+- `npm test` prepares the test database and runs the suite once
+- `npm run test:watch` runs the suite in watch mode
+- CI requires lint, tests, and a production build
+- Coverage includes budget month helpers, transaction-rule safety, profile ownership, transaction rule scoping, and scheduled processing
 
 ---
 
@@ -198,8 +200,8 @@ npm run start        # Production server (127.0.0.1 only)
 ### Infrastructure Requirements
 - **Node.js 18+** on the local machine
 - **No cloud infrastructure** — Runs entirely locally
-- **No Docker/container** configuration found
-- **No CI/CD pipeline** configured (`.github/` contains only agent configs)
+- **Docker image available** — `Dockerfile` builds the standalone app; the Raspberry Pi/Caddy Compose example under `deploy/` is not yet a complete app deployment (see CRIT-7)
+- **GitHub Actions CI** — lint, isolated tests, and production build on pushes and pull requests to `main`
 
 ---
 
@@ -210,9 +212,9 @@ npm run start        # Production server (127.0.0.1 only)
 | API Authentication | ⚠️ None | All routes open (local-first mitigates) |
 | Data Privacy | ✅ Local | All data on user's machine |
 | API Key Storage | ⚠️ Plain text | OpenAI key in `.env`, Binance in DB |
-| Financial Data to AI | ⚠️ No consent | Data sent to OpenAI without explicit consent |
-| Input Validation | ⚠️ Basic | Ad-hoc checks, no Zod schema validation |
-| Error Leakage | ⚠️ Raw errors | Prisma errors exposed to client |
+| Financial Data to AI | ✅ Consent gate | AI data sharing requires explicit local consent |
+| Input Validation | ✅ High-risk routes hardened | Mutation fields are whitelisted and core money/date/ownership inputs are validated server-side |
+| Error Leakage | ✅ Generic responses | Detailed failures are logged server-side; clients receive generic errors |
 
 See [ISSUES.md](../loot-council/ISSUES.md) for detailed security tracking.
 

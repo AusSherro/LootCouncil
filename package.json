@@ -6,7 +6,10 @@
     "dev": "next dev -H 127.0.0.1",
     "build": "next build",
     "start": "next start -H 127.0.0.1",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:prepare": "node scripts/prepare-test-db.mjs",
+    "test": "npm run test:prepare && vitest run",
+    "test:watch": "npm run test:prepare && vitest"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -33,7 +36,8 @@
     "eslint": "^9",
     "eslint-config-next": "^16.2.6",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.10"
   },
   "overrides": {
     "postcss": "^8.5.10"

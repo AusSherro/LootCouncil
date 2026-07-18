@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useId } from 'react';
 import { X, Calendar, DollarSign, Tag, FileText, Building2, Split, AlertCircle, RefreshCw } from 'lucide-react';
 import PayeeAutocomplete from './PayeeAutocomplete';
 import SplitTransactionModal from './SplitTransactionModal';
 import ConfirmDialog from './ConfirmDialog';
+import { useModalA11y } from '@/lib/useModalA11y';
 
 interface Account {
     id: string;
@@ -46,6 +47,15 @@ interface TransactionFormProps {
 }
 
 export default function TransactionForm({ isOpen, onClose, onSuccess, defaultAccountId, editTransaction, defaultIsInflow }: TransactionFormProps) {
+    const formId = useId();
+    const dialogTitleId = `${formId}-title`;
+    const amountId = `${formId}-amount`;
+    const payeeId = `${formId}-payee`;
+    const dateId = `${formId}-date`;
+    const accountIdField = `${formId}-account`;
+    const categoryIdField = `${formId}-category`;
+    const memoId = `${formId}-memo`;
+    const dialogRef = useModalA11y(isOpen, onClose);
     const [accounts, setAccounts] = useState<Account[]>([]);
     const [categoryGroups, setCategoryGroups] = useState<CategoryGroup[]>([]);
     const [loading, setLoading] = useState(false);
@@ -228,10 +238,17 @@ export default function TransactionForm({ isOpen, onClose, onSuccess, defaultAcc
 
     return (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] animate-fade-in">
-            <div className="bg-background-secondary border border-border rounded-xl w-full max-w-lg mx-4 shadow-lg animate-scale-in">
+            <div
+                ref={dialogRef}
+                className="bg-background-secondary border border-border rounded-xl w-full max-w-lg mx-4 shadow-lg animate-scale-in"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby={dialogTitleId}
+                tabIndex={-1}
+            >
                 {/* Header */}
                 <div className="flex items-center justify-between p-4 border-b border-border">
-                    <h2 className="text-lg font-semibold text-foreground">
+                    <h2 id={dialogTitleId} className="text-lg font-semibold text-foreground">
                         {isEditing ? 'Edit Transaction' : 'Add Transaction'}
                     </h2>
                     <button onClick={onClose} className="p-1 hover:bg-background-tertiary rounded-lg transition-colors" aria-label="Close transaction form">
@@ -242,13 +259,13 @@ export default function TransactionForm({ isOpen, onClose, onSuccess, defaultAcc
                 {/* Form */}
                 <form onSubmit={handleSubmit} className="p-4 space-y-4">
                     {error && (
-                        <div className="p-3 bg-danger/20 border border-danger/30 rounded-lg text-danger text-sm">
+                        <div className="p-3 bg-danger/20 border border-danger/30 rounded-lg text-danger text-sm" role="alert">
                             {error}
                         </div>
                     )}
 
                     {fetchError && (
-                        <div className="p-3 bg-danger/20 border border-danger/30 rounded-lg flex items-center gap-3">
+                        <div className="p-3 bg-danger/20 border border-danger/30 rounded-lg flex items-center gap-3" role="alert">
                             <AlertCircle className="w-5 h-5 text-danger flex-shrink-0" />
                             <div className="flex-1">
                                 <p className="text-danger text-sm">{fetchError}</p>
@@ -261,6 +278,8 @@ export default function TransactionForm({ isOpen, onClose, onSuccess, defaultAcc
                                     fetchCategories();
                                 }}
                                 className="text-danger hover:text-danger/80 transition-colors flex-shrink-0"
+                                aria-label="Retry loading accounts and categories"
+                                title="Retry loading accounts and categories"
                             >
                                 <RefreshCw className="w-4 h-4" />
                             </button>
@@ -269,11 +288,12 @@ export default function TransactionForm({ isOpen, onClose, onSuccess, defaultAcc
 
                     {/* Amount with Inflow/Outflow toggle */}
                     <div>
-                        <label className="block text-sm text-neutral mb-1">Amount</label>
+                        <label htmlFor={amountId} className="block text-sm text-neutral mb-1">Amount</label>
                         <div className="flex gap-2">
                             <div className="relative flex-1">
                                 <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral" />
                                 <input
+                                    id={amountId}
                                     type="number"
                                     step="0.01"
                                     min="0"
@@ -284,6 +304,7 @@ export default function TransactionForm({ isOpen, onClose, onSuccess, defaultAcc
                                     className="input pl-10"
                                     required
                                     aria-label="Transaction amount"
+                                    data-autofocus
                                 />
                             </div>
                             <div className="flex rounded-lg border border-border overflow-hidden">
@@ -309,8 +330,9 @@ export default function TransactionForm({ isOpen, onClose, onSuccess, defaultAcc
 
                     {/* Payee */}
                     <div>
-                        <label className="block text-sm text-neutral mb-1">Payee</label>
+                        <label htmlFor={payeeId} className="block text-sm text-neutral mb-1">Payee</label>
                         <PayeeAutocomplete
+                            id={payeeId}
                             value={payee}
                             onChange={setPayee}
                             onPayeeSelect={(p) => {
@@ -324,10 +346,11 @@ export default function TransactionForm({ isOpen, onClose, onSuccess, defaultAcc
 
                     {/* Date */}
                     <div>
-                        <label className="block text-sm text-neutral mb-1">Date</label>
+                        <label htmlFor={dateId} className="block text-sm text-neutral mb-1">Date</label>
                         <div className="relative">
                             <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral" />
                             <input
+                                id={dateId}
                                 type="date"
                                 value={date}
                                 onChange={(e) => setDate(e.target.value)}
@@ -339,10 +362,11 @@ export default function TransactionForm({ isOpen, onClose, onSuccess, defaultAcc
 
                     {/* Account */}
                     <div>
-                        <label className="block text-sm text-neutral mb-1">Account</label>
+                        <label htmlFor={accountIdField} className="block text-sm text-neutral mb-1">Account</label>
                         <div className="relative">
                             <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral" />
                             <select
+                                id={accountIdField}
                                 value={accountId}
                                 onChange={(e) => setAccountId(e.target.value)}
                                 className="input pl-10"
@@ -360,10 +384,11 @@ export default function TransactionForm({ isOpen, onClose, onSuccess, defaultAcc
 
                     {/* Category */}
                     <div>
-                        <label className="block text-sm text-neutral mb-1">Category</label>
+                        <label htmlFor={categoryIdField} className="block text-sm text-neutral mb-1">Category</label>
                         <div className="relative">
                             <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral" />
                             <select
+                                id={categoryIdField}
                                 value={categoryId}
                                 onChange={(e) => setCategoryId(e.target.value)}
                                 className="input pl-10"
@@ -384,10 +409,11 @@ export default function TransactionForm({ isOpen, onClose, onSuccess, defaultAcc
 
                     {/* Memo */}
                     <div>
-                        <label className="block text-sm text-neutral mb-1">Memo</label>
+                        <label htmlFor={memoId} className="block text-sm text-neutral mb-1">Memo</label>
                         <div className="relative">
                             <FileText className="absolute left-3 top-3 w-5 h-5 text-neutral" />
                             <textarea
+                                id={memoId}
                                 value={memo}
                                 onChange={(e) => setMemo(e.target.value)}
                                 placeholder="Add a note..."

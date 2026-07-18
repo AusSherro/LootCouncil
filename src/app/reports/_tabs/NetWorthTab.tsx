@@ -254,7 +254,7 @@ export default function NetWorthTab({ currency, excludeCategoryNames: _excludeCa
                 </div>
             ) : (
                 <div className="h-80">
-                    <ResponsiveContainer width="100%" height="100%">
+                    <ResponsiveContainer width="100%" height="100%" minWidth={0} initialDimension={{ width: 1, height: 1 }}>
                         <AreaChart data={data}>
                             <defs>
                                 <linearGradient id="goldGradient" x1="0" y1="0" x2="0" y2="1">

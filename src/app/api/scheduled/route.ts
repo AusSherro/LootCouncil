@@ -1,6 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
+import {
+    findOwnedAccount,
+    findOwnedCategory,
+    findOwnedScheduledTransaction,
+} from '@/lib/profileOwnership';
+
+const VALID_FREQUENCIES = new Set(['daily', 'weekly', 'biweekly', 'monthly', 'yearly']);
+
+function isValidDate(value: unknown): value is string {
+    return typeof value === 'string' && value.length > 0 && !Number.isNaN(new Date(value).getTime());
+}
 
 // GET - List all scheduled transactions + upcoming bills
 export async function GET(request: NextRequest) {
@@ -62,6 +73,7 @@ export async function GET(request: NextRequest) {
 // POST - Create a new scheduled transaction
 export async function POST(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         const body = await request.json();
         const {
             name,
@@ -83,10 +95,28 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
         }
 
-        const profileId = await getProfileId(request);
+        if (typeof name !== 'string' || name.trim().length > 100) {
+            return NextResponse.json({ error: 'Name must be between 1 and 100 characters' }, { status: 400 });
+        }
+        if (typeof amount !== 'number' || !Number.isFinite(amount) || Math.abs(amount) > 999999999) {
+            return NextResponse.json({ error: 'Invalid amount' }, { status: 400 });
+        }
+        if (!VALID_FREQUENCIES.has(frequency)) {
+            return NextResponse.json({ error: 'Invalid frequency' }, { status: 400 });
+        }
+        if (!isValidDate(nextDueDate) || (endDate && !isValidDate(endDate))) {
+            return NextResponse.json({ error: 'Invalid scheduled date' }, { status: 400 });
+        }
+        if (!(await findOwnedAccount(profileId, accountId))) {
+            return NextResponse.json({ error: 'Account not found' }, { status: 404 });
+        }
+        if (categoryId && !(await findOwnedCategory(profileId, categoryId))) {
+            return NextResponse.json({ error: 'Category not found' }, { status: 404 });
+        }
+
         const scheduled = await prisma.scheduledTransaction.create({
             data: {
-                name,
+                name: name.trim(),
                 amount: Math.round(amount * 100), // Convert to cents
                 payee: payee || null,
                 memo: memo || null,
@@ -111,8 +141,9 @@ export async function POST(request: NextRequest) {
 }
 
 // PUT - Process due scheduled transactions (create actual transactions)
-export async function PUT() {
+export async function PUT(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         const now = new Date();
         
         // Find all scheduled transactions that are due and have autoCreate enabled
@@ -121,63 +152,84 @@ export async function PUT() {
                 isActive: true,
                 autoCreate: true,
                 nextDueDate: { lte: now },
+                profileId,
             },
         });
 
         let created = 0;
 
         for (const scheduled of due) {
-            // Create the actual transaction
-            await prisma.transaction.create({
-                data: {
-                    date: scheduled.nextDueDate,
-                    amount: scheduled.amount,
-                    payee: scheduled.payee || scheduled.name,
-                    memo: scheduled.memo || `Scheduled: ${scheduled.name}`,
-                    accountId: scheduled.accountId,
-                    categoryId: scheduled.categoryId,
-                    cleared: false,
-                    approved: true,
-                },
-            });
-
-            // Update account balance
-            await prisma.account.update({
-                where: { id: scheduled.accountId },
-                data: { balance: { increment: scheduled.amount } },
-            });
-
-            // Update category monthly budget if applicable
-            if (scheduled.categoryId) {
-                const monthKey = `${scheduled.nextDueDate.getFullYear()}-${String(scheduled.nextDueDate.getMonth() + 1).padStart(2, '0')}`;
-                await prisma.monthlyBudget.upsert({
-                    where: { month_categoryId: { month: monthKey, categoryId: scheduled.categoryId } },
-                    create: {
-                        month: monthKey,
-                        categoryId: scheduled.categoryId,
-                        activity: scheduled.amount,
-                    },
-                    update: {
-                        activity: { increment: scheduled.amount },
+            const processed = await prisma.$transaction(async tx => {
+                // Recheck inside the write transaction so concurrent requests cannot create twice.
+                const current = await tx.scheduledTransaction.findFirst({
+                    where: {
+                        id: scheduled.id,
+                        profileId,
+                        isActive: true,
+                        autoCreate: true,
+                        nextDueDate: { equals: scheduled.nextDueDate, lte: now },
                     },
                 });
-            }
+                if (!current) return false;
 
-            // Calculate next due date
-            const nextDate = calculateNextDueDate(scheduled);
+                const account = await tx.account.findFirst({
+                    where: { id: current.accountId, profileId },
+                });
+                if (!account) return false;
 
-            // Update the scheduled transaction
-            await prisma.scheduledTransaction.update({
-                where: { id: scheduled.id },
-                data: {
-                    lastCreated: now,
-                    nextDueDate: nextDate,
-                    // Deactivate if past end date
-                    isActive: scheduled.endDate ? nextDate <= scheduled.endDate : true,
-                },
+                const category = current.categoryId
+                    ? await tx.category.findFirst({
+                        where: { id: current.categoryId, group: { profileId } },
+                    })
+                    : null;
+
+                await tx.transaction.create({
+                    data: {
+                        date: current.nextDueDate,
+                        amount: current.amount,
+                        payee: current.payee || current.name,
+                        memo: current.memo || `Scheduled: ${current.name}`,
+                        accountId: current.accountId,
+                        categoryId: category?.id ?? null,
+                        cleared: false,
+                        approved: true,
+                    },
+                });
+
+                await tx.account.update({
+                    where: { id: current.accountId },
+                    data: { balance: { increment: current.amount } },
+                });
+
+                if (category) {
+                    const monthKey = current.nextDueDate.toISOString().slice(0, 7);
+                    await tx.monthlyBudget.upsert({
+                        where: { month_categoryId: { month: monthKey, categoryId: category.id } },
+                        create: {
+                            month: monthKey,
+                            categoryId: category.id,
+                            activity: current.amount,
+                        },
+                        update: {
+                            activity: { increment: current.amount },
+                        },
+                    });
+                }
+
+                const nextDate = calculateNextDueDate(current);
+                await tx.scheduledTransaction.update({
+                    where: { id: current.id },
+                    data: {
+                        lastCreated: now,
+                        nextDueDate: nextDate,
+                        isActive: current.endDate ? nextDate <= current.endDate : true,
+                    },
+                });
+
+                return true;
             });
 
-            created++;
+            if (processed) created++;
         }
 
         return NextResponse.json({ processed: created });
@@ -190,24 +242,77 @@ export async function PUT() {
 // PATCH - Update a scheduled transaction
 export async function PATCH(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         const body = await request.json();
-        const { id, ...updates } = body;
+        const { id } = body;
 
         if (!id) {
             return NextResponse.json({ error: 'Missing scheduled transaction ID' }, { status: 400 });
         }
+        if (!(await findOwnedScheduledTransaction(profileId, id))) {
+            return NextResponse.json({ error: 'Scheduled transaction not found' }, { status: 404 });
+        }
+
+        const updates: Record<string, unknown> = {};
+        const stringFields = ['name', 'payee', 'memo'] as const;
+        for (const field of stringFields) {
+            if (body[field] !== undefined) updates[field] = body[field] || null;
+        }
+
+        if (body.name !== undefined) {
+            if (typeof body.name !== 'string' || body.name.trim().length === 0 || body.name.trim().length > 100) {
+                return NextResponse.json({ error: 'Name must be between 1 and 100 characters' }, { status: 400 });
+            }
+            updates.name = body.name.trim();
+        }
 
         // Convert amount to cents if provided
-        if (updates.amount !== undefined) {
-            updates.amount = Math.round(updates.amount * 100);
+        if (body.amount !== undefined) {
+            if (typeof body.amount !== 'number' || !Number.isFinite(body.amount) || Math.abs(body.amount) > 999999999) {
+                return NextResponse.json({ error: 'Invalid amount' }, { status: 400 });
+            }
+            updates.amount = Math.round(body.amount * 100);
         }
 
-        // Convert dates if provided
-        if (updates.nextDueDate) {
-            updates.nextDueDate = new Date(updates.nextDueDate);
+        if (body.nextDueDate !== undefined) {
+            if (!isValidDate(body.nextDueDate)) {
+                return NextResponse.json({ error: 'Invalid next due date' }, { status: 400 });
+            }
+            updates.nextDueDate = new Date(body.nextDueDate);
         }
-        if (updates.endDate) {
-            updates.endDate = new Date(updates.endDate);
+        if (body.endDate !== undefined) {
+            if (body.endDate && !isValidDate(body.endDate)) {
+                return NextResponse.json({ error: 'Invalid end date' }, { status: 400 });
+            }
+            updates.endDate = body.endDate ? new Date(body.endDate) : null;
+        }
+
+        if (body.frequency !== undefined) {
+            if (!VALID_FREQUENCIES.has(body.frequency)) {
+                return NextResponse.json({ error: 'Invalid frequency' }, { status: 400 });
+            }
+            updates.frequency = body.frequency;
+        }
+
+        if (body.accountId !== undefined) {
+            if (!(await findOwnedAccount(profileId, body.accountId))) {
+                return NextResponse.json({ error: 'Account not found' }, { status: 404 });
+            }
+            updates.accountId = body.accountId;
+        }
+
+        if (body.categoryId !== undefined) {
+            if (body.categoryId && !(await findOwnedCategory(profileId, body.categoryId))) {
+                return NextResponse.json({ error: 'Category not found' }, { status: 404 });
+            }
+            updates.categoryId = body.categoryId || null;
+        }
+
+        for (const field of ['dayOfMonth', 'dayOfWeek', 'reminderDays'] as const) {
+            if (body[field] !== undefined) updates[field] = body[field] ?? null;
+        }
+        for (const field of ['autoCreate', 'isActive'] as const) {
+            if (body[field] !== undefined) updates[field] = Boolean(body[field]);
         }
 
         const scheduled = await prisma.scheduledTransaction.update({
@@ -224,6 +329,7 @@ export async function PATCH(request: NextRequest) {
 
 // DELETE - Remove a scheduled transaction
 export async function DELETE(request: NextRequest) {
+    const profileId = await getProfileId(request);
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
@@ -232,6 +338,9 @@ export async function DELETE(request: NextRequest) {
     }
 
     try {
+        if (!(await findOwnedScheduledTransaction(profileId, id))) {
+            return NextResponse.json({ error: 'Scheduled transaction not found' }, { status: 404 });
+        }
         await prisma.scheduledTransaction.delete({ where: { id } });
         return NextResponse.json({ success: true });
     } catch (error) {

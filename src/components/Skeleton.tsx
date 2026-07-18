@@ -42,7 +42,7 @@ export function SkeletonTransactionRow() {
     return (
         <>
             {/* Desktop skeleton */}
-            <div className="hidden lg:grid table-row grid-cols-[32px_80px_1fr_1fr_1fr_120px_40px]">
+            <div className="hidden lg:grid lc-table-row grid-cols-[32px_80px_1fr_1fr_1fr_120px_40px]">
                 <div className="flex items-center justify-center">
                     <Skeleton className="w-4 h-4" />
                 </div>

@@ -3,6 +3,7 @@
 import { CreditCard, X, Link2, Unlink, AlertCircle, Check, DollarSign } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { formatCurrency } from '@/lib/utils';
+import ModalDialog from './ModalDialog';
 
 interface Account {
     id: string;
@@ -136,16 +137,17 @@ export default function CreditCardPaymentModal({ isOpen, onClose, onSuccess }: P
         setError(null);
 
         try {
-            const amountCents = Math.round(parseFloat(paymentAmount) * 100);
+            const amountDollars = parseFloat(paymentAmount);
+            const amountCents = Math.round(amountDollars * 100);
             
             // Create a transfer from payment account to credit card
             const res = await fetch('/api/transfers', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    fromAccountId: card.linkedAccountId,
-                    toAccountId: paymentCardId,
-                    amount: amountCents,
+                    sourceAccountId: card.linkedAccountId,
+                    destinationAccountId: paymentCardId,
+                    amount: amountDollars,
                     memo: 'Credit Card Payment',
                 }),
             });
@@ -174,7 +176,12 @@ export default function CreditCardPaymentModal({ isOpen, onClose, onSuccess }: P
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="bg-background-secondary rounded-xl w-full max-w-2xl shadow-2xl animate-scale-in max-h-[90vh] flex flex-col">
+            <ModalDialog
+                isOpen={isOpen}
+                onClose={onClose}
+                aria-label="Credit card payments"
+                className="bg-background-secondary rounded-xl w-full max-w-2xl shadow-2xl animate-scale-in max-h-[90vh] flex flex-col"
+            >
                 <div className="flex items-center justify-between p-6 border-b border-border">
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
@@ -378,7 +385,7 @@ export default function CreditCardPaymentModal({ isOpen, onClose, onSuccess }: P
                         Close
                     </button>
                 </div>
-            </div>
+            </ModalDialog>
         </div>
     );
 }

@@ -8,6 +8,7 @@ import {
 import { formatCurrency } from '@/lib/utils';
 import { useToast } from '@/components/Toast';
 import { useConfirmDialog } from '@/components/ConfirmDialog';
+import ModalDialog from './ModalDialog';
 
 interface ScheduledTransaction {
     id: string;
@@ -78,6 +79,7 @@ export default function ScheduledTransactions({ compact, limit, onViewAll }: Sch
         setLoading(true);
         try {
             const res = await fetch('/api/scheduled');
+            if (!res.ok) throw new Error('Failed to load scheduled transactions');
             const data = await res.json();
             setScheduled(data.scheduled || []);
         } catch (err) {
@@ -108,7 +110,8 @@ export default function ScheduledTransactions({ compact, limit, onViewAll }: Sch
             confirmText: 'Delete',
             onConfirm: async () => {
                 try {
-                    await fetch(`/api/scheduled?id=${id}`, { method: 'DELETE' });
+                    const res = await fetch(`/api/scheduled?id=${id}`, { method: 'DELETE' });
+                    if (!res.ok) throw new Error('Failed to delete scheduled transaction');
                     fetchScheduled();
                 } catch (err) {
                     console.error('Failed to delete:', err);
@@ -122,6 +125,7 @@ export default function ScheduledTransactions({ compact, limit, onViewAll }: Sch
         try {
             const res = await fetch('/api/scheduled', { method: 'PUT' });
             const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Failed to process scheduled transactions');
             if (data.processed > 0) {
                 showToast(`Created ${data.processed} transaction${data.processed === 1 ? '' : 's'} from scheduled items.`, 'success');
                 fetchScheduled();
@@ -374,16 +378,19 @@ function ScheduledTransactionModal({ isOpen, onClose, onSave, accounts, categori
         reminderDays: editItem?.reminderDays ?? 3,
     });
     const [saving, setSaving] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
         setSaving(true);
+        setError(null);
 
         const amount = parseFloat(form.amount as string) * (form.isExpense ? -1 : 1);
 
         try {
+            let response: Response;
             if (editItem) {
-                await fetch('/api/scheduled', {
+                response = await fetch('/api/scheduled', {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -402,7 +409,7 @@ function ScheduledTransactionModal({ isOpen, onClose, onSave, accounts, categori
                     }),
                 });
             } else {
-                await fetch('/api/scheduled', {
+                response = await fetch('/api/scheduled', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -420,10 +427,15 @@ function ScheduledTransactionModal({ isOpen, onClose, onSave, accounts, categori
                     }),
                 });
             }
+            if (!response.ok) {
+                const data = await response.json().catch(() => null);
+                throw new Error(data?.error || 'Failed to save scheduled transaction');
+            }
             onSave();
             onClose();
         } catch (err) {
             console.error('Failed to save:', err);
+            setError(err instanceof Error ? err.message : 'Failed to save scheduled transaction');
         } finally {
             setSaving(false);
         }
@@ -433,7 +445,12 @@ function ScheduledTransactionModal({ isOpen, onClose, onSave, accounts, categori
 
     return (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] animate-fade-in" onClick={onClose}>
-            <div className="bg-background-secondary border border-border rounded-xl w-full max-w-lg mx-4 p-6 max-h-[90vh] overflow-y-auto animate-scale-in" onClick={e => e.stopPropagation()}>
+            <ModalDialog
+                isOpen={isOpen}
+                onClose={onClose}
+                aria-label={editItem ? 'Edit scheduled transaction' : 'New scheduled transaction'}
+                className="bg-background-secondary border border-border rounded-xl w-full max-w-lg mx-4 p-6 max-h-[90vh] overflow-y-auto animate-scale-in"
+            >
                 <div className="flex items-center justify-between mb-4">
                     <h2 className="text-lg font-semibold text-foreground">
                         {editItem ? 'Edit Scheduled Transaction' : 'New Scheduled Transaction'}
@@ -442,6 +459,12 @@ function ScheduledTransactionModal({ isOpen, onClose, onSave, accounts, categori
                         <X className="w-5 h-5" />
                     </button>
                 </div>
+
+                {error && (
+                    <div className="mb-4 p-3 bg-danger/20 border border-danger/30 rounded-lg text-danger text-sm">
+                        {error}
+                    </div>
+                )}
 
                 <form onSubmit={handleSubmit} className="space-y-4">
                     {/* Name */}
@@ -453,6 +476,7 @@ function ScheduledTransactionModal({ isOpen, onClose, onSave, accounts, categori
                             onChange={e => setForm({ ...form, name: e.target.value })}
                             placeholder="e.g., Netflix, Rent, Salary"
                             className="input w-full"
+                            aria-label="Scheduled transaction name"
                             required
                         />
                     </div>
@@ -468,6 +492,7 @@ function ScheduledTransactionModal({ isOpen, onClose, onSave, accounts, categori
                                 onChange={e => setForm({ ...form, amount: e.target.value })}
                                 placeholder="0.00"
                                 className="input w-full"
+                                aria-label="Scheduled transaction amount"
                                 required
                             />
                         </div>
@@ -504,6 +529,7 @@ function ScheduledTransactionModal({ isOpen, onClose, onSave, accounts, categori
                                 value={form.accountId}
                                 onChange={e => setForm({ ...form, accountId: e.target.value })}
                                 className="input w-full"
+                                aria-label="Scheduled transaction account"
                                 required
                             >
                                 <option value="">Select account...</option>
@@ -518,6 +544,7 @@ function ScheduledTransactionModal({ isOpen, onClose, onSave, accounts, categori
                                 value={form.categoryId}
                                 onChange={e => setForm({ ...form, categoryId: e.target.value })}
                                 className="input w-full"
+                                aria-label="Scheduled transaction category"
                             >
                                 <option value="">Select category...</option>
                                 {categories.map(c => (
@@ -535,6 +562,7 @@ function ScheduledTransactionModal({ isOpen, onClose, onSave, accounts, categori
                                 value={form.frequency}
                                 onChange={e => setForm({ ...form, frequency: e.target.value })}
                                 className="input w-full"
+                                aria-label="Schedule frequency"
                                 required
                             >
                                 <option value="daily">Daily</option>
@@ -551,6 +579,7 @@ function ScheduledTransactionModal({ isOpen, onClose, onSave, accounts, categori
                                 value={form.nextDueDate}
                                 onChange={e => setForm({ ...form, nextDueDate: e.target.value })}
                                 className="input w-full"
+                                aria-label="Next due date"
                                 required
                             />
                         </div>
@@ -568,6 +597,7 @@ function ScheduledTransactionModal({ isOpen, onClose, onSave, accounts, categori
                                 onChange={e => setForm({ ...form, dayOfMonth: e.target.value })}
                                 placeholder="e.g., 15"
                                 className="input w-full"
+                                aria-label="Day of month"
                             />
                         </div>
                     )}
@@ -582,6 +612,7 @@ function ScheduledTransactionModal({ isOpen, onClose, onSave, accounts, categori
                                 onChange={e => setForm({ ...form, payee: e.target.value })}
                                 placeholder="Optional"
                                 className="input w-full"
+                                aria-label="Scheduled transaction payee"
                             />
                         </div>
                         <div>
@@ -592,6 +623,7 @@ function ScheduledTransactionModal({ isOpen, onClose, onSave, accounts, categori
                                 onChange={e => setForm({ ...form, memo: e.target.value })}
                                 placeholder="Optional"
                                 className="input w-full"
+                                aria-label="Scheduled transaction memo"
                             />
                         </div>
                     </div>
@@ -619,6 +651,7 @@ function ScheduledTransactionModal({ isOpen, onClose, onSave, accounts, categori
                                 value={form.reminderDays}
                                 onChange={e => setForm({ ...form, reminderDays: parseInt(e.target.value) || 0 })}
                                 className="input w-full"
+                                aria-label="Reminder days"
                             />
                         </div>
                     </div>
@@ -633,7 +666,7 @@ function ScheduledTransactionModal({ isOpen, onClose, onSave, accounts, categori
                         </button>
                     </div>
                 </form>
-            </div>
+            </ModalDialog>
         </div>
     );
 }

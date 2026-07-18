@@ -1,12 +1,12 @@
 # Loot Council — Project Overview
 
-> **Generated:** 2026-03-04 (last updated 2026-05-16) | **Scan Level:** Comprehensive | **Mode:** Updated
+> **Generated:** 2026-03-04 (last verified 2026-07-18) | **Scan Level:** Comprehensive | **Mode:** Updated
 
 ---
 
 ## Executive Summary
 
-**Loot Council** is a local-first personal finance application that combines serious zero-based envelope budgeting (inspired by YNAB) with a fantasy RPG aesthetic ("Dungeons & Dragons meets High Finance"). All data lives on the user's machine via SQLite — privacy first, no cloud dependency.
+**Loot Council** is a local-first personal finance application for zero-based envelope budgeting inspired by YNAB. The default Finance theme is clean and work-focused, with optional personality themes including the original dark Dungeon palette. All data lives on the user's machine via SQLite — privacy first, no cloud dependency.
 
 The application is a full-stack monolith built with **Next.js 16** (App Router), **TypeScript 5**, **Prisma 6** ORM over **SQLite**, and styled with **Tailwind CSS 4**. It provides budgeting, investment portfolio tracking, FIRE (Financial Independence, Retire Early) calculator, AI-powered financial advisement, and comprehensive reporting.
 
@@ -21,7 +21,7 @@ The application is a full-stack monolith built with **Next.js 16** (App Router),
 | **Project Type** | Full-stack web application |
 | **Architecture** | Next.js App Router (client-rendered pages + API routes) |
 | **Data Strategy** | Local-first (SQLite file on disk) |
-| **Target Audience** | Individual users managing personal finances |
+| **Target Audience** | Individuals and households managing personal finances |
 | **Locale Focus** | Australian (AUD default, Australian super/CGT rules) |
 | **Multi-Profile** | Yes — independent budgets, accounts, settings per profile |
 | **License** | MIT |
@@ -45,6 +45,7 @@ The application is a full-stack monolith built with **Next.js 16** (App Router),
 | Crypto Sync | Binance API | (via fetch) |
 | Spreadsheet | xlsx + jszip | 0.20.3 (SheetJS CDN) / 3.10.1 |
 | Drag & Drop | dnd-kit | 6.3.1 |
+| Testing | Vitest | 4.x |
 
 ---
 
@@ -64,13 +65,14 @@ The application is a full-stack monolith built with **Next.js 16** (App Router),
 
 ### UX Features
 
-- 6 color themes (Dungeon, Forest, Ocean, Crimson, Royal, Finance)
+- 7 color themes (Finance default; Dungeon, Forest, Ocean, Crimson, Royal, and Kawaii optional)
 - Mobile responsive with bottom navigation
 - Keyboard shortcuts (arrow nav, Ctrl+Z undo, N for new transaction)
 - Loading skeletons and error boundaries
+- Shared accessible modal behavior with focus trapping, Escape handling, focus restoration, and scroll locking
 - Undo/redo system
 - AI data consent modal
-- Lightweight client-side caching
+- Selective client-side caching for slow-changing transaction form metadata
 
 ---
 
@@ -78,12 +80,12 @@ The application is a full-stack monolith built with **Next.js 16** (App Router),
 
 | Metric | Count |
 |--------|-------|
-| API Route Files | 46 |
-| API Domains | 28 |
+| API Route Files | 47 |
+| Top-Level API Domains | 26 |
 | Page Routes | 9 |
-| UI Components | 26 |
-| Library/Utility Files | 7 |
-| Database Models | 18 |
+| UI Components | 32 |
+| Library/Utility/Test Files | 18 |
+| Database Models | 20 |
 | Prisma Migrations | 1 (initial) |
 
 ---
@@ -95,6 +97,6 @@ The application is a full-stack monolith built with **Next.js 16** (App Router),
 - **API routes** serve as the backend, directly accessing Prisma/SQLite
 - **No server components** — all pages fetch data client-side via API routes
 - **No external backend** — everything runs in a single Next.js process
-- **Local-first** — SQLite database stored as a file (`loot-council.db`) in the project directory
+- **Local-first** — SQLite database stored at `data/loot-council.db`
 - **Multi-profile** — Profile model scopes all data; profile selected via cookie/query param
 - **Server bound to 127.0.0.1** — Not accessible from network (security hardening)

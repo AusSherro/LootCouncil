@@ -22,7 +22,7 @@ import {
 import ScheduledTransactions from '@/components/ScheduledTransactions';
 import { SkeletonDashboard } from '@/components/Skeleton';
 import { formatCurrency } from '@/lib/utils';
-import { fetchJsonCached, clearCachedJson } from '@/lib/clientCache';
+import { fetchJson } from '@/lib/clientCache';
 import AnimatedNumber from '@/components/AnimatedNumber';
 
 interface DashboardData {
@@ -94,10 +94,10 @@ export default function HomePage() {
             setLoading(true);
             try {
                 const [networthRes, budgetRes, transactionsRes, aomRes] = await Promise.allSettled([
-                    fetchJsonCached<NetWorthResponse>('/api/networth?months=2', 30_000),
-                    fetchJsonCached<BudgetResponse>('/api/budget', 30_000),
-                    fetchJsonCached<TransactionsResponse>('/api/transactions?limit=5', 15_000),
-                    fetchJsonCached<AgeOfMoneyResponse>('/api/age-of-money', 30_000),
+                    fetchJson<NetWorthResponse>('/api/networth?months=2'),
+                    fetchJson<BudgetResponse>('/api/budget'),
+                    fetchJson<TransactionsResponse>('/api/transactions?limit=5'),
+                    fetchJson<AgeOfMoneyResponse>('/api/age-of-money'),
                 ]);
 
                 // Check if any critical fetches failed
@@ -165,10 +165,6 @@ export default function HomePage() {
 
     // Retry handler
     function handleRetry() {
-        clearCachedJson('/api/networth?months=2');
-        clearCachedJson('/api/budget');
-        clearCachedJson('/api/transactions?limit=5');
-        clearCachedJson('/api/age-of-money');
         setError(null);
         setLoading(true);
         setData(null);

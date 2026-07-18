@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [Unreleased]
+
+### Reliability, Accessibility & Responsive Fixes
+
+- Enforced active-profile ownership across transactions, accounts, categories, rules, payees, templates, assets, transfers, Binance sync, budget rebuilds, scheduled processing, and YNAB full/delta imports; payee names are now unique per profile rather than globally.
+- Made scheduled occurrence creation atomic and pinned concurrent processing to the exact due occurrence observed by each worker.
+- Added Vitest unit and isolated SQLite integration tests; CI now runs lint, tests, and a production build.
+- Added a shared accessible modal foundation with focus trapping/restoration, Escape handling, reference-counted scroll locking for stacked dialogs, dialog semantics, announced form errors, and labelled transaction fields/payee combobox behavior.
+- Fixed duplicated mobile transaction rows caused by Tailwind's built-in `table-row` utility colliding with the app class; repaired Budget mobile flow clipping and FAB placement.
+- Replaced JavaScript-wide running-balance maps with a SQLite window query and added bounded transaction query parsing.
+- Removed stale dashboard cache reads, fixed inline budget failure feedback, repaired credit-card transfer payloads, limited transfer unlinking to the selected transfer, and made manual transfer matching atomic with collision-resistant link IDs.
+- Raised Finance-theme neutral contrast and removed Recharts negative-size initialization warnings.
+
+---
+
 ## [0.4.0] — 2026-05-16
 
 ### 📊 Reports — Refactor, Drill-Down & Two New Tabs

@@ -1,21 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
+import { findOwnedPayee } from '@/lib/profileOwnership';
 
 // GET - Search payees for autocomplete
 export async function GET(request: NextRequest) {
     const profileId = await getProfileId(request);
     const { searchParams } = new URL(request.url);
     const query = searchParams.get('q') || '';
-    const limit = parseInt(searchParams.get('limit') || '10');
+    const parsedLimit = Number.parseInt(searchParams.get('limit') || '10', 10);
+    const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 50) : 10;
 
     try {
         let payees;
         
         if (query) {
-            // Search by name (case-insensitive) - shared across all profiles
             payees = await prisma.payee.findMany({
                 where: {
+                    profileId,
                     name: {
                         contains: query,
                     },
@@ -38,6 +40,7 @@ export async function GET(request: NextRequest) {
             // Get payee records for these names
             payees = await prisma.payee.findMany({
                 where: {
+                    profileId,
                     name: { in: recentPayeeNames as string[] },
                 },
                 take: limit,
@@ -47,6 +50,7 @@ export async function GET(request: NextRequest) {
             if (payees.length < limit) {
                 const morePayees = await prisma.payee.findMany({
                     where: {
+                        profileId,
                         id: { notIn: payees.map(p => p.id) },
                     },
                     orderBy: { name: 'asc' },
@@ -102,21 +106,24 @@ export async function POST(request: NextRequest) {
 
         const trimmedName = name.trim();
 
-        // Check if payee already exists (with this profile or unassigned)
+        // Check this profile first, then adopt a legacy unassigned payee.
         const existing = await prisma.payee.findFirst({
-            where: { name: trimmedName },
+            where: { name: trimmedName, profileId },
         });
 
         if (existing) {
-            // Adopt orphaned payee into this profile if it has no profile
-            if (!existing.profileId) {
-                const updated = await prisma.payee.update({
-                    where: { id: existing.id },
-                    data: { profileId },
-                });
-                return NextResponse.json({ payee: updated });
-            }
             return NextResponse.json({ payee: existing });
+        }
+
+        const orphaned = await prisma.payee.findFirst({
+            where: { name: trimmedName, profileId: null },
+        });
+        if (orphaned) {
+            const updated = await prisma.payee.update({
+                where: { id: orphaned.id },
+                data: { profileId },
+            });
+            return NextResponse.json({ payee: updated });
         }
 
         // Create new payee with profileId
@@ -133,6 +140,7 @@ export async function POST(request: NextRequest) {
 
 // DELETE - Delete a payee
 export async function DELETE(request: NextRequest) {
+    const profileId = await getProfileId(request);
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
@@ -141,6 +149,9 @@ export async function DELETE(request: NextRequest) {
     }
 
     try {
+        if (!(await findOwnedPayee(profileId, id))) {
+            return NextResponse.json({ error: 'Payee not found' }, { status: 404 });
+        }
         await prisma.payee.delete({ where: { id } });
         return NextResponse.json({ success: true });
     } catch (error) {

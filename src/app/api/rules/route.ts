@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
 import { matchesRule } from '@/lib/ruleEngine';
+import { findOwnedCategory, findOwnedRule } from '@/lib/profileOwnership';
 
 // GET - List all transaction rules
 export async function GET(request: NextRequest) {
@@ -21,12 +22,13 @@ export async function GET(request: NextRequest) {
 // POST - Create a new rule OR apply rules to a transaction
 export async function POST(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         const body = await request.json();
         
         // If applying rules to a transaction
         if (body.action === 'apply') {
             const { payee, memo, amount } = body;
-            const result = await applyRules(payee, memo, amount);
+            const result = await applyRules(profileId, payee, memo, amount);
             return NextResponse.json(result);
         }
 
@@ -37,7 +39,9 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
         }
 
-        const profileId = await getProfileId(request);
+        if (categoryId && !(await findOwnedCategory(profileId, categoryId))) {
+            return NextResponse.json({ error: 'Category not found' }, { status: 404 });
+        }
         const rule = await prisma.transactionRule.create({
             data: {
                 name,
@@ -62,11 +66,18 @@ export async function POST(request: NextRequest) {
 // PATCH - Update an existing rule
 export async function PATCH(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         const body = await request.json();
         const { id, name, matchField, matchType, matchValue, categoryId, payeeRename, memoTemplate, priority, isActive } = body;
 
         if (!id) {
             return NextResponse.json({ error: 'Missing rule ID' }, { status: 400 });
+        }
+        if (!(await findOwnedRule(profileId, id))) {
+            return NextResponse.json({ error: 'Rule not found' }, { status: 404 });
+        }
+        if (categoryId && !(await findOwnedCategory(profileId, categoryId))) {
+            return NextResponse.json({ error: 'Category not found' }, { status: 404 });
         }
 
         // Whitelist allowed fields only
@@ -95,6 +106,7 @@ export async function PATCH(request: NextRequest) {
 
 // DELETE - Remove a rule
 export async function DELETE(request: NextRequest) {
+    const profileId = await getProfileId(request);
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
@@ -103,6 +115,9 @@ export async function DELETE(request: NextRequest) {
     }
 
     try {
+        if (!(await findOwnedRule(profileId, id))) {
+            return NextResponse.json({ error: 'Rule not found' }, { status: 404 });
+        }
         await prisma.transactionRule.delete({ where: { id } });
         return NextResponse.json({ success: true });
     } catch (error) {
@@ -112,9 +127,9 @@ export async function DELETE(request: NextRequest) {
 }
 
 // Helper: Apply all active rules to find a match
-async function applyRules(payee: string | null, memo: string | null, amount: number) {
+async function applyRules(profileId: string, payee: string | null, memo: string | null, amount: number) {
     const rules = await prisma.transactionRule.findMany({
-        where: { isActive: true },
+        where: { isActive: true, profileId },
         orderBy: { priority: 'desc' },
     });
 

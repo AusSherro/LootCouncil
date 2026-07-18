@@ -156,7 +156,7 @@ export async function POST(request: NextRequest) {
             const priceInCents = isStable ? 100 : Math.round(price * 100);
 
             const existing = await prisma.asset.findFirst({
-                where: { symbol },
+                where: { symbol, profileId },
             });
 
             if (existing) {
@@ -183,6 +183,7 @@ export async function POST(request: NextRequest) {
                         costBasis: totalValue,  // Start with no gain/loss
                         currency: 'USD',
                         isManual: false,
+                        profileId,
                     },
                 });
                 created++;

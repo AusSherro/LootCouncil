@@ -1,12 +1,12 @@
 # Loot Council — API Contracts
 
-> **Generated:** 2026-03-04 | **Scan Level:** Comprehensive
+> **Generated:** 2026-03-04 (last verified 2026-07-18) | **Scan Level:** Comprehensive
 
 ---
 
 ## Overview
 
-The API layer consists of **46 route files** across **28 domains**, all implemented as Next.js App Router API routes (`route.ts`). All routes use Prisma ORM to interact with a local SQLite database. Most routes are profile-scoped via `getProfileId()` helper.
+The API layer consists of **47 route files** across **26 top-level domains**, all implemented as Next.js App Router API routes (`route.ts`). Routes use Prisma ORM to interact with a local SQLite database. Financial data routes resolve the active profile with `getProfileId()` and enforce ownership before reading or mutating IDs.
 
 **Base URL:** `http://localhost:3000/api`
 
@@ -41,7 +41,7 @@ The API layer consists of **46 route files** across **28 domains**, all implemen
 | `/api/transactions/bulk` | POST, DELETE | Bulk edit/delete operations |
 | `/api/splits` | GET, POST, PUT | Split transaction management |
 | `/api/transfers` | GET, POST | Transfer CRUD |
-| `/api/transfers/match` | POST | Transfer matching between accounts |
+| `/api/transfers/match` | GET, POST, DELETE | Find, atomically link, and unlink opposite transactions between owned accounts |
 
 ### Automation & Rules
 
@@ -91,15 +91,33 @@ The API layer consists of **46 route files** across **28 domains**, all implemen
 
 | Route | Methods | Description |
 |-------|---------|-------------|
-| `/api/payees` | GET | Payee list |
+| `/api/payees` | GET, POST, DELETE | Profile-scoped payee list, creation, and deletion |
 | `/api/payees/manage` | POST, PATCH, DELETE | Payee merge, rename, delete |
 | `/api/payees/similar` | GET | Find similar/duplicate payees |
 | `/api/profiles` | GET, POST, PATCH, DELETE | Profile CRUD (multi-profile support) |
-| `/api/reports/advanced` | GET | Advanced reports (5 types) |
+| `/api/reports/advanced` | GET | Advanced reporting datasets |
 | `/api/settings` | GET, PATCH | App settings (theme, currency, etc.) |
 | `/api/integrations` | GET, POST, PATCH, DELETE | API key management |
 | `/api/age-of-money` | GET | Age of Money calculation |
 | `/api/quote` | GET | Random financial quote |
+
+---
+
+## Profile Scoping and Ownership
+
+Financial routes must treat the active profile as a data boundary:
+
+1. Resolve it with `getProfileId(request)` from `src/lib/profile.ts`.
+2. Include the profile in list and create queries. Some records are scoped indirectly through an owned account or category group.
+3. Before operations on caller-supplied IDs, use the helpers in `src/lib/profileOwnership.ts` (`findOwnedAccount`, `findOwnedCategory`, `findOwnedTransaction`, and related helpers).
+4. Use `ownsAllCategories` or `ownsAllCategoryGroups` for batch references.
+5. Return `404` for an ID owned by another profile so the API does not reveal that record's existence.
+
+Payee names use the composite unique key `[profileId, name]`, allowing separate profiles to use the same merchant name.
+
+### Transaction Rule Safety
+
+`matchesRule()` in `src/lib/ruleEngine.ts` limits regular-expression patterns to 200 characters, rejects nested quantifiers, and returns `false` for malformed patterns. API callers should use this shared matcher rather than constructing regular expressions directly.
 
 ---
 

@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { Upload, FileSpreadsheet, X, CheckCircle, AlertCircle, Loader2, ChevronRight } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
+import ModalDialog from './ModalDialog';
 
 interface Account {
     id: string;
@@ -155,7 +156,12 @@ export default function CSVImportModal({ isOpen, onClose, onSuccess, accounts }:
 
     return (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] animate-fade-in" onClick={handleClose}>
-            <div className="bg-background-secondary border border-border rounded-xl w-full max-w-2xl mx-4 p-6 max-h-[90vh] overflow-y-auto animate-scale-in" onClick={e => e.stopPropagation()}>
+            <ModalDialog
+                isOpen={isOpen}
+                onClose={handleClose}
+                aria-label="Import bank CSV"
+                className="bg-background-secondary border border-border rounded-xl w-full max-w-2xl mx-4 p-6 max-h-[90vh] overflow-y-auto animate-scale-in"
+            >
                 {/* Header */}
                 <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-3">
@@ -320,7 +326,7 @@ export default function CSVImportModal({ isOpen, onClose, onSuccess, accounts }:
                         </button>
                     </div>
                 )}
-            </div>
+            </ModalDialog>
         </div>
     );
 }

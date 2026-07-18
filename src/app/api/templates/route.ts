@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
+import { findOwnedTemplate, ownsAllCategories } from '@/lib/profileOwnership';
 
 // GET - List all budget templates
 export async function GET(request: NextRequest) {
@@ -21,7 +22,7 @@ export async function GET(request: NextRequest) {
         // Enrich with category names
         const categoryIds = [...new Set(templates.flatMap(t => t.items.map(i => i.categoryId)))];
         const categories = await prisma.category.findMany({
-            where: { id: { in: categoryIds } },
+            where: { id: { in: categoryIds }, group: { profileId } },
             select: { id: true, name: true },
         });
         const categoryMap = Object.fromEntries(categories.map(c => [c.id, c.name]));
@@ -45,6 +46,7 @@ export async function GET(request: NextRequest) {
 // POST - Create a new template OR apply a template to a month
 export async function POST(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         const body = await request.json();
 
         // Apply template to a month
@@ -54,8 +56,8 @@ export async function POST(request: NextRequest) {
                 return NextResponse.json({ error: 'Missing templateId or month' }, { status: 400 });
             }
 
-            const template = await prisma.budgetTemplate.findUnique({
-                where: { id: templateId },
+            const template = await prisma.budgetTemplate.findFirst({
+                where: { id: templateId, profileId },
                 include: { items: true },
             });
 
@@ -63,10 +65,12 @@ export async function POST(request: NextRequest) {
                 return NextResponse.json({ error: 'Template not found' }, { status: 404 });
             }
 
-            let applied = 0;
-            for (const item of template.items) {
-                // Upsert the monthly budget for each category
-                await prisma.monthlyBudget.upsert({
+            if (!(await ownsAllCategories(profileId, template.items.map(item => item.categoryId)))) {
+                return NextResponse.json({ error: 'Template contains unavailable categories' }, { status: 400 });
+            }
+
+            await prisma.$transaction(template.items.map(item =>
+                prisma.monthlyBudget.upsert({
                     where: { month_categoryId: { month, categoryId: item.categoryId } },
                     create: {
                         month,
@@ -79,11 +83,10 @@ export async function POST(request: NextRequest) {
                         assigned: item.amount,
                         // Recalculate available based on previous balance
                     },
-                });
-                applied++;
-            }
+                })
+            ));
 
-            return NextResponse.json({ success: true, applied });
+            return NextResponse.json({ success: true, applied: template.items.length });
         }
 
         // Save current month as template
@@ -95,7 +98,7 @@ export async function POST(request: NextRequest) {
 
             // Get all monthly budgets for this month
             const monthlyBudgets = await prisma.monthlyBudget.findMany({
-                where: { month, assigned: { gt: 0 } },
+                where: { month, assigned: { gt: 0 }, category: { group: { profileId } } },
             });
 
             if (monthlyBudgets.length === 0) {
@@ -106,6 +109,7 @@ export async function POST(request: NextRequest) {
                 data: {
                     name,
                     description: description || null,
+                    profileId,
                     items: {
                         create: monthlyBudgets.map(mb => ({
                             categoryId: mb.categoryId,
@@ -125,12 +129,18 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Missing template name' }, { status: 400 });
         }
 
+        const itemList = Array.isArray(items) ? items : [];
+        if (!(await ownsAllCategories(profileId, itemList.map((item: { categoryId: string }) => item.categoryId)))) {
+            return NextResponse.json({ error: 'One or more categories were not found' }, { status: 404 });
+        }
+
         const template = await prisma.budgetTemplate.create({
             data: {
                 name,
                 description: description || null,
-                items: items?.length > 0 ? {
-                    create: items.map((item: { categoryId: string; amount: number }) => ({
+                profileId,
+                items: itemList.length > 0 ? {
+                    create: itemList.map((item: { categoryId: string; amount: number }) => ({
                         categoryId: item.categoryId,
                         amount: item.amount,
                     })),
@@ -149,33 +159,42 @@ export async function POST(request: NextRequest) {
 // PATCH - Update a template
 export async function PATCH(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         const body = await request.json();
         const { id, name, description, items } = body;
 
         if (!id) {
             return NextResponse.json({ error: 'Missing template ID' }, { status: 400 });
         }
-
-        // Update template info
-        const template = await prisma.budgetTemplate.update({
-            where: { id },
-            data: {
-                name: name || undefined,
-                description: description !== undefined ? description : undefined,
-            },
-        });
-
-        // If items provided, replace all items
-        if (items) {
-            await prisma.budgetTemplateItem.deleteMany({ where: { templateId: id } });
-            await prisma.budgetTemplateItem.createMany({
-                data: items.map((item: { categoryId: string; amount: number }) => ({
-                    templateId: id,
-                    categoryId: item.categoryId,
-                    amount: item.amount,
-                })),
-            });
+        if (!(await findOwnedTemplate(profileId, id))) {
+            return NextResponse.json({ error: 'Template not found' }, { status: 404 });
         }
+        if (items && !(await ownsAllCategories(profileId, items.map((item: { categoryId: string }) => item.categoryId)))) {
+            return NextResponse.json({ error: 'One or more categories were not found' }, { status: 404 });
+        }
+
+        const template = await prisma.$transaction(async tx => {
+            const updated = await tx.budgetTemplate.update({
+                where: { id },
+                data: {
+                    name: name || undefined,
+                    description: description !== undefined ? description : undefined,
+                },
+            });
+
+            if (items) {
+                await tx.budgetTemplateItem.deleteMany({ where: { templateId: id } });
+                await tx.budgetTemplateItem.createMany({
+                    data: items.map((item: { categoryId: string; amount: number }) => ({
+                        templateId: id,
+                        categoryId: item.categoryId,
+                        amount: item.amount,
+                    })),
+                });
+            }
+
+            return updated;
+        });
 
         return NextResponse.json({ template });
     } catch (error) {
@@ -186,6 +205,7 @@ export async function PATCH(request: NextRequest) {
 
 // DELETE - Remove a template
 export async function DELETE(request: NextRequest) {
+    const profileId = await getProfileId(request);
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
@@ -194,6 +214,9 @@ export async function DELETE(request: NextRequest) {
     }
 
     try {
+        if (!(await findOwnedTemplate(profileId, id))) {
+            return NextResponse.json({ error: 'Template not found' }, { status: 404 });
+        }
         await prisma.budgetTemplate.delete({ where: { id } });
         return NextResponse.json({ success: true });
     } catch (error) {

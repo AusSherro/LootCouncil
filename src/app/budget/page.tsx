@@ -11,6 +11,7 @@ import ForecastModal from '@/components/ForecastModal';
 import { useToast } from '@/components/Toast';
 import { formatCurrency } from '@/lib/utils';
 import GoldCoinSpinner from '@/components/GoldCoinSpinner';
+import ModalDialog from '@/components/ModalDialog';
 import {
     DndContext,
     closestCenter,
@@ -147,22 +148,27 @@ function CategoryRow({ category, month, onUpdate, onHide, onRename, onGoalClick,
                     amount,
                 }),
             });
+            if (!res.ok) {
+                const data = await res.json().catch(() => null);
+                throw new Error(data?.error || 'Failed to save budget assignment');
+            }
             // FEAT-9: warn when this assignment leaves the category overspent.
             // Toast only when newly overspent (avoid spamming on every edit of an
             // already-overspent category).
-            if (res.ok) {
-                const data = await res.json();
-                if (typeof data?.available === 'number' && data.available < 0 && category.available >= 0) {
-                    showToast(
-                        `${category.name} is overspent by ${formatCurrency(Math.abs(data.available))}`,
-                        'warning'
-                    );
-                }
+            const data = await res.json();
+            if (typeof data?.available === 'number' && data.available < 0 && category.available >= 0) {
+                showToast(
+                    `${category.name} is overspent by ${formatCurrency(Math.abs(data.available))}`,
+                    'warning'
+                );
             }
             setEditing(false);
             onUpdate();
         } catch (err) {
             console.error('Failed to save budget:', err);
+            const message = err instanceof Error ? err.message : 'Failed to save budget assignment';
+            onError?.(message);
+            if (!onError) showToast(message, 'error');
         }
     }
 
@@ -564,14 +570,16 @@ function CreateModal({ isOpen, onClose, groups, onCreated }: CreateModalProps) {
     const [name, setName] = useState('');
     const [groupId, setGroupId] = useState('');
     const [saving, setSaving] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
     async function handleCreate() {
         if (!name.trim()) return;
         if (type === 'category' && !groupId) return;
 
         setSaving(true);
+        setError(null);
         try {
-            await fetch('/api/categories', {
+            const res = await fetch('/api/categories', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -580,12 +588,17 @@ function CreateModal({ isOpen, onClose, groups, onCreated }: CreateModalProps) {
                     ...(type === 'category' && { groupId }),
                 }),
             });
+            if (!res.ok) {
+                const data = await res.json().catch(() => null);
+                throw new Error(data?.error || 'Failed to create item');
+            }
             setName('');
             setGroupId('');
             onClose();
             onCreated();
         } catch (err) {
             console.error('Failed to create:', err);
+            setError(err instanceof Error ? err.message : 'Failed to create item');
         } finally {
             setSaving(false);
         }
@@ -595,7 +608,12 @@ function CreateModal({ isOpen, onClose, groups, onCreated }: CreateModalProps) {
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] animate-fade-in" onClick={onClose}>
-            <div className="bg-background-secondary rounded-xl p-6 w-96 shadow-xl animate-scale-in" onClick={(e) => e.stopPropagation()}>
+            <ModalDialog
+                isOpen={isOpen}
+                onClose={onClose}
+                aria-label="Create category or category group"
+                className="bg-background-secondary rounded-xl p-6 w-full max-w-96 mx-4 shadow-xl animate-scale-in"
+            >
                 <div className="flex items-center justify-between mb-4">
                     <h3 className="text-lg font-semibold text-foreground">Create New</h3>
                     <button onClick={onClose} aria-label="Close" className="text-neutral hover:text-foreground">
@@ -619,13 +637,18 @@ function CreateModal({ isOpen, onClose, groups, onCreated }: CreateModalProps) {
                 </div>
 
                 <div className="space-y-4">
+                    {error && (
+                        <div className="p-3 bg-danger/20 border border-danger/30 rounded-lg text-danger text-sm">
+                            {error}
+                        </div>
+                    )}
                     <input
                         type="text"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
                         placeholder={type === 'group' ? 'Group name...' : 'Category name...'}
                         className="input w-full"
-                        autoFocus
+                        data-autofocus
                     />
 
                     {type === 'category' && (
@@ -649,7 +672,7 @@ function CreateModal({ isOpen, onClose, groups, onCreated }: CreateModalProps) {
                         {saving ? 'Creating...' : 'Create'}
                     </button>
                 </div>
-            </div>
+            </ModalDialog>
         </div>
     );
 }
@@ -1236,7 +1259,7 @@ export default function BudgetPage() {
                     
                     {/* Budget Summary Footer */}
                     {!loading && budgetData && budgetData.groups.length > 0 && (
-                        <div className="table-row grid-cols-[1fr_90px_90px] lg:grid-cols-[24px_1fr_120px_120px_140px_40px] bg-background-tertiary border-t border-border font-medium">
+                        <div className="lc-table-row grid-cols-[1fr_90px_90px] lg:grid-cols-[24px_1fr_120px_120px_140px_40px] bg-background-tertiary border-t border-border font-medium">
                             <div className="hidden lg:block"></div>
                             <div className="text-neutral pl-3 lg:pl-0">Total</div>
                             <div className="text-right text-foreground">{formatCurrency(budgetData.totals.assigned)}</div>
@@ -1330,7 +1353,8 @@ export default function BudgetPage() {
             {/* Add Category FAB */}
             <button
                 onClick={() => setShowCreateModal(true)}
-                className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-gold text-background flex items-center justify-center shadow-lg hover:bg-gold-light transition-colors"
+                className="fixed bottom-24 right-4 md:bottom-6 md:right-6 z-40 w-14 h-14 rounded-full bg-gold text-background flex items-center justify-center shadow-lg hover:bg-gold-light transition-colors"
+                aria-label="Add category or category group"
             >
                 <Plus className="w-6 h-6" />
             </button>

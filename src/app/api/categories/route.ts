@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
+import {
+    findOwnedCategory,
+    findOwnedCategoryGroup,
+    ownsAllCategories,
+    ownsAllCategoryGroups,
+} from '@/lib/profileOwnership';
 
 // GET all categories with groups
 export async function GET(request: NextRequest) {
@@ -30,6 +36,7 @@ export async function GET(request: NextRequest) {
 // POST - Create a new category or category group
 export async function POST(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         const body = await request.json();
         const { type, name, groupId } = body;
 
@@ -37,8 +44,8 @@ export async function POST(request: NextRequest) {
             // Create a new category group
             const maxSortOrder = await prisma.categoryGroup.aggregate({
                 _max: { sortOrder: true },
+                where: { profileId },
             });
-            const profileId = await getProfileId(request);
             const newGroup = await prisma.categoryGroup.create({
                 data: {
                     name,
@@ -52,6 +59,9 @@ export async function POST(request: NextRequest) {
             // Create a new category
             if (!groupId) {
                 return NextResponse.json({ error: 'groupId required for category' }, { status: 400 });
+            }
+            if (!(await findOwnedCategoryGroup(profileId, groupId))) {
+                return NextResponse.json({ error: 'Category group not found' }, { status: 404 });
             }
             const maxSortOrder = await prisma.category.aggregate({
                 _max: { sortOrder: true },
@@ -76,10 +86,14 @@ export async function POST(request: NextRequest) {
 // PATCH - Update category or group (hide/unhide, rename, reorder, move)
 export async function PATCH(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         const body = await request.json();
         const { type, id, updates } = body;
 
         if (type === 'group') {
+            if (!id || !(await findOwnedCategoryGroup(profileId, id))) {
+                return NextResponse.json({ error: 'Category group not found' }, { status: 404 });
+            }
             // Whitelist allowed fields for category groups
             const { name, isHidden, sortOrder } = updates ?? {};
             const safeUpdates: Record<string, unknown> = {};
@@ -93,6 +107,9 @@ export async function PATCH(request: NextRequest) {
             });
             return NextResponse.json({ group: updated });
         } else {
+            if (!id || !(await findOwnedCategory(profileId, id))) {
+                return NextResponse.json({ error: 'Category not found' }, { status: 404 });
+            }
             // Whitelist allowed fields for categories
             const { name, isHidden, sortOrder, groupId,
                 goalType, goalTarget, goalDueDate,
@@ -104,7 +121,12 @@ export async function PATCH(request: NextRequest) {
             if (name !== undefined) safeUpdates.name = name;
             if (isHidden !== undefined) safeUpdates.isHidden = isHidden;
             if (sortOrder !== undefined) safeUpdates.sortOrder = sortOrder;
-            if (groupId !== undefined) safeUpdates.groupId = groupId;
+            if (groupId !== undefined) {
+                if (!(await findOwnedCategoryGroup(profileId, groupId))) {
+                    return NextResponse.json({ error: 'Category group not found' }, { status: 404 });
+                }
+                safeUpdates.groupId = groupId;
+            }
             // Goal fields
             if (goalType !== undefined) safeUpdates.goalType = goalType;
             if (goalTarget !== undefined) safeUpdates.goalTarget = goalTarget;
@@ -131,6 +153,7 @@ export async function PATCH(request: NextRequest) {
 // DELETE - Permanently delete a category or group (only if no transactions)
 export async function DELETE(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         const { searchParams } = new URL(request.url);
         const type = searchParams.get('type');
         const id = searchParams.get('id');
@@ -141,7 +164,7 @@ export async function DELETE(request: NextRequest) {
 
         if (type === 'group') {
             // Check if group exists
-            const group = await prisma.categoryGroup.findUnique({ where: { id } });
+            const group = await findOwnedCategoryGroup(profileId, id);
             if (!group) {
                 return NextResponse.json({ error: 'Category group not found' }, { status: 404 });
             }
@@ -162,7 +185,7 @@ export async function DELETE(request: NextRequest) {
             return NextResponse.json({ success: true });
         } else {
             // Check if category exists
-            const category = await prisma.category.findUnique({ where: { id } });
+            const category = await findOwnedCategory(profileId, id);
             if (!category) {
                 return NextResponse.json({ error: 'Category not found' }, { status: 404 });
             }
@@ -187,6 +210,7 @@ export async function DELETE(request: NextRequest) {
 // Bulk reorder categories or groups
 export async function PUT(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         const body = await request.json();
         const { type, items, orders } = body; // items/orders: [{ id, sortOrder, groupId? }]
         const data = items || orders; // Support both field names
@@ -196,6 +220,9 @@ export async function PUT(request: NextRequest) {
         }
 
         if (type === 'groups') {
+            if (!(await ownsAllCategoryGroups(profileId, data.map((item: { id: string }) => item.id)))) {
+                return NextResponse.json({ error: 'One or more category groups were not found' }, { status: 404 });
+            }
             await Promise.all(
                 data.map((item: { id: string; sortOrder: number }) =>
                     prisma.categoryGroup.update({
@@ -205,6 +232,15 @@ export async function PUT(request: NextRequest) {
                 )
             );
         } else if (type === 'categories') {
+            if (!(await ownsAllCategories(profileId, data.map((item: { id: string }) => item.id)))) {
+                return NextResponse.json({ error: 'One or more categories were not found' }, { status: 404 });
+            }
+            const destinationGroupIds = data
+                .map((item: { groupId?: string }) => item.groupId)
+                .filter((groupId: string | undefined): groupId is string => Boolean(groupId));
+            if (!(await ownsAllCategoryGroups(profileId, destinationGroupIds))) {
+                return NextResponse.json({ error: 'One or more destination groups were not found' }, { status: 404 });
+            }
             await Promise.all(
                 data.map((item: { id: string; sortOrder: number; groupId?: string }) =>
                     prisma.category.update({

@@ -74,8 +74,8 @@ export default function BudgetFlowBar({
   return (
     <div className="card border-border p-5">
       {/* Top row: Ready to Assign hero + key stats */}
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-4">
+        <div className="flex flex-wrap items-center gap-3 sm:gap-4">
           <div className={`px-4 py-2 rounded-xl border ${readyBgColor}`}>
             <p className="text-xs text-neutral mb-0.5 tracking-wide">Ready to Assign</p>
             <p className={`text-xl font-semibold tabular-nums ${readyColor}`}>
@@ -108,7 +108,7 @@ export default function BudgetFlowBar({
         </div>
 
         {/* Flow narrative: Income → Assigned → Spent */}
-        <div className="flex items-center gap-6 text-sm">
+        <div className="grid w-full grid-cols-[1fr_auto_1fr_auto_1fr] items-center gap-2 text-sm sm:flex sm:w-auto sm:gap-6">
           <div className="text-right">
             <p className="text-neutral text-xs tracking-wide">Income</p>
             <p className="font-medium text-foreground tabular-nums flex items-center gap-1 justify-end">

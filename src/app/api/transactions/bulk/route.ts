@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
+import { findOwnedCategory } from '@/lib/profileOwnership';
 
 // POST - Bulk edit transactions
 export async function POST(request: NextRequest) {
@@ -16,6 +17,9 @@ export async function POST(request: NextRequest) {
         const updateData: Record<string, unknown> = {};
 
         if (updates.categoryId !== undefined) {
+            if (updates.categoryId && !(await findOwnedCategory(profileId, updates.categoryId))) {
+                return NextResponse.json({ error: 'Category not found' }, { status: 404 });
+            }
             updateData.categoryId = updates.categoryId || null;
         }
 

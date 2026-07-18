@@ -1,19 +1,19 @@
 # Loot Council — Data Models
 
-> **Generated:** 2026-03-04 | **Scan Level:** Comprehensive
+> **Generated:** 2026-03-04 (last verified 2026-07-18) | **Scan Level:** Comprehensive
 
 ---
 
 ## Overview
 
-The database uses **SQLite** (local file: `prisma/loot-council.db`) managed through **Prisma 6** ORM. The schema defines **18 models** organized into 8 functional domains.
+The database uses **SQLite** (local file: `data/loot-council.db`) managed through **Prisma 6** ORM. The schema defines **20 models** organized into 8 functional domains.
 
 **Key conventions:**
 - All monetary values stored as **integers in cents** (avoids floating-point errors)
 - IDs use **CUID** strings (Prisma default)
 - Timestamps use `DateTime` with `@default(now())` and `@updatedAt`
 - YNAB import compatibility via optional `ynabId` fields
-- **Multi-profile:** Most models have an optional `profileId` FK to scope data per profile
+- **Multi-profile:** Records are scoped either by a direct `profileId` FK or through an owned parent such as an Account or CategoryGroup
 
 ---
 
@@ -26,12 +26,12 @@ The database uses **SQLite** (local file: `prisma/loot-council.db`) managed thro
                           ▼
 ┌─────────────────┐     ┌──────────────────┐     ┌────────────────┐
 │   Settings      │     │  CategoryGroup   │────▶│    Category     │
-│   (singleton)   │     │  (guilds)        │ 1:N │  (quests)       │
+│   (singleton)   │     │                  │ 1:N │                 │
 └─────────────────┘     └──────────────────┘     └───────┬────────┘
                                                          │ 1:N
 ┌─────────────────┐     ┌──────────────────┐     ┌───────▼────────┐
 │    Account      │────▶│   Transaction    │◀───▶│ MonthlyBudget  │
-│  (gold pouches) │ 1:N │  (the ledger)    │     │ (allocations)  │
+│                 │ 1:N │                  │     │ (allocations)  │
 └─────────────────┘     └───────┬──────────┘     └────────────────┘
                                 │ 1:N
                         ┌───────▼──────────┐
@@ -193,9 +193,12 @@ Merchant/payee entity.
 | Field | Type | Notes |
 |-------|------|-------|
 | id | String (CUID) | Primary key |
-| name | String | Unique payee name |
+| name | String | Payee name; unique within a profile |
 | ynabId | String? | YNAB import ID |
 | transferAccountId | String? | For transfer payees |
+| profileId | String? | FK to Profile |
+
+**Unique:** `[profileId, name]`
 
 ### Transfer
 Linked account-to-account money movement.
@@ -328,4 +331,6 @@ Stored API credentials (Binance, etc.).
 
 | Migration | Date | Description |
 |-----------|------|-------------|
-| `20260202034301_init` | 2026-02-02 | Initial schema (all 18 models including Profile) |
+| `20260202034301_init` | 2026-02-02 | Initial project schema |
+
+> **Deployment warning:** The migration history has not yet been baselined to the current 20-model schema. Do not run the broad SQL produced by `prisma migrate diff` against live financial data. Back up the database and resolve [CRIT-6](../ISSUES.md) before relying on `prisma migrate deploy`.

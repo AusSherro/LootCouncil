@@ -328,7 +328,7 @@ body {
 /* TABLE STYLES                          */
 /* ===================================== */
 
-.table-row {
+.lc-table-row:not(.hidden) {
   display: grid;
   align-items: center;
   padding: 0.75rem 1rem;
@@ -336,7 +336,7 @@ body {
   transition: background 0.15s var(--ease-out-quart), box-shadow 0.15s var(--ease-out-quart);
 }
 
-.table-row:hover {
+.lc-table-row:hover {
   background: var(--background-tertiary);
   box-shadow: inset 2px 0 0 var(--gold-dark);
 }
@@ -561,7 +561,7 @@ body {
   --info: #0891b2;
   --positive: #16a34a;
   --negative: #dc2626;
-  --neutral: #64748b;
+  --neutral: #607084;
   --assigned: #0f766e;
   --shadow: 0 4px 18px -12px rgba(15, 23, 42, 0.12);
   --shadow-lg: 0 22px 44px -24px rgba(15, 23, 42, 0.18);
@@ -678,7 +678,7 @@ body {
 
 /* Tap highlight for mobile */
 @media (hover: none) {
-  .table-row:active {
+  .lc-table-row:active {
     background: var(--background-tertiary);
   }
 }

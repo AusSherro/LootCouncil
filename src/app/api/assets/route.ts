@@ -157,11 +157,12 @@ export async function POST(request: NextRequest) {
 }
 
 // PUT - Refresh all tracked (non-manual) asset prices from market data
-export async function PUT() {
+export async function PUT(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         // Only refresh non-manual assets
         const assets = await prisma.asset.findMany({
-            where: { isManual: false },
+            where: { isManual: false, profileId },
         });
         
         if (assets.length === 0) {
@@ -194,7 +195,7 @@ export async function PUT() {
         }
 
         // Count manual assets that were skipped
-        const manualCount = await prisma.asset.count({ where: { isManual: true } });
+        const manualCount = await prisma.asset.count({ where: { isManual: true, profileId } });
 
         return NextResponse.json({
             message: `Refreshed ${updated} of ${assets.length} tracked assets`,
@@ -212,6 +213,7 @@ export async function PUT() {
 // DELETE asset by ID (via query param)
 export async function DELETE(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         const { searchParams } = new URL(request.url);
         const id = searchParams.get('id');
 
@@ -222,9 +224,12 @@ export async function DELETE(request: NextRequest) {
             );
         }
 
-        await prisma.asset.delete({
-            where: { id },
-        });
+        const asset = await prisma.asset.findFirst({ where: { id, profileId } });
+        if (!asset) {
+            return NextResponse.json({ error: 'Asset not found' }, { status: 404 });
+        }
+
+        await prisma.asset.delete({ where: { id } });
 
         return NextResponse.json({ success: true });
     } catch (error) {
@@ -236,6 +241,7 @@ export async function DELETE(request: NextRequest) {
 // PATCH - Update a manual asset's value
 export async function PATCH(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         const { searchParams } = new URL(request.url);
         const id = searchParams.get('id');
         const body = await request.json();
@@ -248,11 +254,16 @@ export async function PATCH(request: NextRequest) {
             );
         }
 
-        if (typeof currentPrice !== 'number') {
+        if (typeof currentPrice !== 'number' || !Number.isFinite(currentPrice)) {
             return NextResponse.json(
                 { error: 'Missing or invalid currentPrice' },
                 { status: 400 }
             );
+        }
+
+        const existing = await prisma.asset.findFirst({ where: { id, profileId } });
+        if (!existing) {
+            return NextResponse.json({ error: 'Asset not found' }, { status: 404 });
         }
 
         const asset = await prisma.asset.update({

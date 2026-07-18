@@ -188,8 +188,8 @@ export async function PATCH(request: NextRequest) {
         }
 
         // Get existing transaction to calculate clearedBalance adjustment
-        const existing = await prisma.transaction.findUnique({
-            where: { id: transactionId },
+        const existing = await prisma.transaction.findFirst({
+            where: { id: transactionId, account: { profileId } },
         });
 
         if (!existing) {

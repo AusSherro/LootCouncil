@@ -33,6 +33,19 @@
   - **Fix:** Add `relative` class to the parent dialog container.
   - **Priority:** Medium — UI bug
 
+- [ ] **CRIT-6: Prisma Migration History Is Behind the Current Schema**
+  - **Files:** `prisma/schema.prisma`, `prisma/migrations/20260202034301_init/migration.sql`, `deploy/deploy-to-pi.sh`
+  - **Problem:** The repository has only the initial migration, while the current Prisma schema has 20 models and many later fields, indexes, and relations. `deploy-to-pi.sh` instructs production to run `prisma migrate deploy`, so a fresh or migrated deployment will not reliably reach the schema used by the application. The current Payee uniqueness change (`[profileId, name]`) also has no forward migration.
+  - **Evidence:** `prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma --script` produces a broad rebuild that includes dropping `UserStats`; it must not be applied blindly to a live financial database.
+  - **Fix:** Back up and baseline the deployed database, then create and review data-preserving forward migrations for the accumulated schema changes. Test the migration against a copy of real data before changing the deployment instructions.
+  - **Priority:** High — deployment reliability and data integrity
+
+- [ ] **CRIT-7: Raspberry Pi Compose Does Not Run Loot Council**
+  - **Files:** `deploy/docker-compose.yml`, `deploy/Caddyfile`, `deploy/deploy-to-pi.sh`, `Dockerfile`
+  - **Problem:** The deployment script copies the application and runs `docker compose up -d --build`, but the Compose file defines only Caddy and Pi-hole. No service builds or starts the Loot Council image. Caddy proxies to `172.17.0.1:3000`, and the script does not start an application process at that address.
+  - **Fix:** After CRIT-6 is resolved, add a `loot-council` service that builds `./loot-council`, mounts a persistent `/app/data` volume, configures `DATABASE_URL`, runs reviewed migrations before startup, and exposes port 3000 only to the Compose network. Point Caddy to `loot-council:3000`, add a health check and service dependency, and decide how LAN access is authenticated or restricted.
+  - **Priority:** High — current Pi deployment cannot launch the application
+
 ---
 
 ## Security Concerns
@@ -75,7 +88,7 @@
   - **Files:** `src/app/page.tsx`, most page components
   - **Problem:** Dashboard fires 4+ parallel fetch calls on every mount with no caching. All pages fetch fresh on every visit.
   - **Fix:** Adopt SWR or React Query for automatic caching, revalidation, and deduplication.
-  - **Progress:** Added lightweight client cache utility (`src/lib/clientCache.ts`) and applied it to dashboard API reads and transactions filter metadata fetches; broader SWR/React Query migration still pending.
+  - **Progress:** A lightweight cache remains for slow-changing transaction form/filter metadata. Dashboard reads intentionally bypass it so financial totals revalidate on every mount; broader SWR/React Query migration is still pending.
   - **Priority:** Medium — improves UX significantly
 
 - [x] **PERF-3: TransactionForm Refetches on Every Open**
@@ -299,7 +312,7 @@
 
 - [x] **LH-5: YNAB sync — 20× `(prisma.X as any)` casts**
   - **File:** `src/app/api/import/ynab-api/sync/route.ts`
-  - **Problem:** Type casts dated from when the Prisma client lacked `ynabId`. Schema and migration now include it, so casts were suppressing real type safety on a mutation-heavy sync path. Also one stale `eslint-disable-next-line` directive.
+  - **Problem:** Type casts dated from when the generated Prisma client lacked `ynabId`. The current schema includes it, so casts were suppressing real type safety on a mutation-heavy sync path. Also one stale `eslint-disable-next-line` directive.
   - **Fix:** Stripped all 20 `(prisma.X as any)` casts plus accompanying `// eslint-disable-next-line @typescript-eslint/no-explicit-any` directives. Also dropped a leftover `: any[]` on `allCategories`. Type-check + lint pass clean.
   - **Priority:** Medium — restored type safety on the import path
 
@@ -440,7 +453,6 @@
   - **Server-side noise filter:** Drops sub-$5 changes so the lists don't fill with rounding-level wiggles.
   - **Priority:** Medium-High — best "actionable insight" addition
 
-- [ ] **RPT-5: Refactor `src/app/reports/page.tsx` into per-tab files**
-  - **Why:** Page is currently 1,400+ lines after additions. The two new tabs (Savings Rate, Top Movers) already live under `src/app/reports/_tabs/` as standalone components — this seeds the per-tab pattern. Remaining 6 tabs (Spending, Income/Expense, Budget vs Actual, Net Worth, By Payee, Category Trends) still inline in the parent.
-  - **Plan:** Extract each remaining tab to its own file under `_tabs/`, taking `currency` + `excludeCategoryNames` as props. Each tab manages its own data + UI state (range dropdown, etc.) internally. Parent shrinks to a tab switcher.
-  - **Priority:** Low — pure code-organisation, no user-visible change. Tackle in a fresh context window to keep the diff focused.
+- [x] **RPT-5: Refactor `src/app/reports/page.tsx` into per-tab files**
+  - **Resolution:** All 8 report tabs now live under `src/app/reports/_tabs/` and manage their own data and UI state. The parent page owns shared tab navigation and category-exclusion state.
+  - **Priority:** Low — pure code organisation, no user-visible change

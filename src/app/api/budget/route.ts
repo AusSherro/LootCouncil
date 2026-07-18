@@ -382,15 +382,18 @@ export async function POST(request: NextRequest) {
 
 // PUT - Recalculate all budget data from transactions (useful after import)
 // PERF-5 fix: Uses pre-filter + createMany instead of sequential upserts
-export const PUT = withErrorHandler(async () => {
-    // Get all categories
+export const PUT = withErrorHandler(async (request: NextRequest) => {
+    const profileId = await getProfileId(request);
+
+    // Get all categories for the active profile
     const categories = await prisma.category.findMany({
+        where: { group: { profileId } },
         select: { id: true },
     });
 
     // Get all unique months from transactions
     const transactions = await prisma.transaction.findMany({
-        where: { categoryId: { not: null } },
+        where: { categoryId: { not: null }, account: { profileId } },
         select: { date: true },
     });
 

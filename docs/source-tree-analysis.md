@@ -1,63 +1,38 @@
 # Loot Council — Source Tree Analysis
 
-> **Generated:** 2026-03-04 | **Scan Level:** Comprehensive
+> **Generated:** 2026-03-04 (last verified 2026-07-18) | **Scan Level:** Comprehensive
 
 ---
 
 ## Repository Root
 
 ```
-d:\Vibe Coding\Loot Council\
-├── .github/
-│   └── agents/                    # GitHub Copilot agent configs
-├── docs/                          # 📚 Generated project documentation (this folder)
-├── loot-council/                  # 🏰 Main application (project root)
-│   ├── .agent/                    # AI agent configuration
-│   ├── .github/
-│   │   └── agents/                # GitHub Copilot agent configs
-│   ├── prisma/                    # 🗃️ Database layer
-│   │   ├── schema.prisma          # Database schema (18 models)
-│   │   ├── seed-profile.ts        # Profile seeding script
-│   │   ├── loot-council.db        # SQLite database file
-│   │   └── migrations/            # Database migrations
-│   │       └── 20260202034301_init/  # Initial migration
-│   ├── public/                    # Static assets
-│   ├── src/                       # 🔥 Application source code
-│   │   ├── app/                   # Next.js App Router
-│   │   │   ├── layout.tsx         # ⚡ Root layout (providers, sidebar)
-│   │   │   ├── page.tsx           # ⚡ Dashboard (home page)
-│   │   │   ├── globals.css        # 🎨 Theme variables, animations, base styles
-│   │   │   ├── favicon.ico        # App icon
-│   │   │   ├── api/               # 🔌 Backend API routes (47 files, 29 domains)
-│   │   │   ├── budget/            # Budget page
-│   │   │   ├── transactions/      # Transactions page
-│   │   │   ├── accounts/          # Accounts page
-│   │   │   ├── reports/           # Reports page
-│   │   │   ├── investments/       # Investment portfolio page
-│   │   │   ├── fire/              # FIRE calculator page
-│   │   │   ├── assistant/         # AI assistant page
-│   │   │   └── settings/          # Settings page
-│   │   ├── components/            # 🧩 Reusable UI components (26 files)
-│   │   └── lib/                   # 🔧 Utilities & hooks (7 files)
-│   ├── .env                       # Environment variables
-│   ├── package.json               # Dependencies & scripts
-│   ├── next.config.ts             # Next.js configuration
-│   ├── tsconfig.json              # TypeScript configuration
-│   ├── eslint.config.mjs          # ESLint configuration
-│   ├── postcss.config.mjs         # PostCSS (Tailwind) configuration
-│   ├── start-budget.bat           # Windows launch script
-│   ├── ai_context.md              # AI developer context file
-│   ├── README.md                  # Project README
-│   └── ISSUES.md                  # Issue tracker
-├── _bmad/                         # BMAD framework files
-└── _bmad-output/                  # BMAD workflow outputs
+loot-council/
+├── .github/workflows/ci.yml       # Lint, test, and production build
+├── data/                          # Local SQLite databases (gitignored)
+├── deploy/                        # Raspberry Pi, Caddy, and Compose examples
+├── docs/                          # Project documentation
+├── prisma/                        # Schema (20 models), seed, and migrations
+├── public/                        # Static assets
+├── scripts/prepare-test-db.mjs    # Recreates the isolated Vitest database
+├── src/
+│   ├── app/                       # Next.js App Router pages and 47 API routes
+│   ├── components/                # 32 reusable UI components
+│   ├── generated/                 # Generated Prisma client (gitignored)
+│   └── lib/                       # 18 utilities, hooks, and test files
+├── Dockerfile                     # Standalone production image
+├── package.json                   # Scripts and dependencies
+├── vitest.config.ts               # Unit/integration test configuration
+├── ai_context.md                  # AI developer context
+├── README.md                      # Project README
+└── ISSUES.md                      # Issue tracker
 ```
 
 ---
 
 ## Critical Directories
 
-### `src/app/api/` — Backend API (46 route files)
+### `src/app/api/` — Backend API (47 route files, 26 top-level domains)
 
 The API layer follows Next.js App Router conventions with `route.ts` files:
 
@@ -104,7 +79,7 @@ api/
 ├── quote/route.ts                 # Random financial quotes
 ├── reconcile/route.ts             # Account reconciliation
 ├── reports/
-│   └── advanced/route.ts          # Advanced reporting (5 report types)
+│   └── advanced/route.ts          # Advanced reporting datasets
 ├── reset/                         # Data reset
 │   ├── route.ts                   # Delete all data
 │   └── budget/route.ts            # Reset budget only
@@ -130,17 +105,23 @@ app/
 ├── budget/page.tsx                # 💰 Budget (envelope view, category management)
 ├── transactions/page.tsx          # 📝 Transactions (list, filter, bulk ops)
 ├── accounts/page.tsx              # 🏦 Accounts (balances, reconciliation)
-├── reports/page.tsx               # 📊 Reports (5 chart types)
+├── reports/page.tsx               # 📊 Reports (8 tabs with drill-down)
 ├── investments/page.tsx           # 📈 Investments (portfolio, lots, allocation)
 ├── fire/page.tsx                  # 🔥 FIRE Calculator (projections, sliders)
 ├── assistant/page.tsx             # 🤖 AI Assistant (chat interface)
 └── settings/page.tsx              # ⚙️ Settings (theme, import/export, rules)
 ```
 
-### `src/components/` — UI Components (26 files)
+### `src/components/` — UI Components (32 files)
 
 ```
 components/
+├── AnimatedNumber.tsx             # Smooth numeric transitions
+├── ChartTooltip.tsx               # Shared Recharts tooltip
+├── ForecastModal.tsx              # Budget affordability forecast
+├── GoldCoinSpinner.tsx            # Themed loading spinner
+├── ModalDialog.tsx                # Shared accessible dialog shell
+├── StatusPill.tsx                 # Reusable status badge
 ├── Sidebar.tsx                    # Navigation (desktop sidebar, shared nav items)
 ├── MobileNav.tsx                  # Bottom navigation for mobile
 ├── TransactionForm.tsx            # Add/edit transaction modal
@@ -169,26 +150,36 @@ components/
 └── Toast.tsx                      # Toast notification component
 ```
 
-### `src/lib/` — Utilities (7 files)
+### `src/lib/` — Utilities, Hooks, and Tests (18 files)
 
 ```
 lib/
+├── budgetHelpers.ts               # Server-side budget helpers
+├── budgetUtils.ts                 # Pure budget helpers
+├── budgetUtils.test.ts            # Budget helper unit tests
+├── exchangeRate.ts                # Exchange-rate retrieval and cache
 ├── prisma.ts                      # Prisma client singleton
 ├── openai.ts                      # OpenAI client configuration
 ├── utils.ts                       # Helper functions (formatting, etc.)
 ├── apiHandler.ts                  # Centralized API error handler wrapper
-├── clientCache.ts                 # Lightweight in-memory TTL cache for client fetches
+├── clientCache.ts                 # Selective in-memory TTL cache for form metadata
 ├── navigation.ts                  # Shared navigation items for Sidebar/MobileNav
-└── profile.ts                     # Profile ID resolution (cookie/query/fallback)
+├── profile.ts                     # Profile ID resolution (cookie/query/fallback)
+├── profileIsolation.integration.test.ts # SQLite profile-boundary integration tests
+├── profileOwnership.ts            # Profile-scoped entity lookup helpers
+├── ruleEngine.ts                  # Shared transaction-rule matcher
+├── ruleEngine.test.ts             # Rule matcher unit tests
+├── useKeyboardShortcuts.tsx       # Keyboard shortcut hook
+├── useModalA11y.ts                # Dialog focus, Escape, and scroll behavior
+└── useUndo.tsx                    # Undo/redo provider and hooks
 ```
 
 ### `prisma/` — Database Layer
 
 ```
 prisma/
-├── schema.prisma                  # 18 database models (Profile + 17 data models)
+├── schema.prisma                  # 20 database models
 ├── seed-profile.ts                # Profile seeding script
-├── loot-council.db                # SQLite database file (local data)
 └── migrations/
     ├── migration_lock.toml
     └── 20260202034301_init/       # Initial migration (Feb 2, 2026)
@@ -202,8 +193,8 @@ prisma/
 |-------------|------|---------|
 | App Root | `src/app/layout.tsx` | Root layout with providers (Settings, Profile, Keyboard, Undo) |
 | Dashboard | `src/app/page.tsx` | Home page with financial summary |
-| API Gateway | `src/app/api/*/route.ts` | 46 API route handlers |
-| Database | `prisma/schema.prisma` | Schema definition (17 models) |
+| API Gateway | `src/app/api/*/route.ts` | 47 API route files |
+| Database | `prisma/schema.prisma` | Schema definition (20 models); data stored under `data/` |
 | Config | `next.config.ts` | Next.js + webpack config |
 | Styles | `src/app/globals.css` | Theme variables, animations |
 | Launch Script | `start-budget.bat` | Windows launch (opens browser + starts server) |

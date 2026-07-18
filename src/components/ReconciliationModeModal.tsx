@@ -3,6 +3,7 @@
 import { CheckSquare, Square, X, Lock, AlertCircle, Check } from 'lucide-react';
 import { useState, useEffect, useCallback } from 'react';
 import { formatCurrency } from '@/lib/utils';
+import ModalDialog from './ModalDialog';
 
 interface Transaction {
     id: string;
@@ -178,7 +179,12 @@ export default function ReconciliationModeModal({ isOpen, onClose, onSuccess, ac
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="bg-background-secondary rounded-xl w-full max-w-4xl shadow-2xl animate-scale-in max-h-[90vh] flex flex-col">
+            <ModalDialog
+                isOpen={isOpen}
+                onClose={onClose}
+                aria-label={`Reconcile ${accountName}`}
+                className="bg-background-secondary rounded-xl w-full max-w-4xl shadow-2xl animate-scale-in max-h-[90vh] flex flex-col"
+            >
                 <div className="flex items-center justify-between p-6 border-b border-border">
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-lg bg-success/20 flex items-center justify-center">
@@ -252,10 +258,11 @@ export default function ReconciliationModeModal({ isOpen, onClose, onSuccess, ac
                             ) : (
                                 <div className="space-y-1 max-h-[40vh] overflow-y-auto">
                                     {transactions.map((tx) => (
-                                        <div
+                                        <button
+                                            type="button"
                                             key={tx.id}
                                             onClick={() => toggleTransaction(tx.id)}
-                                            className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors ${
+                                            className={`flex w-full items-center gap-3 p-3 rounded-lg cursor-pointer text-left transition-colors ${
                                                 selectedIds.has(tx.id)
                                                     ? 'bg-success/10 border border-success/30'
                                                     : 'bg-background border border-border hover:bg-background-tertiary'
@@ -271,7 +278,7 @@ export default function ReconciliationModeModal({ isOpen, onClose, onSuccess, ac
                                             <span className={`font-medium ${tx.amount >= 0 ? 'text-positive' : 'text-foreground'}`}>
                                                 {tx.amount >= 0 ? '+' : ''}{formatCurrency(tx.amount)}
                                             </span>
-                                        </div>
+                                        </button>
                                     ))}
                                 </div>
                             )}
@@ -377,7 +384,7 @@ export default function ReconciliationModeModal({ isOpen, onClose, onSuccess, ac
                         </button>
                     )}
                 </div>
-            </div>
+            </ModalDialog>
         </div>
     );
 }

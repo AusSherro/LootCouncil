@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { X, Target, Calendar, DollarSign, Trash2 } from 'lucide-react';
+import ModalDialog from './ModalDialog';
 
 interface GoalEditorModalProps {
     isOpen: boolean;
@@ -149,7 +150,12 @@ export default function GoalEditorModal({
 
     return (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] animate-fade-in">
-            <div className="bg-background-secondary border border-border rounded-xl w-full max-w-md mx-4 shadow-lg animate-scale-in">
+            <ModalDialog
+                isOpen={isOpen}
+                onClose={onClose}
+                aria-label={`Set goal for ${categoryName}`}
+                className="bg-background-secondary border border-border rounded-xl w-full max-w-md mx-4 shadow-lg animate-scale-in"
+            >
                 {/* Header */}
                 <div className="flex items-center justify-between p-4 border-b border-border">
                     <div className="flex items-center gap-3">
@@ -308,7 +314,7 @@ export default function GoalEditorModal({
                         </button>
                     </div>
                 </div>
-            </div>
+            </ModalDialog>
         </div>
     );
 }

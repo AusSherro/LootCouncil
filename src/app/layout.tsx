@@ -61,7 +61,7 @@ export default function RootLayout({
                       Skip to content
                     </a>
                     <Sidebar />
-                    <main id="main-content" className="flex-1 overflow-auto pt-16 lg:pt-0 pb-20 lg:pb-0">
+                    <main id="main-content" className="flex-1 overflow-auto pt-16 md:pt-0 pb-20 md:pb-0">
                       <div className="mx-auto max-w-[1400px]">
                         <AutoResetErrorBoundary>
                           {children}

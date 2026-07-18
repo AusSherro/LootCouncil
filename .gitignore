@@ -54,3 +54,4 @@ data/*.db
 *.ico
 tmp-*
 .vscode/
+scripts/query_*.py

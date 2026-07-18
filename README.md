@@ -4,8 +4,8 @@
 
 ### *Take control of your money.*
 
-**A local-first, privacy-focused personal finance app.**<br/>
-**Zero-based envelope budgeting • Investment tracking • FIRE planning • AI advisor**
+**A local-first, privacy-focused personal finance app for running a complete household budget.**<br/>
+Add or import your accounts, give every available dollar a job, keep transactions reconciled, and use reports to decide what to change next.
 
 <br/>
 
@@ -31,6 +31,7 @@
 
 ## 📑 Table of Contents
 
+- [How to Use Loot Council](#-how-to-use-loot-council)
 - [Why Loot Council?](#-why-loot-council)
 - [Features](#-features)
 - [Tech Stack](#%EF%B8%8F-tech-stack)
@@ -41,6 +42,23 @@
 - [Database Schema](#-database-schema)
 - [Contributing](#-contributing)
 - [License](#-license)
+
+---
+
+## 🧭 How to Use Loot Council
+
+Loot Council follows a simple loop: **load your real balances, plan the money you have, record what happens, then reconcile and review.**
+
+1. **Choose a profile** — Open **Settings → Profiles** to create or select a household budget. Each profile keeps its accounts, transactions, categories, integrations, and settings separate.
+2. **Load your finances** — Add accounts from **Accounts → Add Account**. To bring existing data across, use **Settings → Data Management** for a YNAB backup, the YNAB API, or a Loot Council JSON backup; use **Transactions → Import CSV** for transaction files.
+3. **Build the budget** — On **Budget**, create category groups and categories, add optional goals, then enter each category's **Assigned** amount. Keep assigning until **Ready to Assign** reaches zero; only budget money you currently have.
+4. **Keep the ledger current** — Use **Transactions → Add Transaction** (or press `N`) for new activity. Categorize each transaction, split it when needed, mark cleared items, and use the **Scheduled** tab for recurring bills or income.
+5. **Reconcile accounts** — Open an account and choose **Reconcile**. Compare Loot Council's cleared balance with the bank, enter an adjustment if required, and finish the reconciliation so the ledger stays trustworthy.
+6. **Review and improve** — Use the dashboard for the daily snapshot, **Reports** for spending and savings trends, **Investments** for assets, and **FIRE** for long-term scenarios. The optional **Assistant** can analyze local financial context only after you explicitly consent.
+
+**Suggested routine:** add or import transactions as they occur, reconcile against each bank weekly, and assign new income from **Ready to Assign** whenever it arrives. At the start of a month, copy the previous budget or apply a template, adjust goals, and fund the new month.
+
+> Amounts are stored locally in SQLite. Choose **Settings → Data Management → Export Backup** before major imports, resets, or moving the app to another machine.
 
 ---
 
@@ -276,7 +294,7 @@ Most budgeting apps want your data in their cloud and a monthly subscription fee
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/yourusername/loot-council.git
+git clone https://github.com/AusSherro/LootCouncil.git
 cd loot-council
 
 # 2. Install dependencies
@@ -298,7 +316,7 @@ Create a `.env` file in the project root:
 
 ```env
 # Required
-DATABASE_URL="file:./loot-council.db"
+DATABASE_URL="file:../data/loot-council.db"
 
 # Optional — AI Features (OpenAI)
 OPENAI_API_KEY="sk-..."
@@ -320,11 +338,13 @@ BINANCE_API_SECRET="..."
 ```
 loot-council/
 ├── prisma/
-│   ├── schema.prisma         # Database schema (18 models)
+│   ├── schema.prisma         # Database schema (20 models)
 │   └── migrations/           # Database migrations
+├── data/                     # Local SQLite databases (gitignored)
+├── scripts/                  # Test database preparation
 ├── src/
 │   ├── app/
-│   │   ├── api/              # 46 API routes across 28 domains
+│   │   ├── api/              # 47 API routes across 26 top-level domains
 │   │   │   ├── accounts/     # Account CRUD
 │   │   │   ├── ai/           # AI features (chat, insights, optimize)
 │   │   │   ├── budget/       # Budget operations (auto-assign, copy, transfer, quick-actions)
@@ -336,7 +356,7 @@ loot-council/
 │   │   │   ├── binance/      # Binance wallet sync
 │   │   │   ├── import/       # Data import (YNAB, CSV, backup)
 │   │   │   ├── export/       # JSON backup export
-│   │   │   └── ...           # + 17 more domains
+│   │   │   └── ...           # + 15 more domains
 │   │   ├── budget/           # Budget page
 │   │   ├── transactions/     # Transactions page
 │   │   ├── accounts/         # Accounts page
@@ -345,8 +365,8 @@ loot-council/
 │   │   ├── fire/             # FIRE calculator page
 │   │   ├── settings/         # Settings page (with profiles)
 │   │   └── assistant/        # AI assistant page
-│   ├── components/           # 26 React components
-│   ├── lib/                  # Utilities, hooks & helpers (7 files)
+│   ├── components/           # 32 React components
+│   ├── lib/                  # Utilities, hooks, helpers, and tests (18 files)
 │   └── generated/            # Prisma client (auto-generated)
 └── public/                   # Static assets
 ```
@@ -355,7 +375,7 @@ loot-council/
 
 ## 🎨 Themes
 
-Five handcrafted dark color themes plus a clean professional option:
+Finance is the clean professional default, with six optional themes for a more personal look:
 
 <table>
 <tr>
@@ -387,7 +407,12 @@ Five handcrafted dark color themes plus a clean professional option:
 <td align="center">
 <img src="https://via.placeholder.com/80/1a73e8/1a73e8?text=+" alt="Finance" /><br/>
 <b>💼 Finance</b><br/>
-<sub>Clean Professional</sub>
+<sub>Clean Professional · Default</sub>
+</td>
+<td align="center">
+<img src="https://via.placeholder.com/80/e8739e/e8739e?text=+" alt="Kawaii" /><br/>
+<b>🌸 Kawaii</b><br/>
+<sub>Warm Pink</sub>
 </td>
 </tr>
 </table>
@@ -468,6 +493,13 @@ npm run dev
 # Build for production
 npm run build
 
+# Run lint and the isolated Vitest suite
+npm run lint
+npm test
+
+# Recreate the test database, then keep Vitest in watch mode
+npm run test:watch
+
 # View/edit database in browser
 npx prisma studio
 
@@ -490,7 +522,7 @@ Contributions are welcome! Here's how to get started:
 4. **Push** to the branch (`git push origin feature/your-feature`)
 5. **Open** a Pull Request
 
-> Please make sure your code passes `npm run build` before submitting.
+> Please make sure your code passes `npm run lint`, `npm test`, and `npm run build` before submitting.
 
 ---
 

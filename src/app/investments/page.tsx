@@ -22,6 +22,7 @@ import {
 } from 'recharts';
 import ChartTooltip from '@/components/ChartTooltip';
 import { useConfirmDialog } from '@/components/ConfirmDialog';
+import ModalDialog from '@/components/ModalDialog';
 
 interface Asset {
     id: string;
@@ -429,7 +430,7 @@ export default function InvestmentsPage() {
                             </div>
                         ) : (
                             <div className="h-64">
-                                <ResponsiveContainer width="100%" height="100%">
+                                <ResponsiveContainer width="100%" height="100%" minWidth={0} initialDimension={{ width: 1, height: 1 }}>
                                     <AreaChart data={chartData}>
                                         <defs>
                                             <linearGradient id="goldGradient" x1="0" y1="0" x2="0" y2="1">
@@ -1700,7 +1701,12 @@ function AddAssetModal({ onClose, onAdded }: { onClose: () => void; onAdded: () 
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fade-in" onClick={onClose}>
-            <div className="bg-background-secondary rounded-xl p-6 w-full max-w-md animate-scale-in" onClick={(e) => e.stopPropagation()}>
+            <ModalDialog
+                isOpen={true}
+                onClose={onClose}
+                aria-label={step === 'asset' ? 'Add asset' : 'Add purchase'}
+                className="bg-background-secondary rounded-xl p-6 w-full max-w-md mx-4 animate-scale-in"
+            >
                 <div className="flex items-center justify-between mb-4">
                     <h2 className="text-lg font-semibold text-foreground">
                         {step === 'asset' ? 'Add Asset' : 'Add Purchase'}
@@ -1750,7 +1756,7 @@ function AddAssetModal({ onClose, onAdded }: { onClose: () => void; onAdded: () 
                                         }}
                                         placeholder="e.g. Australian Super, Partner's Super"
                                         className="input w-full"
-                                        autoFocus
+                                        data-autofocus
                                     />
                                 </div>
 
@@ -1894,7 +1900,7 @@ function AddAssetModal({ onClose, onAdded }: { onClose: () => void; onAdded: () 
                         </div>
                     </div>
                 )}
-            </div>
+            </ModalDialog>
         </div>
     );
 }
@@ -1932,7 +1938,12 @@ function AddLotModal({ asset, onClose, onAdded }: { asset: Asset; onClose: () =>
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 animate-fade-in" onClick={onClose}>
-            <div className="bg-background-secondary rounded-xl p-6 w-full max-w-md animate-scale-in" onClick={(e) => e.stopPropagation()}>
+            <ModalDialog
+                isOpen={true}
+                onClose={onClose}
+                aria-label={`Add lot for ${asset.symbol}`}
+                className="bg-background-secondary rounded-xl p-6 w-full max-w-md mx-4 animate-scale-in"
+            >
                 <div className="flex items-center justify-between mb-4">
                     <h2 className="text-lg font-semibold text-foreground">
                         Add Lot — <span className="text-gold">{asset.symbol}</span>
@@ -1964,7 +1975,7 @@ function AddLotModal({ asset, onClose, onAdded }: { asset: Asset; onClose: () =>
                                 onChange={(e) => setUnits(e.target.value)}
                                 placeholder="2"
                                 className="input w-full"
-                                autoFocus
+                                data-autofocus
                             />
                         </div>
                         <div>
@@ -2005,7 +2016,7 @@ function AddLotModal({ asset, onClose, onAdded }: { asset: Asset; onClose: () =>
                         </button>
                     </div>
                 </div>
-            </div>
+            </ModalDialog>
         </div>
     );
 }
@@ -2050,7 +2061,12 @@ function UpdateManualAssetModal({
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-fade-in" onClick={onClose}>
-            <div className="bg-background-secondary rounded-xl border border-border p-6 w-full max-w-md animate-scale-in" onClick={(e) => e.stopPropagation()}>
+            <ModalDialog
+                isOpen={true}
+                onClose={onClose}
+                aria-label={`Update ${asset.name}`}
+                className="bg-background-secondary rounded-xl border border-border p-6 w-full max-w-md animate-scale-in"
+            >
                 <div className="flex items-center justify-between mb-4">
                     <h2 className="text-xl font-bold text-foreground">Update {asset.name}</h2>
                     <button onClick={onClose} aria-label="Close" className="p-1 hover:bg-background-tertiary rounded">
@@ -2069,7 +2085,7 @@ function UpdateManualAssetModal({
                             value={value}
                             onChange={(e) => setValue(e.target.value)}
                             className="input w-full text-lg"
-                            autoFocus
+                            data-autofocus
                         />
                     </div>
 
@@ -2094,7 +2110,7 @@ function UpdateManualAssetModal({
                         {saving ? 'Saving...' : 'Update Value'}
                     </button>
                 </div>
-            </div>
+            </ModalDialog>
         </div>
     );
 }

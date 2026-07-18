@@ -1,6 +1,6 @@
 # Loot Council — Development Guide
 
-> **Generated:** 2026-03-04 | **Scan Level:** Comprehensive
+> **Generated:** 2026-03-04 (last verified 2026-07-18) | **Scan Level:** Comprehensive
 
 ---
 
@@ -44,7 +44,7 @@ Create `.env` in the `loot-council/` directory:
 
 ```env
 # Required
-DATABASE_URL="file:./loot-council.db"
+DATABASE_URL="file:../data/loot-council.db"
 
 # Optional — AI Features
 OPENAI_API_KEY="sk-..."
@@ -67,6 +67,8 @@ BINANCE_API_SECRET="..."
 | `npm run build` | Production build |
 | `npm run start` | Start production server |
 | `npm run lint` | Run ESLint |
+| `npm test` | Recreate the isolated test database and run Vitest |
+| `npm run test:watch` | Run Vitest in watch mode |
 | `npx prisma studio` | Open database GUI at localhost:5555 |
 | `npx prisma generate` | Regenerate Prisma client after schema changes |
 | `npx prisma db push` | Push schema changes to database |
@@ -80,7 +82,7 @@ BINANCE_API_SECRET="..."
 ```
 loot-council/
 ├── src/app/              # Pages + API routes (App Router)
-│   ├── api/              # 46 API route files (28 domains)
+│   ├── api/              # 47 API route files (26 top-level domains)
 │   ├── budget/           # Budget page
 │   ├── transactions/     # Transactions page
 │   ├── accounts/         # Accounts page
@@ -89,9 +91,11 @@ loot-council/
 │   ├── fire/             # FIRE calculator
 │   ├── assistant/        # AI assistant
 │   └── settings/         # Settings page
-├── src/components/       # 26 React components
-├── src/lib/              # Utilities, hooks & helpers (7 files)
-├── prisma/               # Schema + SQLite database
+├── src/components/       # 32 React components
+├── src/lib/              # Utilities, hooks, helpers, and tests (18 files)
+├── prisma/               # Schema + migrations
+├── data/                 # Local SQLite databases (gitignored)
+├── scripts/              # Test database preparation
 └── package.json          # Scripts & dependencies
 ```
 
@@ -109,7 +113,7 @@ loot-council/
 - All pages are **client components** (`'use client'`)
 - Data fetching via `useState` + `useEffect` + `fetch()`
 - No server components used
-- Modal pattern: Fixed overlay with `z-50+`, centered card
+- Modal pattern: Fixed overlay with `z-50+` and shared `ModalDialog`; use `useModalA11y` directly only when the form owns the dialog container
 - Form pattern: Controlled inputs with state, async submit
 
 ### API Route Patterns
@@ -134,6 +138,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     return NextResponse.json(result);
 }, 'Create record');
 ```
+
+For caller-supplied IDs, use `src/lib/profileOwnership.ts` instead of an unscoped `findUnique`. Single-record helpers such as `findOwnedAccount`, `findOwnedCategory`, and `findOwnedTransaction` verify the active profile; `ownsAllCategories` and `ownsAllCategoryGroups` cover batch references. Cross-profile IDs return `404`.
 
 ### Styling Rules
 Use semantic color tokens from CSS variables:
@@ -163,9 +169,9 @@ Use semantic color tokens from CSS variables:
 npx prisma generate
 # 3. Push to database (development)
 npx prisma db push
-# 4. Or create a migration (production)
-npx prisma migrate dev --name describe_change
 ```
+
+`prisma db push` is appropriate for local development and the disposable test database. The committed migration history is currently behind the live schema; see [CRIT-6](../ISSUES.md). Before using `prisma migrate dev` or `prisma migrate deploy` for production, back up the database, baseline its current state, create data-preserving forward migrations, and test them against a copy of real data.
 
 ### View Data
 ```bash
@@ -179,6 +185,20 @@ npx prisma studio    # Opens web GUI at localhost:5555
 
 ### Important: Prisma Version
 Use **Prisma 6**. Do NOT upgrade to Prisma 7 (driver adapter issues with Next.js 16 Turbopack).
+
+---
+
+## Testing
+
+`npm test` first runs `scripts/prepare-test-db.mjs`, which deletes and recreates `data/loot-council-test.db` with `prisma db push`, then executes Vitest once. The production database is never used by the test suite.
+
+- `src/lib/budgetUtils.test.ts` covers pure month and budget-group helpers
+- `src/lib/ruleEngine.test.ts` covers rule matching, malformed regexes, nested quantifiers, and the pattern-length limit
+- `src/lib/profileIsolation.integration.test.ts` covers ownership helpers and cross-profile transaction, schedule, rule, split, and payee behavior
+- `vitest.config.ts` disables file parallelism and uses one worker because the integration tests share the isolated SQLite database
+- GitHub Actions requires lint, tests, and a production build for pushes and pull requests to `main`
+
+Use `npm run test:watch` for local watch mode; it recreates the test database before Vitest starts.
 
 ---
 
@@ -196,16 +216,16 @@ start-budget.bat    # Opens browser + starts server
 ```
 
 ### Production Notes
-- SQLite database file (`loot-council.db`) must be in `prisma/` directory
+- SQLite database file (`loot-council.db`) lives in `data/` with the current `DATABASE_URL`
 - `better-sqlite3` is externalized from webpack bundling (see `next.config.ts`)
 - Server binds to `localhost:3000` (127.0.0.1 only) by default
-- No Docker or container configuration exists
+- `Dockerfile` builds a standalone app image. The Raspberry Pi reverse-proxy files under `deploy/` do not yet define the application service; see [CRIT-7](../ISSUES.md) before using them as a deployment workflow.
 
 ---
 
 ## Debugging Tips
 
-1. **Database issues:** Check `prisma/loot-council.db` exists and `DATABASE_URL` is correct
+1. **Database issues:** Check `data/loot-council.db` exists and `DATABASE_URL` is correct
 2. **Prisma errors:** Run `npx prisma generate` after any schema change
 3. **Build errors:** Check `npx next build` output for TypeScript errors
 4. **API errors:** Check browser DevTools Network tab for response details

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Users, Search, Merge, Edit3, AlertCircle, Check, X, Sparkles, Loader2 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
+import ModalDialog from './ModalDialog';
 
 interface Payee {
     name: string;
@@ -53,7 +54,7 @@ export default function PayeeManagement() {
         try {
             for (const fromPayee of selectedPayees) {
                 if (fromPayee === mergeTarget) continue;
-                await fetch('/api/payees/manage', {
+                const res = await fetch('/api/payees/manage', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -62,6 +63,7 @@ export default function PayeeManagement() {
                         toPayee: mergeTarget,
                     }),
                 });
+                if (!res.ok) throw new Error('Failed to merge payee');
             }
 
             setActionResult(`Merged ${selectedPayees.length - 1} payees into "${mergeTarget}"`);
@@ -77,7 +79,7 @@ export default function PayeeManagement() {
         if (!renamePayee || !newName.trim()) return;
 
         try {
-            await fetch('/api/payees/manage', {
+            const res = await fetch('/api/payees/manage', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -86,6 +88,7 @@ export default function PayeeManagement() {
                     newName: newName.trim(),
                 }),
             });
+            if (!res.ok) throw new Error('Failed to rename payee');
 
             setActionResult(`Renamed "${renamePayee}" to "${newName.trim()}"`);
             setShowRenameModal(false);
@@ -129,7 +132,7 @@ export default function PayeeManagement() {
         try {
             for (const fromPayee of group.payees) {
                 if (fromPayee === group.suggestedName) continue;
-                await fetch('/api/payees/manage', {
+                const res = await fetch('/api/payees/manage', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -138,6 +141,7 @@ export default function PayeeManagement() {
                         toPayee: group.suggestedName,
                     }),
                 });
+                if (!res.ok) throw new Error('Failed to merge similar payee');
             }
 
             setActionResult(`Merged ${group.payees.length} payees into "${group.suggestedName}"`);
@@ -314,7 +318,12 @@ export default function PayeeManagement() {
             {/* Merge Modal */}
             {showMergeModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] animate-fade-in" onClick={() => setShowMergeModal(false)}>
-                    <div className="bg-background-secondary rounded-xl p-6 w-96 shadow-xl animate-scale-in" onClick={(e) => e.stopPropagation()}>
+                    <ModalDialog
+                        isOpen={showMergeModal}
+                        onClose={() => setShowMergeModal(false)}
+                        aria-label="Merge payees"
+                        className="bg-background-secondary rounded-xl p-6 w-full max-w-96 mx-4 shadow-xl animate-scale-in"
+                    >
                         <h3 className="text-lg font-semibold text-foreground mb-4">Merge Payees</h3>
                         <p className="text-sm text-neutral mb-4">
                             All transactions from the selected payees will be updated to use the target payee name.
@@ -341,14 +350,19 @@ export default function PayeeManagement() {
                                 Merge
                             </button>
                         </div>
-                    </div>
+                    </ModalDialog>
                 </div>
             )}
 
             {/* Rename Modal */}
             {showRenameModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] animate-fade-in" onClick={() => setShowRenameModal(false)}>
-                    <div className="bg-background-secondary rounded-xl p-6 w-96 shadow-xl animate-scale-in" onClick={(e) => e.stopPropagation()}>
+                    <ModalDialog
+                        isOpen={showRenameModal}
+                        onClose={() => setShowRenameModal(false)}
+                        aria-label="Rename payee"
+                        className="bg-background-secondary rounded-xl p-6 w-full max-w-96 mx-4 shadow-xl animate-scale-in"
+                    >
                         <h3 className="text-lg font-semibold text-foreground mb-4">Rename Payee</h3>
                         <p className="text-sm text-neutral mb-4">
                             Renaming &ldquo;{renamePayee}&rdquo; will update all transactions with this payee.
@@ -359,7 +373,7 @@ export default function PayeeManagement() {
                             onChange={(e) => setNewName(e.target.value)}
                             className="input w-full mb-4"
                             placeholder="New payee name..."
-                            autoFocus
+                            data-autofocus
                         />
                         <div className="flex gap-2">
                             <button onClick={() => setShowRenameModal(false)} className="btn btn-secondary flex-1">
@@ -369,7 +383,7 @@ export default function PayeeManagement() {
                                 Rename
                             </button>
                         </div>
-                    </div>
+                    </ModalDialog>
                 </div>
             )}
         </section>

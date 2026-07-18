@@ -62,6 +62,8 @@ export function InlineCategorySelect({
                 onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen); }}
                 className="text-left w-full px-2 py-1 -mx-2 -my-1 rounded hover:bg-background-tertiary flex items-center gap-1 group min-w-0"
                 disabled={saving}
+                aria-label={`Change category from ${currentCategory?.name || 'Uncategorized'}`}
+                aria-expanded={isOpen}
             >
                 <span className={`truncate ${currentCategory ? 'text-foreground' : 'text-neutral'}`}>
                     {saving ? 'Saving...' : (currentCategory?.name || 'Uncategorized')}
@@ -80,6 +82,7 @@ export function InlineCategorySelect({
                             onChange={(e) => setSearch(e.target.value)}
                             className="input input-sm w-full"
                             onClick={(e) => e.stopPropagation()}
+                            aria-label="Search categories"
                         />
                     </div>
                     <div className="max-h-48 overflow-y-auto py-1">
@@ -111,9 +114,10 @@ interface InlineTextEditProps {
     onSave: (newValue: string) => Promise<void>;
     placeholder?: string;
     className?: string;
+    ariaLabel?: string;
 }
 
-export function InlineTextEdit({ value, onSave, placeholder = '', className = '' }: InlineTextEditProps) {
+export function InlineTextEdit({ value, onSave, placeholder = '', className = '', ariaLabel = 'Edit text' }: InlineTextEditProps) {
     const [isEditing, setIsEditing] = useState(false);
     const [editValue, setEditValue] = useState(value);
     const [saving, setSaving] = useState(false);
@@ -150,6 +154,8 @@ export function InlineTextEdit({ value, onSave, placeholder = '', className = ''
         if (e.key === 'Enter') {
             handleSave();
         } else if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
             setEditValue(value);
             setIsEditing(false);
         }
@@ -168,6 +174,7 @@ export function InlineTextEdit({ value, onSave, placeholder = '', className = ''
                     className="input input-sm flex-1 min-w-0"
                     disabled={saving}
                     maxLength={200}
+                    aria-label={ariaLabel}
                 />
             </div>
         );
@@ -177,6 +184,7 @@ export function InlineTextEdit({ value, onSave, placeholder = '', className = ''
         <button
             onClick={(e) => { e.stopPropagation(); setIsEditing(true); }}
             className={`text-left px-2 py-1 -mx-2 -my-1 rounded hover:bg-background-tertiary ${className}`}
+            aria-label={`${ariaLabel}: ${value || placeholder || 'empty'}`}
         >
             {value || <span className="text-neutral">{placeholder || '—'}</span>}
         </button>
@@ -233,6 +241,8 @@ export function InlineAmountEdit({ value, onSave, isInflow, className = '' }: In
         if (e.key === 'Enter') {
             handleSave();
         } else if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
             setEditValue((Math.abs(value) / 100).toFixed(2));
             setIsEditing(false);
         }
@@ -252,6 +262,7 @@ export function InlineAmountEdit({ value, onSave, isInflow, className = '' }: In
                     onBlur={handleSave}
                     className="input input-sm w-24 text-right"
                     disabled={saving}
+                    aria-label="Edit amount"
                 />
             </div>
         );
@@ -263,6 +274,7 @@ export function InlineAmountEdit({ value, onSave, isInflow, className = '' }: In
             className={`text-right px-2 py-1 -mx-2 -my-1 rounded hover:bg-background-tertiary font-medium ${
                 isInflow ? 'text-positive' : 'text-foreground'
             } ${className}`}
+            aria-label={`Edit amount: ${formatDisplay(value)}`}
         >
             {isInflow ? '+' : ''}{formatDisplay(value)}
         </button>

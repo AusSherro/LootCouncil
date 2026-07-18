@@ -1,7 +1,7 @@
 'use client';
 
 import { AlertTriangle, Trash2, X } from 'lucide-react';
-import { useEffect, useRef } from 'react';
+import ModalDialog from './ModalDialog';
 
 interface ConfirmDialogProps {
     isOpen: boolean;
@@ -26,27 +26,6 @@ export default function ConfirmDialog({
     variant = 'danger',
     loading = false,
 }: ConfirmDialogProps) {
-    const confirmButtonRef = useRef<HTMLButtonElement>(null);
-    const cancelButtonRef = useRef<HTMLButtonElement>(null);
-
-    // Focus cancel button when opened for safety
-    useEffect(() => {
-        if (isOpen && cancelButtonRef.current) {
-            cancelButtonRef.current.focus();
-        }
-    }, [isOpen]);
-
-    // Handle escape key
-    useEffect(() => {
-        function handleEscape(e: KeyboardEvent) {
-            if (e.key === 'Escape' && isOpen) {
-                onClose();
-            }
-        }
-        document.addEventListener('keydown', handleEscape);
-        return () => document.removeEventListener('keydown', handleEscape);
-    }, [isOpen, onClose]);
-
     if (!isOpen) return null;
 
     const variantStyles = {
@@ -72,15 +51,17 @@ export default function ConfirmDialog({
     return (
         <div 
             className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] animate-fade-in"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="confirm-dialog-title"
-            aria-describedby="confirm-dialog-message"
             onClick={(e) => {
                 if (e.target === e.currentTarget) onClose();
             }}
         >
-            <div className="relative bg-background-secondary rounded-xl p-6 w-full max-w-md shadow-xl animate-scale-in">
+            <ModalDialog
+                isOpen={isOpen}
+                onClose={onClose}
+                className="relative bg-background-secondary rounded-xl p-6 w-full max-w-md shadow-xl animate-scale-in"
+                aria-labelledby="confirm-dialog-title"
+                aria-describedby="confirm-dialog-message"
+            >
                 {/* Close button */}
                 <button
                     onClick={onClose}
@@ -106,15 +87,14 @@ export default function ConfirmDialog({
                 {/* Buttons */}
                 <div className="flex gap-3">
                     <button
-                        ref={cancelButtonRef}
                         onClick={onClose}
                         disabled={loading}
                         className="flex-1 btn btn-secondary"
+                        data-autofocus
                     >
                         {cancelText}
                     </button>
                     <button
-                        ref={confirmButtonRef}
                         onClick={() => {
                             onConfirm();
                         }}
@@ -124,7 +104,7 @@ export default function ConfirmDialog({
                         {loading ? 'Processing...' : confirmText}
                     </button>
                 </div>
-            </div>
+            </ModalDialog>
         </div>
     );
 }

@@ -226,7 +226,7 @@ export async function POST(request: NextRequest) {
             catsByGroup.set(groupId, sortOrder + 1);
 
             // Check by ynabId first, then by name+group
-            const existingCat = await prisma.category.findFirst({ where: { ynabId: cat.id } })
+            const existingCat = await prisma.category.findFirst({ where: { ynabId: cat.id, group: { profileId } } })
                 || await prisma.category.findFirst({ where: { name: cat.name, groupId } });
 
             if (existingCat) {
@@ -294,7 +294,10 @@ export async function POST(request: NextRequest) {
                 const transferAccId = payee.transfer_account_id ? accountMap.get(payee.transfer_account_id) : null;
 
                 const existing = await prisma.payee.findFirst({
-                    where: { name: payee.name },
+                    where: {
+                        profileId,
+                        OR: [{ ynabId: payee.id }, { name: payee.name }],
+                    },
                 });
 
                 if (existing) {
@@ -354,7 +357,7 @@ export async function POST(request: NextRequest) {
                 // Check if transaction already exists (by date + amount + account)
                 const amountCents = Math.round(tx.amount / 10);
                 // Check by ynabId first, then by date+amount+account
-                const existing = await prisma.transaction.findFirst({ where: { ynabId: tx.id } })
+                const existing = await prisma.transaction.findFirst({ where: { ynabId: tx.id, account: { profileId } } })
                     || await prisma.transaction.findFirst({
                         where: {
                             accountId,
@@ -488,22 +491,29 @@ export async function POST(request: NextRequest) {
             toBeBudgeted = currentMonthData.data.month.to_be_budgeted;
             
             // Store in settings for the budget page to use
-            await prisma.settings.upsert({
-                where: { id: 'default' },
-                create: { 
-                    id: 'default',
+            const existingSettings = await prisma.settings.findFirst({ where: { profileId } });
+            const settingsData = {
+                toBeBudgeted: Math.round(toBeBudgeted / 10),
+                lastYnabSync: new Date(),
+                ynabBudgetId: budgetId,
+                ynabServerKnowledge: serverKnowledge,
+            };
+            if (existingSettings) {
+                await prisma.settings.update({
+                    where: { id: existingSettings.id },
+                    data: settingsData,
+                });
+            } else {
+                await prisma.settings.create({
+                    data: {
+                    profileId,
                     toBeBudgeted: Math.round(toBeBudgeted / 10), // milliunits to cents
                     lastYnabSync: new Date(),
                     ynabBudgetId: budgetId,
                     ynabServerKnowledge: serverKnowledge,
                 },
-                update: {
-                    toBeBudgeted: Math.round(toBeBudgeted / 10),
-                    lastYnabSync: new Date(),
-                    ynabBudgetId: budgetId,
-                    ynabServerKnowledge: serverKnowledge,
-                },
-            });
+                });
+            }
         }
 
         return NextResponse.json({

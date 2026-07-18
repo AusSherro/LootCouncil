@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import { formatCurrency } from '@/lib/utils';
 import { useSettings } from '@/components/SettingsProvider';
 import { useConfirmDialog } from '@/components/ConfirmDialog';
+import ModalDialog from './ModalDialog';
 
 interface TemplateItem {
     id: string;
@@ -161,7 +162,12 @@ export default function BudgetTemplatesModal({ isOpen, onClose, onApply, current
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="bg-background-secondary rounded-xl w-full max-w-2xl shadow-2xl animate-scale-in max-h-[90vh] flex flex-col">
+            <ModalDialog
+                isOpen={isOpen}
+                onClose={onClose}
+                aria-label="Budget templates"
+                className="bg-background-secondary rounded-xl w-full max-w-2xl shadow-2xl animate-scale-in max-h-[90vh] flex flex-col"
+            >
                 <div className="flex items-center justify-between p-6 border-b border-border">
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-lg bg-gold/20 flex items-center justify-center">
@@ -307,7 +313,7 @@ export default function BudgetTemplatesModal({ isOpen, onClose, onApply, current
                         Close
                     </button>
                 </div>
-            </div>
+            </ModalDialog>
             <ConfirmDialogModal />
         </div>
     );

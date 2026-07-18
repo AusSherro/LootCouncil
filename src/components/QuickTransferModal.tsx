@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { X, ArrowRight, DollarSign } from 'lucide-react';
+import ModalDialog from './ModalDialog';
 
 interface Account {
     id: string;
@@ -108,7 +109,12 @@ export default function QuickTransferModal({
 
     return (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[70] animate-fade-in">
-            <div className="bg-background-secondary border border-border rounded-xl w-full max-w-lg mx-4 shadow-lg animate-scale-in">
+            <ModalDialog
+                isOpen={isOpen}
+                onClose={onClose}
+                aria-label="Quick transfer"
+                className="bg-background-secondary border border-border rounded-xl w-full max-w-lg mx-4 shadow-lg animate-scale-in"
+            >
                 {/* Header */}
                 <div className="flex items-center justify-between p-4 border-b border-border">
                     <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
@@ -137,6 +143,7 @@ export default function QuickTransferModal({
                                 value={sourceAccountId}
                                 onChange={(e) => setSourceAccountId(e.target.value)}
                                 className="input"
+                                aria-label="Source account"
                                 required
                             >
                                 <option value="">Select account...</option>
@@ -169,6 +176,7 @@ export default function QuickTransferModal({
                                 value={destinationAccountId}
                                 onChange={(e) => setDestinationAccountId(e.target.value)}
                                 className="input"
+                                aria-label="Destination account"
                                 required
                             >
                                 <option value="">Select account...</option>
@@ -207,6 +215,7 @@ export default function QuickTransferModal({
                                 onChange={(e) => setAmount(e.target.value)}
                                 placeholder="0.00"
                                 className="input pl-10"
+                                aria-label="Transfer amount"
                                 required
                             />
                         </div>
@@ -220,6 +229,7 @@ export default function QuickTransferModal({
                             value={date}
                             onChange={(e) => setDate(e.target.value)}
                             className="input"
+                            aria-label="Transfer date"
                             required
                         />
                     </div>
@@ -233,6 +243,7 @@ export default function QuickTransferModal({
                             onChange={(e) => setMemo(e.target.value)}
                             placeholder="Add a note..."
                             className="input"
+                            aria-label="Transfer memo"
                         />
                     </div>
 
@@ -254,7 +265,7 @@ export default function QuickTransferModal({
                         </button>
                     </div>
                 </form>
-            </div>
+            </ModalDialog>
         </div>
     );
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
+import { findOwnedCategory, findOwnedTransaction } from '@/lib/profileOwnership';
 
 // PATCH - Update a specific transaction
 export async function PATCH(
@@ -15,6 +16,9 @@ export async function PATCH(
         const updateData: Record<string, unknown> = {};
         
         if (body.categoryId !== undefined) {
+            if (body.categoryId && !(await findOwnedCategory(profileId, body.categoryId))) {
+                return NextResponse.json({ error: 'Category not found' }, { status: 404 });
+            }
             updateData.categoryId = body.categoryId || null;
         }
         if (body.payee !== undefined) {
@@ -34,9 +38,7 @@ export async function PATCH(
         }
 
         // Get existing transaction to calculate balance adjustments
-        const existing = await prisma.transaction.findUnique({
-            where: { id },
-        });
+        const existing = await findOwnedTransaction(profileId, id);
 
         if (!existing) {
             return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
@@ -100,9 +102,7 @@ export async function DELETE(
         const { id } = await params;
 
         // Get existing transaction to reverse balance
-        const existing = await prisma.transaction.findUnique({
-            where: { id },
-        });
+        const existing = await findOwnedTransaction(profileId, id);
 
         if (!existing) {
             return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });

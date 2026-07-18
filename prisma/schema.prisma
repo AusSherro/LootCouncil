@@ -184,7 +184,7 @@ model SubTransaction {
 // ==========================================
 model Payee {
   id                String   @id @default(cuid())
-  name              String   @unique
+  name              String
   ynabId            String?  @unique // Original YNAB payee ID
   transferAccountId String?  // For transfer payees, links to Account
   profileId         String?
@@ -193,6 +193,7 @@ model Payee {
   updatedAt         DateTime @updatedAt
 
   @@index([profileId])
+  @@unique([profileId, name])
 }
 
 // ==========================================
