@@ -2,7 +2,7 @@
 
 # 💰 Loot Council
 
-### *Take control of your money.*
+### *Zero-based budgeting that stays on your machine.*
 
 **A local-first, privacy-focused personal finance app for running a complete household budget.**<br/>
 Add or import your accounts, give every available dollar a job, keep transactions reconciled, and use reports to decide what to change next.
@@ -20,8 +20,7 @@ Add or import your accounts, give every available dollar a job, keep transaction
 
 <br/>
 
-> 🔒 **Your data stays on YOUR machine.** No cloud. No tracking. No subscriptions.<br/>
-> 📊 Every dollar gets a job. Your finances, your rules.
+> 🔒 **Your data stays on your machine** — no cloud, no tracking, no subscriptions.
 
 <br/>
 
@@ -287,8 +286,8 @@ Most budgeting apps want your data in their cloud and a monthly subscription fee
 
 ### Prerequisites
 
-- **Node.js** 18+ ([download](https://nodejs.org/))
-- **npm** (included with Node.js) or **pnpm**
+- **Node.js** 20+ ([download](https://nodejs.org/)) — matches the project's Docker image
+- **npm** (bundled with Node.js)
 
 ### Quick Start
 
@@ -375,69 +374,51 @@ loot-council/
 
 ## 🎨 Themes
 
-Finance is the clean professional default, with six optional themes for a more personal look:
+Finance is the clean, professional default. Six optional themes are available for a more personal look — switch anytime under **Settings → Appearance**.
 
-<table>
-<tr>
-<td align="center">
-<img src="https://via.placeholder.com/80/D4A017/D4A017?text=+" alt="Dungeon" /><br/>
-<b>🌑 Dungeon</b><br/>
-<sub>Dark + Gold Accents</sub>
-</td>
-<td align="center">
-<img src="https://via.placeholder.com/80/7cb342/7cb342?text=+" alt="Forest" /><br/>
-<b>🌿 Forest</b><br/>
-<sub>Earthy Greens</sub>
-</td>
-<td align="center">
-<img src="https://via.placeholder.com/80/4fc3f7/4fc3f7?text=+" alt="Ocean" /><br/>
-<b>🌊 Ocean</b><br/>
-<sub>Deep Blues</sub>
-</td>
-<td align="center">
-<img src="https://via.placeholder.com/80/ef5350/ef5350?text=+" alt="Crimson" /><br/>
-<b>🔴 Crimson</b><br/>
-<sub>Bold Reds</sub>
-</td>
-<td align="center">
-<img src="https://via.placeholder.com/80/ab47bc/ab47bc?text=+" alt="Royal" /><br/>
-<b>👑 Royal</b><br/>
-<sub>Rich Purples</sub>
-</td>
-<td align="center">
-<img src="https://via.placeholder.com/80/1a73e8/1a73e8?text=+" alt="Finance" /><br/>
-<b>💼 Finance</b><br/>
-<sub>Clean Professional · Default</sub>
-</td>
-<td align="center">
-<img src="https://via.placeholder.com/80/e8739e/e8739e?text=+" alt="Kawaii" /><br/>
-<b>🌸 Kawaii</b><br/>
-<sub>Warm Pink</sub>
-</td>
-</tr>
-</table>
+| Theme | Style | Accent |
+|-------|-------|:------:|
+| 💼 **Finance** *(default)* | Clean, professional light theme | `#2563EB` |
+| 🌑 **Dungeon** | Dark with gold accents | `#D4A846` |
+| 🌿 **Forest** | Earthy greens | `#7CB342` |
+| 🌊 **Ocean** | Deep blues | `#4FC3F7` |
+| 🔴 **Crimson** | Bold reds | `#EF5350` |
+| 👑 **Royal** | Rich purples | `#AB47BC` |
+| 🌸 **Kawaii** | Warm pinks | `#FF6B9D` |
 
 ---
 
 ## ⌨️ Keyboard Shortcuts
 
+Press <kbd>?</kbd> anywhere in the app to see this list.
+
+**Global**
+
 | Shortcut | Action |
 |:---------|:-------|
-| <kbd>↑</kbd> <kbd>↓</kbd> | Navigate list items |
-| <kbd>Enter</kbd> | Edit selected item |
-| <kbd>Escape</kbd> | Deselect / Cancel |
-| <kbd>Ctrl</kbd>+<kbd>Z</kbd> | Undo last action |
-| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> | Redo action |
-| <kbd>Ctrl</kbd>+<kbd>A</kbd> | Select all transactions |
-| <kbd>Delete</kbd> | Delete selected |
-| <kbd>N</kbd> | New transaction (global) |
+| <kbd>G</kbd> then <kbd>B</kbd> / <kbd>T</kbd> / <kbd>A</kbd> / <kbd>R</kbd> / <kbd>N</kbd> / <kbd>S</kbd> / <kbd>H</kbd> | Go to Budget, Transactions, Accounts, Reports, Investments, Settings, or Home |
+| <kbd>N</kbd> | New transaction |
+| <kbd>/</kbd> | Focus search |
+| <kbd>?</kbd> | Show keyboard shortcuts |
+| <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Z</kbd> | Undo last action |
+| <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> | Redo |
+| <kbd>Esc</kbd> | Close dialog / cancel |
+
+**Transactions list**
+
+| Shortcut | Action |
+|:---------|:-------|
+| <kbd>↑</kbd> <kbd>↓</kbd> | Move between rows |
+| <kbd>Enter</kbd> | Edit highlighted transaction |
+| <kbd>Space</kbd> | Toggle row selection |
+| <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>A</kbd> | Select all |
 
 ---
 
 ## 📊 Database Schema
 
 <details>
-<summary><b>18 Prisma models across 8 domains</b></summary>
+<summary><b>20 Prisma models grouped by domain</b></summary>
 <br/>
 
 **Profiles**
@@ -535,9 +516,7 @@ This project is licensed under the **MIT License** — see the [LICENSE](LICENSE
 <div align="center">
 <br/>
 
-**Built with 💰 for people who take their money seriously.**
-
-*Your data. Your budget. Your rules.*
+**Your data. Your budget. Your rules.**
 
 <br/>
 
