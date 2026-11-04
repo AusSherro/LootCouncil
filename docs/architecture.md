@@ -46,10 +46,10 @@ Loot Council is a **local-first personal finance application** built as a monoli
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
-| Rendering Strategy | Client-side rendering (CSR) | All pages use `'use client'` with `useEffect` data fetching |
+| Rendering Strategy | Client-side rendering (CSR) | All pages use `'use client'`; reads go through SWR via `useApi` (`src/lib/useApi.ts`) |
 | Data Layer | Local SQLite via Prisma | Privacy-first, no cloud dependency, zero infrastructure |
 | API Style | REST-like Next.js API routes | Simple, co-located with frontend, no separate backend |
-| State Management | React `useState` + `useEffect` | No global store (Redux/Zustand); page-level state |
+| State Management | SWR cache + React `useState` | Server data cached per URL by SWR; UI state is page-level; no Redux/Zustand |
 | Caching | Selective client cache | Dashboard reads revalidate on each mount; slow-changing transaction form metadata uses an in-memory TTL cache |
 | Authentication | None | Local-first design; single user per installation |
 | Multi-Profile | Cookie/query param scoping | `Profile` model; `profileId` FK or an owned parent on all data models |
@@ -93,7 +93,7 @@ Loot Council is a **local-first personal finance application** built as a monoli
 ### Data Flow
 
 ```
-User Action → React State → fetch() → API Route → Prisma → SQLite
+User Action → React State → useApi / fetch() → API Route (Zod parse) → Prisma → SQLite
                                           ↓
                                    (Optional)
                               External API calls
@@ -216,7 +216,7 @@ The repository also contains a `Dockerfile` and Raspberry Pi/Caddy files under `
 | Data Privacy | ✅ Local | All data on user's machine |
 | API Key Storage | ⚠️ Plain text | OpenAI key in `.env`, Binance in DB (masked in API responses) |
 | Financial Data to AI | ✅ Consent gate | AI data sharing requires explicit local consent |
-| Input Validation | ✅ High-risk routes hardened | Mutation fields are whitelisted; money, date (invalid dates rejected), and ownership inputs are validated server-side; no schema library (Zod is still open, CQ-8) |
+| Input Validation | ✅ Zod on every route | Request bodies are parsed with shared schemas in `src/lib/validation.ts` (money, dates, ids, bounded text); invalid input returns 400 with a readable message; ownership is still checked via `profileOwnership.ts` |
 | Error Leakage | ✅ Generic responses | Detailed failures are logged server-side; clients receive generic errors |
 
 See [ISSUES.md](../ISSUES.md) for detailed security tracking.
@@ -229,8 +229,6 @@ The project maintains an `ISSUES.md` tracking file. All critical issues (CRIT-0 
 
 Still open:
 
-- **PERF-2 / FEAT-1** — No SWR / React Query data caching
-- **CQ-8 / FEAT-2** — No Zod (schema) validation layer
 - **FEAT-6** — PWA / offline support
 - **FEAT-9b** — Overspending toast on transaction creation
 - **AUD-14** — Orphaned rows with `NULL profileId` (needs a decision)

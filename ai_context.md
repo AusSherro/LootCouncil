@@ -132,7 +132,8 @@ src/
 │   ├── openai.ts               # OpenAI client, getOpenAIClient(), OPENAI_MODEL, AI helpers
 │   ├── utils.ts                # formatCurrency, setDefaultCurrency, toLocalDateString, toLocalMonthString
 │   ├── apiHandler.ts           # Centralized API error handler
-│   ├── clientCache.ts          # fetchJson / fetchJsonCached (TTL cache for form metadata)
+│   ├── useApi.ts               # SWR data layer: useApi, useApiQuery, revalidateApi
+│   ├── validation.ts           # Zod schemas + parseBody/parseFormBody for API routes
 │   ├── navigation.ts           # Shared nav items (Sidebar/MobileNav)
 │   ├── profile.ts              # Profile ID resolution (query param → cookie → oldest profile)
 │   ├── profileOwnership.ts     # Profile-scoped entity lookup helpers
@@ -593,7 +594,8 @@ When working on specific features, these files are most relevant:
 | Undo/Redo | `lib/useUndo.tsx`, `components/UndoToast.tsx` |
 | Keyboard nav | `lib/useKeyboardShortcuts.tsx`, `components/KeyboardShortcutsProvider.tsx` |
 | Error handling | `lib/apiHandler.ts` |
-| Client caching | `lib/clientCache.ts` |
+| Client data fetching | `lib/useApi.ts` (SWR) |
+| Request validation | `lib/validation.ts` (Zod) |
 
 ### Investment API Details
 

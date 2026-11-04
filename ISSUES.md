@@ -185,11 +185,12 @@
   - **Fix:** Extracted navigation items to `src/lib/navigation.ts` shared constant. Both components now consume from the same source.
   - **Priority:** Low
 
-- [ ] **CQ-8: No Schema Validation (Zod)**
+- [x] **CQ-8: No Schema Validation (Zod)**
   - **Files:** All `src/app/api/*/route.ts`
   - **Problem:** API routes validate inputs with ad-hoc `if (!field)` checks.
   - **Fix:** Adopt Zod for declarative request validation across all routes.
   - **Priority:** Medium — prevents invalid data, better error messages
+  - **Resolution:** See FEAT-2.
 
 - [x] **CQ-9: Duplicated Helper Functions Across API Routes**
   - **Files:** `budget/route.ts`, `budget/auto-assign/route.ts`, `budget/transfer/route.ts`, `transactions/route.ts`, `rules/route.ts`, `investments/route.ts`, `networth/route.ts`, `budget/page.tsx`
@@ -269,8 +270,9 @@
   - Replace raw `fetch` + `useEffect` with a caching data layer. Eliminates duplicate requests, simplifies loading/error states across all pages.
   - **Resolution:** `src/lib/useApi.ts` wraps SWR: `useApi(url)` for GET reads (pass `null` to skip, e.g. while a modal is closed), `useApiQuery([path, ...], fetcher)` for multi-request reads, and `revalidateApi(...paths)` to refresh cached reads after a mutation (no arguments = every API read). `DataProvider` (in the root layout) sets the fetcher and revalidates everything when the active profile changes. Mutations that move money (transactions, splits, transfers, card payments, bulk edits, processing scheduled items) call `revalidateApi()`. With the hand-rolled effects gone, `react-hooks/set-state-in-effect` runs at its default severity again.
 
-- [ ] **FEAT-2: Zod Validation Layer**
+- [x] **FEAT-2: Zod Validation Layer**
   - Shared schema validation for all API inputs. Better error messages, prevents invalid data, reduces boilerplate.
+  - **Resolution:** Every request body in `src/app/api/**` is parsed with Zod. Shared building blocks live in `src/lib/validation.ts` (`moneyAmount` in dollars with the ±999,999,999 bound, `isoDate`, `monthKey`, `idString`, `boundedText`, `toCents`) along with `parseBody` / `parseFormBody`, which return a readable 400 on failure. Covered by `src/lib/validation.test.ts`.
 
 - [x] **FEAT-3: Transaction Search Debouncing**
   - Search input in transactions filters on every keystroke. Added 300ms debounce for smoother UX.

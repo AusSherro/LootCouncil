@@ -154,14 +154,13 @@ components/
 └── Toast.tsx                      # Toast notification component
 ```
 
-### `src/lib/` — Utilities, Hooks, and Tests (29 files)
+### `src/lib/` — Utilities, Hooks, and Tests (32 files)
 
 ```
 lib/
 ├── apiHandler.ts                  # withErrorHandler API wrapper
 ├── budgetHelpers.ts               # Server-side budget math (Ready to Assign, activity/available maps, goal funding)
 ├── budgetUtils.ts                 # Pure budget helpers (month offsets, group classification)
-├── clientCache.ts                 # fetchJson / fetchJsonCached (in-memory TTL cache for form metadata)
 ├── exchangeRate.ts                # Exchange-rate retrieval with 1-hour DB cache
 ├── navigation.ts                  # Shared navigation items for Sidebar/MobileNav
 ├── openai.ts                      # OpenAI client, OPENAI_MODEL, chat/insights/optimize helpers
@@ -171,15 +170,19 @@ lib/
 ├── ruleEngine.ts                  # matchesRule() + findMatchingRule() with ReDoS guards
 ├── scheduleDates.ts               # calculateNextDueDate() for recurring schedules (UTC-safe)
 ├── transactionFormPreferences.ts  # Last-used transaction account per profile
+├── useApi.ts                      # SWR data layer: useApi, useApiQuery, revalidateApi
 ├── useKeyboardShortcuts.tsx       # Keyboard shortcut hook
 ├── useModalA11y.ts                # Dialog focus, Escape, and scroll behavior
 ├── useUndo.tsx                    # Undo/redo provider and hooks
 ├── utils.ts                       # formatCurrency, setDefaultCurrency, toLocalDateString, toLocalMonthString
+├── validation.ts                  # Zod schemas + parseBody/parseFormBody for API routes
 ├── budgetUtils.test.ts            # Unit tests
 ├── ruleEngine.test.ts             # Unit tests
 ├── scheduleDates.test.ts          # Unit tests
 ├── transactionFormPreferences.test.ts # Unit tests
+├── useApi.test.ts                 # Unit tests
 ├── utils.test.ts                  # Unit tests
+├── validation.test.ts             # Unit tests
 ├── budgetInvariants.integration.test.ts  # SQLite integration tests
 ├── csvImport.integration.test.ts
 ├── investments.integration.test.ts
