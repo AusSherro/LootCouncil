@@ -3,6 +3,17 @@ import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
 import { applyCategoryActivityDelta } from '@/lib/budgetHelpers';
 import { findOwnedCategory, findOwnedTransaction } from '@/lib/profileOwnership';
+import { z } from 'zod';
+import { boundedText, isoDate, moneyAmount, nullableId, parseBody, toCents } from '@/lib/validation';
+
+const patchTransactionSchema = z.object({
+    categoryId: nullableId.optional(),
+    payee: boundedText(200).nullish(),
+    memo: boundedText(500).nullish(),
+    amount: moneyAmount.optional(),
+    cleared: z.boolean().optional(),
+    date: isoDate.optional(),
+});
 
 // PATCH - Update a specific transaction
 export async function PATCH(
@@ -12,7 +23,9 @@ export async function PATCH(
     try {
         const profileId = await getProfileId(request);
         const { id } = await params;
-        const body = await request.json();
+        const parsed = await parseBody(request, patchTransactionSchema);
+        if (!parsed.success) return parsed.response;
+        const body = parsed.data;
 
         // Get existing transaction to validate against and to calculate balance adjustments
         const existing = await findOwnedTransaction(profileId, id);
@@ -36,19 +49,16 @@ export async function PATCH(
             if (body.categoryId && !(await findOwnedCategory(profileId, body.categoryId))) {
                 return NextResponse.json({ error: 'Category not found' }, { status: 404 });
             }
-            updateData.categoryId = body.categoryId || null;
+            updateData.categoryId = body.categoryId;
         }
         if (body.payee !== undefined) {
-            updateData.payee = body.payee;
+            updateData.payee = body.payee || null;
         }
         if (body.memo !== undefined) {
-            updateData.memo = body.memo;
+            updateData.memo = body.memo || null;
         }
         if (body.amount !== undefined) {
-            const amountCents = Math.round(Number(body.amount) * 100);
-            if (!Number.isFinite(amountCents)) {
-                return NextResponse.json({ error: 'Amount must be a number' }, { status: 400 });
-            }
+            const amountCents = toCents(body.amount);
             if (existing.isSplit && amountCents !== existing.amount) {
                 return NextResponse.json(
                     { error: 'Cannot change the total amount of a split transaction without updating its splits.' },
@@ -61,11 +71,7 @@ export async function PATCH(
             updateData.cleared = body.cleared;
         }
         if (body.date !== undefined) {
-            const parsedDate = new Date(body.date);
-            if (Number.isNaN(parsedDate.getTime())) {
-                return NextResponse.json({ error: 'Invalid date' }, { status: 400 });
-            }
-            updateData.date = parsedDate;
+            updateData.date = body.date;
         }
 
         const transaction = await prisma.$transaction(async (tx) => {
@@ -112,10 +118,10 @@ export async function PATCH(
             }
 
             // Update account balance if amount or cleared changed
-            const newAmount = body.amount !== undefined ? Math.round(body.amount * 100) : existing.amount;
+            const newAmount = body.amount !== undefined ? toCents(body.amount) : existing.amount;
             const amountDiff = newAmount - existing.amount;
             const wasCleared = existing.cleared;
-            const nowCleared = body.cleared !== undefined ? body.cleared : existing.cleared;
+            const nowCleared = body.cleared ?? existing.cleared;
 
             let clearedDelta = 0;
             if (wasCleared && nowCleared) {

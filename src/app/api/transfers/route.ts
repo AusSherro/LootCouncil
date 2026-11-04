@@ -2,6 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
 import { findOwnedAccount } from '@/lib/profileOwnership';
+import { z } from 'zod';
+import { boundedText, idString, isoDate, parseBody, positiveMoneyAmount, toCents } from '@/lib/validation';
+
+const createTransferSchema = z.object({
+    sourceAccountId: idString,
+    destinationAccountId: idString,
+    amount: positiveMoneyAmount,
+    date: isoDate.optional(),
+    memo: boundedText(500).nullish(),
+}).refine(body => body.sourceAccountId !== body.destinationAccountId, {
+    message: 'Source and destination accounts must be different',
+    path: ['destinationAccountId'],
+});
 
 // GET - List transfers
 export async function GET(request: NextRequest) {
@@ -49,27 +62,13 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
     try {
         const profileId = await getProfileId(request);
-        const body = await request.json();
-        const { sourceAccountId, destinationAccountId, amount, date, memo } = body;
+        const parsed = await parseBody(request, createTransferSchema);
+        if (!parsed.success) return parsed.response;
+        const { sourceAccountId, destinationAccountId, amount, date, memo } = parsed.data;
 
-        if (!sourceAccountId || !destinationAccountId || amount === undefined) {
-            return NextResponse.json(
-                { error: 'sourceAccountId, destinationAccountId, and amount are required' },
-                { status: 400 }
-            );
-        }
-
-        if (sourceAccountId === destinationAccountId) {
-            return NextResponse.json(
-                { error: 'Source and destination accounts must be different' },
-                { status: 400 }
-            );
-        }
-
-        const parsedAmount = typeof amount === 'number' ? amount : Number.parseFloat(amount);
-        const amountCents = Math.round(parsedAmount * 100);
-        if (!Number.isFinite(amountCents) || amountCents <= 0) {
-            return NextResponse.json({ error: 'Amount must be positive' }, { status: 400 });
+        const amountCents = toCents(amount);
+        if (amountCents <= 0) {
+            return NextResponse.json({ error: 'Amount must be at least 0.01' }, { status: 400 });
         }
 
         // Verify both accounts exist
@@ -82,10 +81,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'One or both accounts not found' }, { status: 404 });
         }
 
-        const transferDate = date ? new Date(date) : new Date();
-        if (Number.isNaN(transferDate.getTime())) {
-            return NextResponse.json({ error: 'Invalid transfer date' }, { status: 400 });
-        }
+        const transferDate = date ?? new Date();
 
         // Use transaction for atomicity
         const result = await prisma.$transaction(async (tx) => {
