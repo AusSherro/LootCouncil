@@ -1,6 +1,6 @@
 # Loot Council — Data Models
 
-> **Generated:** 2026-03-04 (last verified 2026-07-18) | **Scan Level:** Comprehensive
+> **Generated:** 2026-03-04 (last verified 2026-11-04) | **Scan Level:** Comprehensive
 
 ---
 
@@ -12,7 +12,7 @@ The database uses **SQLite** (local file: `data/loot-council.db`) managed throug
 - All monetary values stored as **integers in cents** (avoids floating-point errors)
 - IDs use **CUID** strings (Prisma default)
 - Timestamps use `DateTime` with `@default(now())` and `@updatedAt`
-- YNAB import compatibility via optional `ynabId` fields
+- YNAB import compatibility via optional `ynabId` fields, unique per profile (`@@unique([profileId, ynabId])` on Account, CategoryGroup, and Payee) so the same YNAB budget can be imported into more than one profile
 - **Multi-profile:** Records are scoped either by a direct `profileId` FK or through an owned parent such as an Account or CategoryGroup
 
 ---
@@ -26,7 +26,7 @@ The database uses **SQLite** (local file: `data/loot-council.db`) managed throug
                           ▼
 ┌─────────────────┐     ┌──────────────────┐     ┌────────────────┐
 │   Settings      │     │  CategoryGroup   │────▶│    Category     │
-│   (singleton)   │     │                  │ 1:N │                 │
+│  (per profile)  │     │                  │ 1:N │                 │
 └─────────────────┘     └──────────────────┘     └───────┬────────┘
                                                          │ 1:N
 ┌─────────────────┐     ┌──────────────────┐     ┌───────▼────────┐
@@ -94,8 +94,10 @@ Represents a financial account (checking, savings, credit card, investment).
 | closed | Boolean | Whether account is closed |
 | lastReconciled | DateTime? | Last reconciliation date |
 | linkedAccountId | String? | For credit cards: payment source account |
-| ynabId | String? | YNAB import ID (unique) |
+| ynabId | String? | YNAB import ID |
 | profileId | String? | FK to Profile |
+
+**Unique:** `[profileId, ynabId]`
 
 **Relations:** Has many `Transaction`. Belongs to `Profile`. Self-referential for credit card linking.
 
@@ -109,8 +111,11 @@ Groups related budget categories together (e.g., "Bills", "Fun Money").
 | sortOrder | Int | Display ordering |
 | isHidden | Boolean | Whether hidden from view |
 | ynabId | String? | YNAB import ID |
+| profileId | String? | FK to Profile |
 
-**Relations:** Has many `Category`.
+**Unique:** `[profileId, ynabId]`
+
+**Relations:** Has many `Category` (cascade delete). Belongs to `Profile`.
 
 ### Category
 Individual budget category within a group (e.g., "Rent", "Groceries").
@@ -134,6 +139,7 @@ Individual budget category within a group (e.g., "Rent", "Groceries").
 | goalCadence | Int? | Frequency type |
 | goalCadenceFrequency | Int? | Every N periods |
 | goalDay | Int? | Day of month |
+| ynabId | String? | YNAB import ID (indexed; scoped through the group's profile) |
 
 **Relations:** Belongs to `CategoryGroup`. Has many `Transaction`, `SubTransaction`, `MonthlyBudget`.
 
@@ -150,6 +156,8 @@ Monthly allocation for a category.
 | available | Int | Rollover + Assigned - Activity (cents) |
 
 **Unique:** `[month, categoryId]`
+
+`activity` and `available` are derived from transactions and split lines. `PUT /api/budget` rebuilds them, and the budget routes compute live values with the helpers in `src/lib/budgetHelpers.ts`.
 
 ---
 
@@ -170,11 +178,11 @@ Individual financial transaction.
 | cleared | Boolean | Whether cleared by bank |
 | approved | Boolean | Whether user-approved |
 | isReconciled | Boolean | Whether reconciled |
-| isSplit | Boolean | Has subtransactions |
+| isSplit | Boolean | Has subtransactions; a split parent keeps `categoryId = null` |
 | transferId | String? | Links transfer pairs |
-| ynabId | String? | YNAB import ID |
+| ynabId | String? | YNAB import ID (indexed) |
 
-**Relations:** Belongs to `Account`, `Category`. Has many `SubTransaction`.
+**Relations:** Belongs to `Account` (cascade delete) and `Category` (set null on delete). Has many `SubTransaction`. Scoped to a profile through its account.
 
 ### SubTransaction
 Split transaction line item.
@@ -198,7 +206,7 @@ Merchant/payee entity.
 | transferAccountId | String? | For transfer payees |
 | profileId | String? | FK to Profile |
 
-**Unique:** `[profileId, name]`
+**Unique:** `[profileId, name]`, `[profileId, ynabId]`
 
 ### Transfer
 Linked account-to-account money movement.
@@ -210,8 +218,12 @@ Linked account-to-account money movement.
 | date | DateTime | Transfer date |
 | sourceAccountId | String | From account |
 | destinationAccountId | String | To account |
+| memo | String? | Optional memo |
 | sourceTransactionId | String? | Outflow transaction |
 | destTransactionId | String? | Inflow transaction |
+| profileId | String? | FK to Profile |
+
+Deleting either leg through `/api/transactions` reverses both account balances and removes the Transfer row.
 
 ---
 
@@ -243,11 +255,19 @@ Recurring bill or income.
 | amount | Int | Amount in cents |
 | frequency | String | `daily`, `weekly`, `biweekly`, `monthly`, `yearly` |
 | nextDueDate | DateTime | Next occurrence |
+| dayOfMonth | Int? | For monthly/yearly: preferred day (1-31), clamped to the month's last day |
+| dayOfWeek | Int? | For weekly: day (0-6, 0 = Sunday) |
+| endDate | DateTime? | Optional end date |
 | autoCreate | Boolean | Auto-create when due |
 | reminderDays | Int | Days before to remind |
+| lastCreated | DateTime? | Last time a transaction was created |
+| isActive | Boolean | Whether the schedule is active |
+| profileId | String? | FK to Profile |
+
+The next due date is computed by `calculateNextDueDate()` in `src/lib/scheduleDates.ts`, which uses UTC date arithmetic so schedules do not drift across daylight-saving changes or skip short months.
 
 ### BudgetTemplate / BudgetTemplateItem
-Saved budget configurations for quick application.
+Saved budget configurations for quick application. `BudgetTemplate` has `name`, `description?`, and `profileId?`; each `BudgetTemplateItem` has `templateId` (cascade delete), `categoryId`, and `amount` (cents).
 
 ---
 
@@ -286,6 +306,9 @@ Individual purchase lot for capital gains tracking.
 | totalCost | Int | Total cost incl. fees (cents) |
 | brokerage | Int | Fees (cents) |
 | soldUnits | Float | Units sold from this lot |
+| soldDate | DateTime? | Date sold |
+| salePrice | Int? | Sale price per unit (cents) |
+| saleTotal | Int? | Total sale amount (cents) |
 | capitalGain | Int? | Realized gain (cents) |
 | cgtDiscount | Boolean | Held >12 months (50% AUS CGT discount) |
 
@@ -294,23 +317,26 @@ Portfolio rebalancing target.
 
 | Field | Type | Notes |
 |-------|------|-------|
-| assetClass | String | Unique asset class |
+| assetClass | String | Asset class |
 | targetPct | Float | Target as decimal (0.30 = 30%) |
 | priority | Int | Rebalancing priority |
+| profileId | String? | FK to Profile |
+
+**Unique:** `[profileId, assetClass]`
 
 ---
 
 ## Domain 5: FIRE & Settings
 
 ### FireSettings
-Financial Independence calculator configuration (singleton).
+Financial Independence calculator configuration, one row per profile.
 
-Key fields: `yearOfBirth`, `retirementAge`, `preservationAge`, `annualExpenses`, `withdrawalRate` (default 4%), `inflationRate` (default 2.5%), `expectedReturn` (default 7%), `employerContribRate` (default 11.5% — Australian super).
+Key fields: `yearOfBirth`, `retirementAge`, `preservationAge`, `annualExpenses`, `withdrawalRate` (default 4%), `inflationRate` (default 2.5%), `expectedReturn` (default 7%), `annualSuperContrib`, `employerContribRate` (default 11.5% — Australian super), `fireNumber`, `coastFireNumber`.
 
 ### Settings
-Application settings (singleton, id="default").
+Application settings, one row per profile (looked up by `profileId`; IDs are CUIDs).
 
-Key fields: `budgetName`, `currency` (AUD), `dateFormat` (DD/MM/YYYY), `theme` (dungeon), `toBeBudgeted` (Ready to Assign), `ynabBudgetId`, `ynabServerKnowledge` (delta sync cursor).
+Key fields: `budgetName` (default "My Budget"), `currency` (AUD), `dateFormat` (DD/MM/YYYY), `startOfWeek` (1 = Monday), `theme` (default `finance`), `toBeBudgeted` (Ready to Assign), `lastYnabSync`, `ynabBudgetId`, `ynabServerKnowledge` (delta sync cursor).
 
 ### ExchangeRate
 Cached currency conversion rates.
@@ -323,7 +349,7 @@ Cached currency conversion rates.
 | **Unique** | | `[fromCurrency, toCurrency]` |
 
 ### ApiIntegration
-Stored API credentials (Binance, etc.).
+Stored API credentials (Binance, etc.): `provider`, `apiKey`, `apiSecret`, `enabled`, `lastSynced`, `profileId`. **Unique:** `[provider, profileId]`. Keys are stored as plain text; `GET /api/integrations` masks them and Binance credentials are never returned to the client.
 
 ---
 
@@ -331,6 +357,8 @@ Stored API credentials (Binance, etc.).
 
 | Migration | Date | Description |
 |-----------|------|-------------|
-| `20260202034301_init` | 2026-02-02 | Initial project schema |
+| `20260726120000_init` | 2026-07-26 | Squashed baseline generated from the current 20-model schema |
 
-> **Deployment warning:** The migration history has not yet been baselined to the current 20-model schema. Do not run the broad SQL produced by `prisma migrate diff` against live financial data. Back up the database and resolve [CRIT-6](../ISSUES.md) before relying on `prisma migrate deploy`.
+The earlier `20260202034301_init` migration no longer matched the schema and was replaced by this baseline (ISSUES.md CRIT-6). `npm test` builds the test database with `prisma migrate deploy` and fails if `schema.prisma` has changes with no migration, so every schema change needs `npx prisma migrate dev --name <change>`.
+
+A database created earlier with `prisma db push` has no `_prisma_migrations` table. Back it up, then mark the baseline as applied once with `npx prisma migrate resolve --applied 20260726120000_init` before running `prisma migrate deploy` or `prisma migrate dev` against it.

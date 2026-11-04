@@ -1,12 +1,12 @@
 # Loot Council — Project Overview
 
-> **Generated:** 2026-03-04 (last verified 2026-07-18) | **Scan Level:** Comprehensive | **Mode:** Updated
+> **Generated:** 2026-03-04 (last verified 2026-11-04) | **Scan Level:** Comprehensive | **Mode:** Updated
 
 ---
 
 ## Executive Summary
 
-**Loot Council** is a local-first personal finance application for zero-based envelope budgeting inspired by YNAB. The default Finance theme is clean and work-focused, with optional personality themes including the original dark Dungeon palette. All data lives on the user's machine via SQLite — privacy first, no cloud dependency.
+**Loot Council** is a local-first personal finance application for zero-based envelope budgeting inspired by YNAB. The default Finance theme is clean and work-focused, with optional personality themes including the original dark Dungeon palette. All data lives on the user's machine via SQLite — privacy first, no cloud dependency. It runs locally on the user's Windows PC, started with `start-budget.bat`.
 
 The application is a full-stack monolith built with **Next.js 16** (App Router), **TypeScript 5**, **Prisma 6** ORM over **SQLite**, and styled with **Tailwind CSS 4**. It provides budgeting, investment portfolio tracking, FIRE (Financial Independence, Retire Early) calculator, AI-powered financial advisement, and comprehensive reporting.
 
@@ -32,14 +32,14 @@ The application is a full-stack monolith built with **Next.js 16** (App Router),
 
 | Layer | Technology | Version |
 |-------|------------|---------|
-| Framework | Next.js (App Router + Turbopack) | 16.2.6 |
+| Framework | Next.js (App Router + Turbopack) | 16.2 |
 | Language | TypeScript (strict mode) | 5.x |
 | Database | SQLite | Local file |
-| ORM | Prisma | 6.19.2 |
+| ORM | Prisma | 6.19 |
 | Styling | Tailwind CSS | 4.x |
 | Icons | Lucide React | 0.563.0 |
 | Charts | Recharts | 3.7.0 |
-| AI | OpenAI API | 6.17.0 |
+| AI | OpenAI API (model from `OPENAI_MODEL`, default `gpt-4o-mini`) | SDK 6.17 |
 | Stock Data | Yahoo Finance (yahoo-finance2) | 3.13.0 |
 | Crypto Data | CoinGecko API | (via fetch) |
 | Crypto Sync | Binance API | (via fetch) |
@@ -54,9 +54,9 @@ The application is a full-stack monolith built with **Next.js 16** (App Router),
 ### Core Modules
 
 1. **Budgeting** — Zero-based envelope budgeting with category groups, monthly allocations, goals, rollover, templates, quick actions, auto-assign, budget transfers between categories, budget forecasting ("Can I afford it?")
-2. **Transactions** — Full CRUD with splits, transfers, reconciliation, bulk operations, scheduled recurring, auto-categorization rules, server-side filtering, pagination, CSV export, date-range presets, filters persisted per profile
+2. **Transactions** — Full CRUD with splits, transfers, reconciliation, bulk operations, scheduled recurring, auto-categorization rules, server-side filtering, pagination, CSV export, date-range presets, filters persisted per profile, last-used account remembered per profile
 3. **Accounts** — Checking, savings, credit, investment accounts with linked credit card payment tracking
-4. **Investments** — Multi-asset portfolio (stocks, ETFs, crypto, property, super) with lots, CGT, dividends, allocation targets, live pricing
+4. **Investments** — Multi-asset portfolio (stocks, ETFs, crypto, property, super) with lots, CGT, dividends, allocation targets, live pricing, and AUD conversion of foreign-currency assets
 5. **FIRE Calculator** — Financial Independence projections with Coast/Barista FIRE, customizable rates
 6. **Reports** — 8 tabs (Spending Breakdown, Top Movers, Income vs Expense, Savings Rate, Budget vs Actual, Net Worth, By Payee, Category Trends), chart-segment drill-down to transactions, global per-profile category exclusion filter
 7. **AI Assistant** — OpenAI-powered chat advisor, spending insights, budget optimization (with data consent)
@@ -83,10 +83,10 @@ The application is a full-stack monolith built with **Next.js 16** (App Router),
 | API Route Files | 47 |
 | Top-Level API Domains | 26 |
 | Page Routes | 9 |
-| UI Components | 32 |
-| Library/Utility/Test Files | 18 |
+| UI Components | 31 |
+| Library/Utility/Test Files | 29 (17 modules, 12 test files) |
 | Database Models | 20 |
-| Prisma Migrations | 1 (initial) |
+| Prisma Migrations | 1 (squashed baseline, `20260726120000_init`) |
 
 ---
 
@@ -100,3 +100,4 @@ The application is a full-stack monolith built with **Next.js 16** (App Router),
 - **Local-first** — SQLite database stored at `data/loot-council.db`
 - **Multi-profile** — Profile model scopes all data; profile selected via cookie/query param
 - **Server bound to 127.0.0.1** — Not accessible from network (security hardening)
+- **Runs locally only** — `start-budget.bat` opens the browser and runs `npm run dev`. The `Dockerfile` and `deploy/` (Raspberry Pi/Caddy) files are left over from an earlier self-hosted setup and are not how the app runs today

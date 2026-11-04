@@ -4,7 +4,7 @@
 **Loot Council** is a local-first personal finance application for serious zero-based budgeting (envelope method). Its default Finance theme is clean and work-focused; optional themes provide more personality, including the original dark Dungeon palette.
 
 ### Core Philosophy
-1. **Local-First**: Data lives on the user's machine (`sqlite`). Privacy first. No cloud dependency.
+1. **Local-First**: Data lives on the user's machine (`sqlite`). Privacy first. No cloud dependency. The app runs only on the user's Windows PC: `start-budget.bat` opens `http://127.0.0.1:3000` and runs `npm run dev` (bound to 127.0.0.1). The `Dockerfile` and `deploy/` (Raspberry Pi/Caddy) files are from an earlier self-hosted setup and are not how it runs today.
 2. **Aesthetic**: Trustworthy, modern, and factual. Finance light is the default; six optional themes are available.
 3. **YNAB-Inspired**: Envelope budgeting, "Ready to Assign", category goals - all inspired by YNAB methodology.
 
@@ -20,7 +20,7 @@
 | Styling | Tailwind CSS 4 | Custom CSS variables in globals.css |
 | Icons | Lucide React | Consistent icon library |
 | Charts | Recharts | For all data visualizations |
-| AI | OpenAI API | Optional: AI wizard features |
+| AI | OpenAI API | Optional: AI wizard features; model from `OPENAI_MODEL` (default `gpt-4o-mini`) |
 | Parsing | xlsx, jszip | YNAB import support |
 | Stock Data | Yahoo Finance | Symbol lookup, price fetching |
 | Crypto Data | CoinGecko API | Crypto prices and names |
@@ -43,10 +43,11 @@ src/
 │   │   │   └── optimize/       # Budget optimization
 │   │   ├── assets/             # Asset value management
 │   │   ├── binance/            # Binance wallet sync
-│   │   ├── budget/             # Budget operations
-│   │   │   ├── auto-assign/    # Auto-assign goal funding
+│   │   ├── budget/             # Budget operations (GET month, POST assign, PUT recalculate)
+│   │   │   ├── auto-assign/    # Auto-assign goal funding (GET preview, POST, DELETE reverse)
 │   │   │   ├── quick-actions/  # Quick budget actions
 │   │   │   ├── copy/           # Copy budget between months
+│   │   │   ├── forecast/       # "Can I afford it?" projections
 │   │   │   └── transfer/       # Transfer funds between categories
 │   │   ├── categories/         # Category management
 │   │   ├── export/             # Data export (JSON backup)
@@ -56,6 +57,7 @@ src/
 │   │   │   ├── csv/            # CSV import
 │   │   │   ├── ynab/           # YNAB ZIP import
 │   │   │   └── ynab-api/       # YNAB API import
+│   │   │       └── sync/       # YNAB delta sync
 │   │   ├── integrations/       # API integrations management
 │   │   ├── investments/        # Investment portfolio
 │   │   │   ├── route.ts        # Holdings CRUD with AUD conversion
@@ -68,11 +70,12 @@ src/
 │   │   │   ├── manage/         # Payee CRUD, merge, rename
 │   │   │   └── similar/        # Find similar payees
 │   │   ├── profiles/           # Profile CRUD (multi-profile)
-│   │   ├── quote/              # Random financial quotes
+│   │   ├── quote/              # Live stock/crypto quotes (Yahoo Finance)
 │   │   ├── reconcile/          # Account reconciliation
 │   │   ├── reports/
 │   │   │   └── advanced/       # Advanced reporting
-│   │   ├── reset/              # Delete all data
+│   │   ├── reset/              # Delete all data for the active profile
+│   │   │   └── budget/         # Reset budget data only
 │   │   ├── rules/              # Transaction rules CRUD
 │   │   ├── scheduled/          # Scheduled transactions
 │   │   ├── settings/           # App settings
@@ -82,10 +85,11 @@ src/
 │   │   │   ├── [id]/           # Individual transaction operations
 │   │   │   └── bulk/           # Bulk transaction operations
 │   │   └── transfers/          # Transfer management
+│   │       └── match/          # Find, link, and unlink transfer pairs
 │   ├── budget/                 # Budget page
 │   ├── transactions/           # Transactions page
 │   ├── accounts/               # Accounts page
-│   ├── reports/                # Reports page (8 tabs)
+│   ├── reports/                # Reports page (8 tabs in reports/_tabs/)
 │   ├── investments/            # Investment portfolio page
 │   ├── fire/                   # FIRE calculator page
 │   ├── assistant/              # AI assistant
@@ -93,7 +97,7 @@ src/
 │   ├── globals.css             # Theme variables, animations
 │   └── layout.tsx              # Root layout with providers
 ├── components/
-│   ├── Sidebar.tsx             # Navigation (desktop + mobile)
+│   ├── Sidebar.tsx             # Desktop navigation + profile menu
 │   ├── MobileNav.tsx           # Bottom navigation for mobile
 │   ├── TransactionForm.tsx     # Add/edit transactions
 │   ├── ModalDialog.tsx         # Shared accessible dialog shell
@@ -113,36 +117,36 @@ src/
 │   ├── ScheduledTransactions.tsx # Scheduled transaction list
 │   ├── TransactionRulesSettings.tsx # Rule management UI
 │   ├── ConfirmDialog.tsx       # Reusable confirmation dialog
-│   ├── InlineEdit.tsx          # Inline text editing component
+│   ├── InlineEdit.tsx          # InlineCategorySelect (inline category picker)
 │   ├── Skeleton.tsx            # Loading skeleton component
 │   ├── AnimatedNumber.tsx      # Smooth numeric transitions
 │   ├── ChartTooltip.tsx        # Shared chart tooltip
-│   ├── ErrorBoundary.tsx       # Error handling wrapper
+│   ├── ErrorBoundary.tsx       # AutoResetErrorBoundary (resets on navigation)
 │   ├── KeyboardShortcutsProvider.tsx # Global keyboard shortcuts
 │   ├── ProfileProvider.tsx     # Multi-profile context provider
 │   ├── UndoToast.tsx           # Undo/redo floating UI
 │   ├── SettingsProvider.tsx    # Settings context
 │   └── Toast.tsx               # Toast notification component
 ├── lib/
-│   ├── prisma.ts               # Prisma client singleton
-│   ├── openai.ts               # OpenAI client + getOpenAIClient() accessor
-│   ├── utils.ts                # Helper functions
+│   ├── prisma.ts               # Prisma client singleton (default export)
+│   ├── openai.ts               # OpenAI client, getOpenAIClient(), OPENAI_MODEL, AI helpers
+│   ├── utils.ts                # formatCurrency, setDefaultCurrency, toLocalDateString, toLocalMonthString
 │   ├── apiHandler.ts           # Centralized API error handler
-│   ├── clientCache.ts          # TTL cache for slow-changing form metadata
+│   ├── clientCache.ts          # fetchJson / fetchJsonCached (TTL cache for form metadata)
 │   ├── navigation.ts           # Shared nav items (Sidebar/MobileNav)
-│   ├── profile.ts              # Profile ID resolution (cookie/query/fallback)
+│   ├── profile.ts              # Profile ID resolution (query param → cookie → oldest profile)
 │   ├── profileOwnership.ts     # Profile-scoped entity lookup helpers
 │   ├── budgetUtils.ts          # Pure budget helpers (client+server safe)
 │   ├── budgetHelpers.ts        # Budget helpers w/ DB access (server-only, re-exports budgetUtils)
 │   ├── exchangeRate.ts         # Shared exchange rate fetcher w/ 1hr cache
-│   ├── ruleEngine.ts           # Shared rule matching w/ unified ReDoS protection
+│   ├── ruleEngine.ts           # matchesRule() + findMatchingRule() w/ unified ReDoS protection
+│   ├── scheduleDates.ts        # calculateNextDueDate() for recurring schedules (UTC-safe)
+│   ├── transactionFormPreferences.ts # Last-used transaction account per profile
 │   ├── useModalA11y.ts         # Dialog focus, Escape, and scroll behavior
 │   ├── useUndo.tsx             # Undo/redo provider and hooks
 │   ├── useKeyboardShortcuts.tsx # Keyboard shortcut hook
-│   ├── budgetUtils.test.ts     # Budget helper unit tests
-│   ├── ruleEngine.test.ts      # Rule matcher unit tests
-│   └── profileIsolation.integration.test.ts # Profile boundary integration tests
-└── generated/prisma/           # Generated Prisma client
+│   ├── *.test.ts               # Unit tests (budgetUtils, ruleEngine, scheduleDates, transactionFormPreferences, utils)
+│   └── *.integration.test.ts   # SQLite integration tests (budgetInvariants, csvImport, investments, moneyPaths, pass4AuditFixes, profileIsolation, splitActivity)
 ```
 
 ---
@@ -152,19 +156,27 @@ src/
 ### 1. Database & Prisma
 - **Version**: Use **Prisma 6**. Do NOT upgrade to Prisma 7 (driver adapter issues with Next.js 16 Turbopack).
 - **Connection**: `DATABASE_URL="file:../data/loot-council.db"` in `.env`
-- **Schema changes**: Always run `npx prisma generate` after changing `schema.prisma`
-- **Client location**: Generated to `src/generated/prisma` (custom output path)
+- **Schema changes**: Every change to `schema.prisma` needs a migration: `npx prisma migrate dev --name <change>`. `npm test` builds the test DB with `prisma migrate deploy` and fails on schema drift. The history is a single squashed baseline, `20260726120000_init`
+- **Client location**: Default `@prisma/client` output; import the shared client with `import prisma from '@/lib/prisma'`
 - **Multi-profile**: Scope records through a direct `profileId` or an owned parent. Use `getProfileId()` plus `src/lib/profileOwnership.ts`; payee names are unique per profile.
 - **Error handling**: Wrap API route handlers with `withErrorHandler()` from `src/lib/apiHandler.ts`
+- **Rule matching**: Use `findMatchingRule()` from `src/lib/ruleEngine.ts`; never build regexes from rule input directly
+- **Split transactions**: A split parent keeps `categoryId = null`; its categories live in `SubTransaction` rows, and budget math and reports must include them
+- **Money units**: Stored as cents. Several routes take dollars in the request (transactions, budget assign/transfer, transfers, scheduled); see `docs/api-contracts.md`
+
+### 1.2. Dates
+- Stored dates are UTC midnight; budget month boundaries are UTC.
+- For "today" in the UI, use `toLocalDateString()` / `toLocalMonthString()` from `src/lib/utils.ts`, not `new Date().toISOString().slice(0, 10)` (that is the UTC date, a day behind in Australia until 10–11am).
+- For recurring schedules, use `calculateNextDueDate()` from `src/lib/scheduleDates.ts`.
 
 ### 1.5. Environment Variables
 ```env
 DATABASE_URL="file:../data/loot-council.db"
 OPENAI_API_KEY="sk-..."           # Optional: AI wizard features
-HOME_CURRENCY="AUD"               # Default currency for totals
-BINANCE_API_KEY="..."             # Optional: Binance wallet sync
-BINANCE_API_SECRET="..."          # Optional: Binance wallet sync
+OPENAI_MODEL="gpt-4o-mini"        # Optional: chat model for every AI feature (default gpt-4o-mini)
 ```
+
+These are the only variables the code reads. Totals are in AUD (a constant in the investment/FIRE routes), and Binance credentials are stored per profile in the `ApiIntegration` table via `/api/integrations`.
 
 ### 2. Styling Rules
 Use semantic color names from CSS variables:
@@ -191,6 +203,7 @@ text-success, text-danger, text-warning, text-info
 ### 4. API Route Patterns
 ```typescript
 // Standard GET with error handler and profile scoping
+import prisma from '@/lib/prisma';
 import { withErrorHandler } from '@/lib/apiHandler';
 import { getProfileId } from '@/lib/profile';
 
@@ -232,7 +245,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 | **Payee Management** | Merge, rename, delete payees |
 | **Bulk Transactions** | Select and edit multiple |
 | **Keyboard Shortcuts** | Arrow navigation, Ctrl+Z undo |
-| **Mobile Responsive** | Bottom nav, hamburger menu |
+| **Mobile Responsive** | Bottom nav on small screens |
 | **Undo/Redo System** | Action history with revert |
 | **Loading Skeletons** | Smooth loading states |
 | **Error Boundaries** | Graceful error handling |
@@ -266,6 +279,8 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 | **Global New Txn Shortcut** | Press N anywhere to add a new transaction |
 | **Shared Lib Helpers** | Deduplicated budget/exchange/rule helpers into lib/ |
 | **Profile-Scoped AI** | AI chat & insights filter by active profile |
+| **Remembered Account** | Transaction form defaults to the last-used account per profile |
+| **Profile-Scoped YNAB IDs** | The same YNAB budget can be imported into several profiles |
 
 ### 🚧 Planned Features
 
@@ -297,7 +312,9 @@ model Account {
   closed          Boolean  @default(false)
   lastReconciled  DateTime?
   linkedAccountId String?  // For credit cards: link to payment account
+  ynabId          String?  // YNAB import ID
   profileId       String?  // FK to Profile
+  @@unique([profileId, ynabId])
 }
 
 model Transaction {
@@ -434,9 +451,11 @@ model AssetLot {
 
 model AllocationTarget {
   id         String @id @default(cuid())
-  assetClass String @unique // etf, stock, crypto, cash, super, property, other
-  targetPct  Float  // decimal (0.30 = 30%)
-  priority   Int    @default(0)
+  assetClass String  // etf, stock, crypto, cash, super, property, other
+  targetPct  Float   // decimal (0.30 = 30%)
+  priority   Int     @default(0)
+  profileId  String? // FK to Profile
+  @@unique([profileId, assetClass])
 }
 
 model FireSettings {
@@ -466,7 +485,7 @@ model ExchangeRate {
 
 model Settings {
   id           String   @id @default(cuid())
-  budgetName   String   @default("My Realm")
+  budgetName   String   @default("My Budget")
   currency     String   @default("AUD")
   dateFormat   String   @default("DD/MM/YYYY")
   startOfWeek  Int      @default(1) // 0=Sunday, 1=Monday
@@ -492,8 +511,11 @@ npx prisma studio
 # Regenerate Prisma client
 npx prisma generate
 
-# Push schema changes
-npx prisma db push
+# After editing schema.prisma: create and apply a migration
+npx prisma migrate dev --name describe-your-change
+
+# Type check
+npm run typecheck
 
 # Reset database (nuclear option)
 # Use Settings > Delete All Data, or: DELETE /api/reset
@@ -502,6 +524,7 @@ npx prisma db push
 npm run build
 
 # Lint and run the isolated Vitest suite
+# (npm test rebuilds data/loot-council-test.db from migrations via scripts/prepare-test-db.mjs)
 npm run lint
 npm test
 
@@ -528,9 +551,9 @@ Theme is stored in `localStorage` as `loot-council-theme`.
 
 ## 📱 Mobile Support
 
-- Breakpoint: `lg:` (1024px) for desktop sidebar
-- Mobile gets: Top header bar, hamburger menu, bottom nav
-- Main content has `pt-16 lg:pt-0 pb-20 lg:pb-0` for mobile chrome
+- Breakpoint: `md:` (768px) for the desktop sidebar (`hidden md:flex`)
+- Mobile gets the bottom nav (`MobileNav`, `md:hidden`): Budget, Transactions, Accounts, Reports, Settings
+- Main content has `pt-16 md:pt-0 pb-20 md:pb-0` for mobile chrome
 
 ---
 
@@ -542,13 +565,13 @@ When working on specific features, these files are most relevant:
 |---------|-----------|
 | Budget logic | `app/budget/page.tsx`, `api/budget/route.ts` |
 | Budget transfers | `components/BudgetTransferModal.tsx`, `api/budget/transfer/route.ts` |
-| Transactions | `app/transactions/page.tsx`, `api/transactions/route.ts` |
+| Transactions | `app/transactions/page.tsx`, `api/transactions/route.ts`, `components/TransactionForm.tsx`, `lib/transactionFormPreferences.ts` |
 | Split transactions | `components/SplitTransactionModal.tsx`, `api/splits/route.ts` |
 | Categories/Goals | `components/GoalEditorModal.tsx`, `api/categories/route.ts` |
-| Transaction rules | `components/TransactionRulesSettings.tsx`, `api/rules/route.ts` |
+| Transaction rules | `components/TransactionRulesSettings.tsx`, `api/rules/route.ts`, `lib/ruleEngine.ts` |
 | Budget templates | `components/BudgetTemplatesModal.tsx`, `api/templates/route.ts` |
-| Scheduled txns | `components/ScheduledTransactions.tsx`, `api/scheduled/route.ts` |
-| Reports | `app/reports/page.tsx`, `api/reports/advanced/route.ts` |
+| Scheduled txns | `components/ScheduledTransactions.tsx`, `api/scheduled/route.ts`, `lib/scheduleDates.ts` |
+| Reports | `app/reports/page.tsx`, `app/reports/_tabs/*`, `api/reports/advanced/route.ts` |
 | Investments | `app/investments/page.tsx`, `api/investments/route.ts` |
 | Symbol Lookup | `api/investments/prices/route.ts` |
 | Asset Lots | `api/investments/lots/route.ts` |
@@ -560,10 +583,11 @@ When working on specific features, these files are most relevant:
 | Credit cards | `components/CreditCardPaymentModal.tsx` |
 | Payee management | `components/PayeeManagement.tsx`, `api/payees/manage/route.ts` |
 | CSV import | `components/CSVImportModal.tsx`, `api/import/csv/route.ts` |
-| AI features | `api/ai/chat/route.ts`, `api/ai/insights/route.ts`, `lib/openai.ts` |
+| AI features | `api/ai/chat/route.ts`, `api/ai/insights/route.ts`, `api/ai/optimize/route.ts`, `lib/openai.ts` |
 | Profiles | `components/ProfileProvider.tsx`, `api/profiles/route.ts`, `lib/profile.ts`, `lib/profileOwnership.ts` |
 | Modal accessibility | `components/ModalDialog.tsx`, `lib/useModalA11y.ts` |
 | Tests | `vitest.config.ts`, `scripts/prepare-test-db.mjs`, `lib/*.test.ts` |
+| Dates | `lib/utils.ts` (local-date helpers), `lib/scheduleDates.ts` |
 | Settings | `app/settings/page.tsx`, `components/SettingsProvider.tsx` |
 | Mobile UI | `components/Sidebar.tsx`, `components/MobileNav.tsx`, `lib/navigation.ts` |
 | Undo/Redo | `lib/useUndo.tsx`, `components/UndoToast.tsx` |

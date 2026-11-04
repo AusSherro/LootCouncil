@@ -1,12 +1,12 @@
 # Loot Council — Component Inventory
 
-> **Generated:** 2026-03-04 (last verified 2026-07-18) | **Scan Level:** Comprehensive
+> **Generated:** 2026-03-04 (last verified 2026-11-04) | **Scan Level:** Comprehensive
 
 ---
 
 ## Overview
 
-The application has **32 React components** in `src/components/`. Components follow a consistent pattern of modals, forms, and context providers with no component library — all custom-built with Tailwind CSS.
+The application has **31 React component files** in `src/components/`. Components follow a consistent pattern of modals, forms, and context providers with no component library — all custom-built with Tailwind CSS.
 
 ---
 
@@ -16,16 +16,16 @@ The application has **32 React components** in `src/components/`. Components fol
 
 | Component | File | Description |
 |-----------|------|-------------|
-| Sidebar | `Sidebar.tsx` | Desktop sidebar navigation with 7 items + mobile hamburger menu |
-| MobileNav | `MobileNav.tsx` | Bottom navigation bar for mobile (5 items) |
+| Sidebar | `Sidebar.tsx` | Desktop-only sidebar (shown from the `md` breakpoint) with 7 items + Settings and the profile switcher menu; items come from `src/lib/navigation.ts` |
+| MobileNav | `MobileNav.tsx` | Bottom navigation bar for mobile (5 items: Budget, Transactions, Accounts, Reports, Settings) |
 
 ### Modal Components
 
 | Component | File | Description |
 |-----------|------|-------------|
 | ModalDialog | `ModalDialog.tsx` | Accessible dialog shell shared by modal surfaces |
-| TransactionForm | `TransactionForm.tsx` | Add/edit transaction modal with account/category selection |
-| SplitTransactionModal | `SplitTransactionModal.tsx` | Split transaction across multiple categories |
+| TransactionForm | `TransactionForm.tsx` | Add/edit transaction modal with account/category selection; loads existing splits, can un-split, and remembers the last-used account per profile (`src/lib/transactionFormPreferences.ts`) |
+| SplitTransactionModal | `SplitTransactionModal.tsx` | Split a transaction across categories; loads existing splits and supports removing the split |
 | GoalEditorModal | `GoalEditorModal.tsx` | Category goal configuration (TB, TBD, MF, NEED, DEBT) |
 | QuickTransferModal | `QuickTransferModal.tsx` | Quick account-to-account transfer |
 | CreditCardPaymentModal | `CreditCardPaymentModal.tsx` | Credit card payment workflow |
@@ -45,13 +45,13 @@ The application has **32 React components** in `src/components/`. Components fol
 | AnimatedNumber | `AnimatedNumber.tsx` | Smooth animated number transitions |
 | GoldCoinSpinner | `GoldCoinSpinner.tsx` | Themed loading spinner |
 | ChartTooltip | `ChartTooltip.tsx` | Reusable Recharts tooltip with currency formatting |
-| Skeleton | `Skeleton.tsx` | Stable loading placeholders for pages and panels |
+| Skeleton | `Skeleton.tsx` | Loading placeholders: `SkeletonCard`, `SkeletonTransactionList`, `SkeletonDashboard` |
 
 ### Input Components
 
 | Component | File | Description |
 |-----------|------|-------------|
-| InlineEdit | `InlineEdit.tsx` | Click-to-edit inline text component |
+| InlineEdit | `InlineEdit.tsx` | Exports `InlineCategorySelect`, the searchable inline category picker on the Transactions page (split rows show a Split label instead) |
 | PayeeAutocomplete | `PayeeAutocomplete.tsx` | Payee input with autocomplete suggestions |
 
 ### Settings & Management
@@ -60,22 +60,22 @@ The application has **32 React components** in `src/components/`. Components fol
 |-----------|------|-------------|
 | PayeeManagement | `PayeeManagement.tsx` | Full payee CRUD with merge/rename |
 | TransactionRulesSettings | `TransactionRulesSettings.tsx` | Transaction rule management UI |
-| ScheduledTransactions | `ScheduledTransactions.tsx` | Scheduled transaction list and management |
+| ScheduledTransactions | `ScheduledTransactions.tsx` | Scheduled transaction list and management (full view on the Scheduled tab of the Transactions page, compact view on the dashboard) |
 
 ### Providers & System
 
 | Component | File | Description |
 |-----------|------|-------------|
-| SettingsProvider | `SettingsProvider.tsx` | React Context provider for app settings |
-| ProfileProvider | `ProfileProvider.tsx` | React Context provider for multi-profile management |
-| KeyboardShortcutsProvider | `KeyboardShortcutsProvider.tsx` | Global keyboard shortcut registration |
-| ErrorBoundary | `ErrorBoundary.tsx` | React error boundary wrapper |
+| SettingsProvider | `SettingsProvider.tsx` | React Context provider for app settings (`useSettings`); sets the default display currency via `setDefaultCurrency()` |
+| ProfileProvider | `ProfileProvider.tsx` | React Context provider for multi-profile management (`useProfile`); syncs the `loot-council-profile` cookie from `localStorage` on start-up |
+| KeyboardShortcutsProvider | `KeyboardShortcutsProvider.tsx` | Global keyboard shortcuts and the shortcuts help dialog |
+| ErrorBoundary | `ErrorBoundary.tsx` | Exports `AutoResetErrorBoundary`, which resets when the route changes |
 
 ### Feedback & Notifications
 
 | Component | File | Description |
 |-----------|------|-------------|
-| Toast | `Toast.tsx` | Toast notification component |
+| Toast | `Toast.tsx` | `ToastProvider` and `useToast()` notifications |
 | UndoToast | `UndoToast.tsx` | Floating undo/redo action bar |
 
 ---
@@ -117,18 +117,22 @@ Most modal components render `ModalDialog`; `TransactionForm` uses the hook dire
 
 ```
 layout.tsx
-├── SettingsProvider          # Wraps entire app
-├── ProfileProvider           # Multi-profile management
-├── KeyboardShortcutsProvider # Global shortcuts
-├── Sidebar                   # Desktop nav
-├── MobileNav                 # Mobile nav
-├── UndoToast                 # Floating undo bar
-└── ErrorBoundary             # Error handling
+└── ToastProvider
+    └── ProfileProvider
+        └── SettingsProvider
+            └── UndoProvider (src/lib/useUndo.tsx)
+                └── KeyboardShortcutsProvider
+                    ├── Sidebar                  # Desktop nav + profile menu
+                    ├── <main>
+                    │   └── AutoResetErrorBoundary
+                    │       └── page
+                    ├── MobileNav                # Mobile bottom nav
+                    └── UndoToast                # Floating undo bar
 
 Page Components (each page)
 ├── Skeleton                   # Loading states
 ├── TransactionForm            # Shared transaction modal
-├── ConfirmDialog              # Shared confirmation
-├── Toast                      # Notifications
+├── ConfirmDialog              # Shared confirmation (useConfirmDialog)
+├── useToast()                 # Notifications
 └── [Feature-specific modals]  # Per-page modals
 ```

@@ -1,12 +1,12 @@
 # Loot Council — Architecture Document
 
-> **Generated:** 2026-03-04 (last verified 2026-07-18) | **Scan Level:** Comprehensive
+> **Generated:** 2026-03-04 (last verified 2026-11-04) | **Scan Level:** Comprehensive
 
 ---
 
 ## 1. Executive Summary
 
-Loot Council is a **local-first personal finance application** built as a monolithic Next.js 16 application. It uses the App Router with client-rendered pages and API routes that access a local SQLite database via Prisma ORM. The architecture prioritizes privacy (no cloud), simplicity (single process), and feature richness (budgeting, investments, FIRE planning, AI advisor). A multi-profile system scopes all data per profile, allowing independent budgets on a single installation.
+Loot Council is a **local-first personal finance application** built as a monolithic Next.js 16 application. It uses the App Router with client-rendered pages and API routes that access a local SQLite database via Prisma ORM. The architecture prioritizes privacy (no cloud), simplicity (single process), and feature richness (budgeting, investments, FIRE planning, AI advisor). A multi-profile system scopes all data per profile, allowing independent budgets on a single installation. It runs only on the user's own Windows PC, launched with `start-budget.bat`.
 
 ---
 
@@ -52,9 +52,9 @@ Loot Council is a **local-first personal finance application** built as a monoli
 | State Management | React `useState` + `useEffect` | No global store (Redux/Zustand); page-level state |
 | Caching | Selective client cache | Dashboard reads revalidate on each mount; slow-changing transaction form metadata uses an in-memory TTL cache |
 | Authentication | None | Local-first design; single user per installation |
-| Multi-Profile | Cookie/query param scoping | `Profile` model; `profileId` FK on all data models |
+| Multi-Profile | Cookie/query param scoping | `Profile` model; `profileId` FK or an owned parent on all data models |
 | Styling | Tailwind CSS + CSS variables | Theme system via CSS custom properties |
-| AI Integration | Optional OpenAI API | Gracefully degrades without API key; data consent required |
+| AI Integration | Optional OpenAI API | Gracefully degrades without API key; model set by `OPENAI_MODEL` (default `gpt-4o-mini`); data consent required |
 | Error Handling | Centralized `withErrorHandler` | `src/lib/apiHandler.ts` wrapper for API routes |
 
 ---
@@ -63,15 +63,15 @@ Loot Council is a **local-first personal finance application** built as a monoli
 
 | Layer | Technology | Version | Purpose |
 |-------|------------|---------|---------|
-| **Runtime** | Node.js | 18+ | Server runtime |
-| **Framework** | Next.js (App Router) | 16.2.6 | Full-stack React framework |
+| **Runtime** | Node.js | 20.9+ | Server runtime |
+| **Framework** | Next.js (App Router) | 16.2 | Full-stack React framework |
 | **Language** | TypeScript | 5.x | Type-safe development |
 | **Database** | SQLite | — | Local file-based database |
-| **ORM** | Prisma | 6.19.2 | Database access & migrations |
+| **ORM** | Prisma | 6.19 | Database access & migrations |
 | **Styling** | Tailwind CSS | 4.x | Utility-first CSS |
 | **Charts** | Recharts | 3.7.0 | Data visualizations |
 | **Icons** | Lucide React | 0.563.0 | Icon library |
-| **AI** | OpenAI SDK | 6.17.0 | Chat, categorization, insights |
+| **AI** | OpenAI SDK | 6.17 | Chat, insights, budget optimization |
 | **Finance Data** | yahoo-finance2 | 3.13.0 | Stock/ETF pricing |
 | **Spreadsheet** | xlsx + jszip | 0.20.3 | YNAB import parsing |
 | **Testing** | Vitest | 4.x | Unit and SQLite integration tests |
@@ -85,9 +85,10 @@ Loot Council is a **local-first personal finance application** built as a monoli
 
 ### Storage Strategy
 - **Primary Store:** SQLite file (`data/loot-council.db`)
-- **Schema Management:** Prisma Migrate (1 migration: initial schema)
+- **Schema Management:** Prisma Migrate (1 squashed baseline migration, `20260726120000_init`); the test setup fails on schema drift
 - **Monetary Values:** All stored as integers in cents to avoid floating-point errors
 - **IDs:** CUID strings (Prisma default)
+- **Dates:** Stored at UTC midnight; budget months use UTC boundaries; UI "today" uses local-date helpers in `src/lib/utils.ts`
 
 ### Data Flow
 
@@ -119,10 +120,11 @@ See [Data Models](./data-models.md) for complete schema documentation.
 ### Design
 - **47 API route files** across **26 top-level domains**
 - Standard REST patterns (GET/POST/PUT/PATCH/DELETE)
-- Centralized error handling via `withErrorHandler` wrapper (`src/lib/apiHandler.ts`)
-- No authentication layer
+- Error handling via the `withErrorHandler` wrapper (`src/lib/apiHandler.ts`) or equivalent per-route `try/catch`; clients receive generic messages
+- No authentication layer (loopback-only server)
 - Route-specific validation and mutation-field whitelists; no declarative validation framework
-- Profile-scoped queries via `getProfileId()` helper (`src/lib/profile.ts`)
+- Profile-scoped queries via `getProfileId()` helper (`src/lib/profile.ts`) and ownership checks in `src/lib/profileOwnership.ts`
+- Shared domain logic in `src/lib/`: budget math (`budgetHelpers.ts`, `budgetUtils.ts`), rule matching (`ruleEngine.ts`), schedule dates (`scheduleDates.ts`), exchange rates (`exchangeRate.ts`)
 
 ### External Integrations
 
@@ -130,8 +132,9 @@ See [Data Models](./data-models.md) for complete schema documentation.
 |---------|---------|------|---------|
 | OpenAI | AI chat, insights, optimization | API key in env | None |
 | Yahoo Finance | Stock/ETF symbol lookup & pricing | None (free API) | None |
+| exchangerate-api | Currency conversion | None (free API) | `ExchangeRate` table, 1-hour TTL |
 | CoinGecko | Crypto pricing & symbol lookup | None (free API) | None |
-| Binance | Crypto wallet sync | API key/secret in DB | None |
+| Binance | Crypto wallet sync | API key/secret in DB (`ApiIntegration`) | None |
 | YNAB API | Budget import & delta sync | Bearer token (user-provided) | server_knowledge cursor |
 
 See [API Contracts](./api-contracts.md) for complete endpoint documentation.
@@ -156,14 +159,16 @@ See [API Contracts](./api-contracts.md) for complete endpoint documentation.
 
 ### State Management
 - **No global state library** — Each page manages its own state via `useState`
+- **Toast context** — `ToastProvider` (outermost) for notifications
 - **Settings context** — `SettingsProvider` wraps the app for theme/currency/format
-- **Profile context** — `ProfileProvider` wraps the app for multi-profile switching
+- **Profile context** — `ProfileProvider` wraps the app for multi-profile switching; it writes the `loot-council-profile` cookie from `localStorage` on start-up so the first API calls use the right profile
 - **Keyboard context** — `KeyboardShortcutsProvider` for global shortcuts
-- **Undo system** — `useUndo` hook with action history stack
+- **Undo system** — `UndoProvider` / `useUndo` with action history stack
+- **Per-profile preferences** in `localStorage`: transaction filters, report category exclusions, last-used transaction account
 
 ### Component Architecture
-- **26 custom components** — No UI library (all Tailwind-based)
-- **Modal pattern** — Fixed overlay + centered card
+- **31 custom components** — No UI library (all Tailwind-based)
+- **Modal pattern** — Shared accessible `ModalDialog` (focus trap, Escape, scroll lock)
 - **Form pattern** — Controlled inputs with async submit
 - See [Component Inventory](./component-inventory.md) for full catalog
 
@@ -171,37 +176,35 @@ See [API Contracts](./api-contracts.md) for complete endpoint documentation.
 
 ## 7. Testing Strategy
 
-Vitest runs pure utility tests and isolated SQLite integration tests. The integration database is recreated at `data/loot-council-test.db` and never touches the working budget database.
+Vitest runs pure unit tests and SQLite integration tests that call the route handlers directly. `npm test` first runs `scripts/prepare-test-db.mjs`, which rebuilds `data/loot-council-test.db` from the committed migrations (`prisma migrate deploy`) and fails if `schema.prisma` has drifted from them. The working budget database is never touched.
 
 - `npm test` prepares the test database and runs the suite once
 - `npm run test:watch` runs the suite in watch mode
-- CI requires lint, tests, and a production build
-- Coverage includes budget month helpers, transaction-rule safety, profile ownership, transaction rule scoping, and scheduled processing
+- CI requires lint, typecheck, tests, a production build, and a clean production `npm audit`
+- Coverage includes budget month helpers, rule matching, schedule date arithmetic, local date helpers, profile ownership and isolation, money paths (transactions, transfers, reconciliation), CSV import, split activity, budget invariants, investment currency conversion, and the Pass 4 audit regressions
+
+See the [Development Guide](./development-guide.md#testing) for the per-file list.
 
 ---
 
-## 8. Deployment Architecture
+## 8. Runtime Environment
 
-### Local Development
+### How It Runs
+The app runs only on the user's Windows PC. `start-budget.bat` opens `http://127.0.0.1:3000` and runs `npm run dev`. Both `npm run dev` and `npm run start` bind to `127.0.0.1`, so the app is not reachable from other devices.
+
 ```bash
-npm run dev          # Turbopack dev server (localhost:3000, 127.0.0.1 only)
+npm run dev          # Turbopack dev server (127.0.0.1:3000)
 npx prisma studio    # Database GUI (localhost:5555)
-```
-
-### Production Build
-```bash
-npm run build        # Next.js production build
+npm run build        # Production build (standalone output)
 npm run start        # Production server (127.0.0.1 only)
 ```
 
-### Launch Script
-`start-budget.bat` — Windows batch file that opens browser and starts the production server.
-
 ### Infrastructure Requirements
-- **Node.js 18+** on the local machine
-- **No cloud infrastructure** — Runs entirely locally
-- **Docker image available** — `Dockerfile` builds the standalone app; the Raspberry Pi/Caddy Compose example under `deploy/` is not yet a complete app deployment (see CRIT-7)
-- **GitHub Actions CI** — lint, isolated tests, and production build on pushes and pull requests to `main`
+- **Node.js 20.9+** on the local machine
+- **No cloud infrastructure** — runs entirely locally
+- **GitHub Actions CI** — lint, typecheck, isolated tests, production build, and dependency audit on pushes and pull requests to `main`
+
+The repository also contains a `Dockerfile` and Raspberry Pi/Caddy files under `deploy/` from an earlier self-hosted setup. They are not how the app runs today.
 
 ---
 
@@ -209,26 +212,26 @@ npm run start        # Production server (127.0.0.1 only)
 
 | Concern | Status | Notes |
 |---------|--------|-------|
-| API Authentication | ⚠️ None | All routes open (local-first mitigates) |
+| API Authentication | ⚠️ None | All routes open; server binds to 127.0.0.1 only |
 | Data Privacy | ✅ Local | All data on user's machine |
-| API Key Storage | ⚠️ Plain text | OpenAI key in `.env`, Binance in DB |
+| API Key Storage | ⚠️ Plain text | OpenAI key in `.env`, Binance in DB (masked in API responses) |
 | Financial Data to AI | ✅ Consent gate | AI data sharing requires explicit local consent |
-| Input Validation | ✅ High-risk routes hardened | Mutation fields are whitelisted and core money/date/ownership inputs are validated server-side |
+| Input Validation | ✅ High-risk routes hardened | Mutation fields are whitelisted; money, date (invalid dates rejected), and ownership inputs are validated server-side; no schema library (Zod is still open, CQ-8) |
 | Error Leakage | ✅ Generic responses | Detailed failures are logged server-side; clients receive generic errors |
 
-See [ISSUES.md](../loot-council/ISSUES.md) for detailed security tracking.
+See [ISSUES.md](../ISSUES.md) for detailed security tracking.
 
 ---
 
 ## 10. Known Issues & Technical Debt
 
-The project maintains an `ISSUES.md` tracking file with categorized issues:
+The project maintains an `ISSUES.md` tracking file. All critical issues (CRIT-0 to CRIT-7) and security concerns (SEC-1 to SEC-6) are resolved, as are the four product-audit passes (AUD-1 to AUD-44, Pass 4 dated 2026-10-24) apart from the items below.
 
-- **5 Critical issues** (all resolved ✅)
-- **4 Security concerns** (2 resolved, 2 open)
-- **5 Performance issues** (2 resolved, 3 open)
-- **8 Code quality issues** (4 resolved, 4 open)
-- **6 Error handling issues** (all resolved ✅)
-- **10 Feature suggestions** (all open)
+Still open:
 
-Key open items: SWR/caching adoption, server-side filtering, Zod validation, API error middleware.
+- **PERF-2 / FEAT-1** — No SWR / React Query data caching
+- **CQ-8 / FEAT-2** — No Zod (schema) validation layer
+- **FEAT-6** — PWA / offline support
+- **FEAT-9b** — Overspending toast on transaction creation
+- **AUD-14** — Orphaned rows with `NULL profileId` (needs a decision)
+- **AUD-22** — `MonthlyBudget.activity` is a write-only column (needs a decision)

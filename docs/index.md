@@ -1,6 +1,6 @@
 # Loot Council — Documentation Index
 
-> **Generated:** 2026-03-04 (last verified 2026-07-18) | **Mode:** Updated | **Scan Level:** Comprehensive
+> **Generated:** 2026-03-04 (last verified 2026-11-04) | **Mode:** Updated | **Scan Level:** Comprehensive
 
 ---
 
@@ -11,10 +11,11 @@
 - **Framework:** Next.js 16 (App Router + Turbopack)
 - **Database:** SQLite (local file) via Prisma 6
 - **Architecture:** Local-first, monolithic, client-rendered pages + API routes
+- **How it runs:** Locally on the user's Windows PC via `start-budget.bat` (`npm run dev`, bound to 127.0.0.1)
 
 ### Quick Reference
 
-- **Tech Stack:** Next.js 16.2.6 · TypeScript 5 · SQLite · Prisma 6 · Tailwind CSS 4 · Recharts · Lucide React · OpenAI
+- **Tech Stack:** Next.js 16.2 · TypeScript 5 · SQLite · Prisma 6 · Tailwind CSS 4 · Recharts · Lucide React · OpenAI
 - **Entry Point:** `src/app/layout.tsx` (root layout) → `src/app/page.tsx` (dashboard)
 - **API Gateway:** `src/app/api/*/route.ts` (47 route files, 26 top-level domains)
 - **Database:** `prisma/schema.prisma` (20 models) → `data/loot-council.db`
@@ -29,10 +30,10 @@
 - [Project Overview](./project-overview.md) — Executive summary, tech stack, feature list, codebase stats
 - [Architecture](./architecture.md) — Architecture pattern, technology choices, data flow, security
 - [Source Tree Analysis](./source-tree-analysis.md) — Annotated directory structure with all critical paths
-- [Component Inventory](./component-inventory.md) — 32 UI components cataloged by category
-- [API Contracts](./api-contracts.md) — 47 route files across 26 top-level domains
+- [Component Inventory](./component-inventory.md) — 31 UI components cataloged by category
+- [API Contracts](./api-contracts.md) — 47 route files across 26 top-level domains, with methods, params, and response shapes
 - [Data Models](./data-models.md) — 20 Prisma models with field definitions and relationships
-- [Development Guide](./development-guide.md) — Setup, commands, conventions, debugging
+- [Development Guide](./development-guide.md) — Setup, environment, commands, conventions, migrations, testing
 
 ---
 
@@ -76,7 +77,7 @@ When working with AI coding assistants, provide these files as context:
 | Property | Value |
 |----------|-------|
 | Scan Date | 2026-03-04 |
-| Last Verification | 2026-07-18 |
+| Last Verification | 2026-11-04 |
 | Scan Level | Comprehensive |
 | Mode | Updated |
 | Documents Generated | 7 |

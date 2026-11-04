@@ -1,6 +1,6 @@
 # Loot Council — Source Tree Analysis
 
-> **Generated:** 2026-03-04 (last verified 2026-07-18) | **Scan Level:** Comprehensive
+> **Generated:** 2026-03-04 (last verified 2026-11-04) | **Scan Level:** Comprehensive
 
 ---
 
@@ -8,22 +8,26 @@
 
 ```
 loot-council/
-├── .github/workflows/ci.yml       # Lint, test, and production build
+├── .github/workflows/ci.yml       # Lint, typecheck, test, build, and dependency audit
 ├── data/                          # Local SQLite databases (gitignored)
-├── deploy/                        # Raspberry Pi, Caddy, and Compose examples
+├── deploy/                        # Former Raspberry Pi/Caddy/Compose setup (not used to run the app)
 ├── docs/                          # Project documentation
-├── prisma/                        # Schema (20 models), seed, and migrations
-├── public/                        # Static assets
-├── scripts/prepare-test-db.mjs    # Recreates the isolated Vitest database
+├── prisma/                        # Schema (20 models) and migrations
+├── scripts/
+│   ├── prepare-test-db.mjs        # Rebuilds the Vitest database from migrations, checks for drift
+│   ├── seed-demo.mjs              # Fills a separate demo database (README screenshots)
+│   └── inspect-db.py              # Read-only database inspection
 ├── src/
 │   ├── app/                       # Next.js App Router pages and 47 API routes
-│   ├── components/                # 32 reusable UI components
-│   ├── generated/                 # Generated Prisma client (gitignored)
-│   └── lib/                       # 18 utilities, hooks, and test files
-├── Dockerfile                     # Standalone production image
+│   ├── components/                # 31 reusable UI components
+│   └── lib/                       # 29 utilities, hooks, and test files
+├── Dockerfile                     # Standalone image (not used to run the app today)
+├── next.config.ts                 # Standalone output, Turbopack, package-import optimisation
 ├── package.json                   # Scripts and dependencies
+├── start-budget.bat               # Windows launcher: opens the browser and runs npm run dev
 ├── vitest.config.ts               # Unit/integration test configuration
 ├── ai_context.md                  # AI developer context
+├── CHANGELOG.md                   # Release notes
 ├── README.md                      # Project README
 └── ISSUES.md                      # Issue tracker
 ```
@@ -47,7 +51,7 @@ api/
 ├── assets/route.ts                # Asset value management
 ├── binance/route.ts               # Binance wallet sync
 ├── budget/                        # Budget operations
-│   ├── route.ts                   # Budget CRUD (GET month data, PUT assignments)
+│   ├── route.ts                   # GET month data, POST assign, PUT recalculate activity/available
 │   ├── auto-assign/route.ts       # Auto-fund goal categories
 │   ├── copy/route.ts              # Copy budget between months
 │   ├── forecast/route.ts          # Budget forecast projections ("Can I afford it?")
@@ -76,7 +80,7 @@ api/
 │   ├── manage/route.ts            # Merge, rename, delete
 │   └── similar/route.ts           # Find similar payees
 ├── profiles/route.ts              # Profile CRUD (multi-profile)
-├── quote/route.ts                 # Random financial quotes
+├── quote/route.ts                 # Live stock/crypto quotes (Yahoo Finance)
 ├── reconcile/route.ts             # Account reconciliation
 ├── reports/
 │   └── advanced/route.ts          # Advanced reporting datasets
@@ -84,12 +88,12 @@ api/
 │   ├── route.ts                   # Delete all data
 │   └── budget/route.ts            # Reset budget only
 ├── rules/route.ts                 # Transaction rule CRUD
-├── scheduled/route.ts             # Scheduled transaction CRUD
+├── scheduled/route.ts             # Scheduled transaction CRUD + PUT to process due schedules
 ├── settings/route.ts              # App settings CRUD
 ├── splits/route.ts                # Split transaction management
 ├── templates/route.ts             # Budget template CRUD
 ├── transactions/                  # Transaction management
-│   ├── route.ts                   # Transaction CRUD (with rule matching, server-side filtering)
+│   ├── route.ts                   # Transaction CRUD (rule matching via findMatchingRule, server-side filtering)
 │   ├── [id]/route.ts              # Individual transaction operations
 │   └── bulk/route.ts              # Bulk edit/delete
 └── transfers/                     # Transfer management
@@ -106,13 +110,14 @@ app/
 ├── transactions/page.tsx          # 📝 Transactions (list, filter, bulk ops)
 ├── accounts/page.tsx              # 🏦 Accounts (balances, reconciliation)
 ├── reports/page.tsx               # 📊 Reports (8 tabs with drill-down)
+├── reports/_tabs/                 #    One file per report tab (8 files)
 ├── investments/page.tsx           # 📈 Investments (portfolio, lots, allocation)
 ├── fire/page.tsx                  # 🔥 FIRE Calculator (projections, sliders)
 ├── assistant/page.tsx             # 🤖 AI Assistant (chat interface)
 └── settings/page.tsx              # ⚙️ Settings (theme, import/export, rules)
 ```
 
-### `src/components/` — UI Components (32 files)
+### `src/components/` — UI Components (31 files)
 
 ```
 components/
@@ -139,9 +144,9 @@ components/
 ├── ScheduledTransactions.tsx      # Scheduled transaction list/management
 ├── TransactionRulesSettings.tsx   # Transaction rule management
 ├── ConfirmDialog.tsx              # Reusable confirmation dialog
-├── InlineEdit.tsx                 # Inline text editing
+├── InlineEdit.tsx                 # InlineCategorySelect (inline category picker)
 ├── Skeleton.tsx                   # Loading skeleton component
-├── ErrorBoundary.tsx              # Error handling wrapper
+├── ErrorBoundary.tsx              # AutoResetErrorBoundary (resets on navigation)
 ├── KeyboardShortcutsProvider.tsx  # Global keyboard shortcut system
 ├── ProfileProvider.tsx            # Multi-profile context provider
 ├── UndoToast.tsx                  # Undo/redo floating UI
@@ -149,28 +154,39 @@ components/
 └── Toast.tsx                      # Toast notification component
 ```
 
-### `src/lib/` — Utilities, Hooks, and Tests (18 files)
+### `src/lib/` — Utilities, Hooks, and Tests (29 files)
 
 ```
 lib/
-├── budgetHelpers.ts               # Server-side budget helpers
-├── budgetUtils.ts                 # Pure budget helpers
-├── budgetUtils.test.ts            # Budget helper unit tests
-├── exchangeRate.ts                # Exchange-rate retrieval and cache
-├── prisma.ts                      # Prisma client singleton
-├── openai.ts                      # OpenAI client configuration
-├── utils.ts                       # Helper functions (formatting, etc.)
-├── apiHandler.ts                  # Centralized API error handler wrapper
-├── clientCache.ts                 # Selective in-memory TTL cache for form metadata
+├── apiHandler.ts                  # withErrorHandler API wrapper
+├── budgetHelpers.ts               # Server-side budget math (Ready to Assign, activity/available maps, goal funding)
+├── budgetUtils.ts                 # Pure budget helpers (month offsets, group classification)
+├── clientCache.ts                 # fetchJson / fetchJsonCached (in-memory TTL cache for form metadata)
+├── exchangeRate.ts                # Exchange-rate retrieval with 1-hour DB cache
 ├── navigation.ts                  # Shared navigation items for Sidebar/MobileNav
-├── profile.ts                     # Profile ID resolution (cookie/query/fallback)
-├── profileIsolation.integration.test.ts # SQLite profile-boundary integration tests
+├── openai.ts                      # OpenAI client, OPENAI_MODEL, chat/insights/optimize helpers
+├── prisma.ts                      # Prisma client singleton (default export)
+├── profile.ts                     # getProfileId() (query param → cookie → oldest profile)
 ├── profileOwnership.ts            # Profile-scoped entity lookup helpers
-├── ruleEngine.ts                  # Shared transaction-rule matcher
-├── ruleEngine.test.ts             # Rule matcher unit tests
+├── ruleEngine.ts                  # matchesRule() + findMatchingRule() with ReDoS guards
+├── scheduleDates.ts               # calculateNextDueDate() for recurring schedules (UTC-safe)
+├── transactionFormPreferences.ts  # Last-used transaction account per profile
 ├── useKeyboardShortcuts.tsx       # Keyboard shortcut hook
 ├── useModalA11y.ts                # Dialog focus, Escape, and scroll behavior
-└── useUndo.tsx                    # Undo/redo provider and hooks
+├── useUndo.tsx                    # Undo/redo provider and hooks
+├── utils.ts                       # formatCurrency, setDefaultCurrency, toLocalDateString, toLocalMonthString
+├── budgetUtils.test.ts            # Unit tests
+├── ruleEngine.test.ts             # Unit tests
+├── scheduleDates.test.ts          # Unit tests
+├── transactionFormPreferences.test.ts # Unit tests
+├── utils.test.ts                  # Unit tests
+├── budgetInvariants.integration.test.ts  # SQLite integration tests
+├── csvImport.integration.test.ts
+├── investments.integration.test.ts
+├── moneyPaths.integration.test.ts
+├── pass4AuditFixes.integration.test.ts
+├── profileIsolation.integration.test.ts
+└── splitActivity.integration.test.ts
 ```
 
 ### `prisma/` — Database Layer
@@ -180,7 +196,7 @@ prisma/
 ├── schema.prisma                  # 20 database models
 └── migrations/
     ├── migration_lock.toml
-    └── 20260202034301_init/       # Initial migration (Feb 2, 2026)
+    └── 20260726120000_init/       # Squashed baseline migration (Jul 26, 2026)
 ```
 
 ---
@@ -189,10 +205,10 @@ prisma/
 
 | Entry Point | File | Purpose |
 |-------------|------|---------|
-| App Root | `src/app/layout.tsx` | Root layout with providers (Settings, Profile, Keyboard, Undo) |
+| App Root | `src/app/layout.tsx` | Root layout with providers (Toast, Profile, Settings, Undo, Keyboard) |
 | Dashboard | `src/app/page.tsx` | Home page with financial summary |
 | API Gateway | `src/app/api/*/route.ts` | 47 API route files |
 | Database | `prisma/schema.prisma` | Schema definition (20 models); data stored under `data/` |
-| Config | `next.config.ts` | Next.js + webpack config |
+| Config | `next.config.ts` | Next.js config (standalone output, Turbopack) |
 | Styles | `src/app/globals.css` | Theme variables, animations |
-| Launch Script | `start-budget.bat` | Windows launch (opens browser + starts server) |
+| Launch Script | `start-budget.bat` | Windows launch (opens browser + runs `npm run dev`) |
