@@ -59,7 +59,7 @@
 1. Check [API Contracts](./api-contracts.md) for existing endpoints
 2. Review [Data Models](./data-models.md) for database schema
 3. See [Component Inventory](./component-inventory.md) for reusable UI parts
-4. Consult [ai_context.md](../loot-council/ai_context.md) for coding patterns and conventions
+4. Consult [ai_context.md](../ai_context.md) for coding patterns and conventions
 
 ### For AI-Assisted Development
 

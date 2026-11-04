@@ -47,6 +47,9 @@ data/*.db
 
 # agent / AI tooling
 .agent/
+.agents/
+skills-lock.json
+.impeccable.md
 .github/agents/
 
 # local / temp files
