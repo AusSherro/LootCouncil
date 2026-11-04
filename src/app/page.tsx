@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSettings } from '@/components/SettingsProvider';
 import { 
@@ -22,7 +22,7 @@ import {
 import ScheduledTransactions from '@/components/ScheduledTransactions';
 import { SkeletonDashboard } from '@/components/Skeleton';
 import { formatCurrency } from '@/lib/utils';
-import { fetchJson } from '@/lib/clientCache';
+import { useApi } from '@/lib/useApi';
 import AnimatedNumber from '@/components/AnimatedNumber';
 
 interface DashboardData {
@@ -71,104 +71,70 @@ function formatDashboardCurrency(cents: number, currencyCode: string): string {
     });
 }
 
+function logDashboardError(err: unknown) {
+    console.error('Failed to fetch dashboard:', err);
+}
+
+function getGreeting(): string {
+    const hour = new Date().getHours();
+    if (hour < 6) return 'Burning the midnight oil';
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    if (hour < 21) return 'Good evening';
+    return 'Winding down';
+}
+
 export default function HomePage() {
     const router = useRouter();
     const { settings } = useSettings();
     const currency = settings?.currency || 'AUD';
-    const [data, setData] = useState<DashboardData | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    const [greeting, setGreeting] = useState('');
-    const [refreshKey, setRefreshKey] = useState(0);
+    const [greeting] = useState(getGreeting);
 
-    useEffect(() => {
-        const hour = new Date().getHours();
-        if (hour < 6) setGreeting('Burning the midnight oil');
-        else if (hour < 12) setGreeting('Good morning');
-        else if (hour < 17) setGreeting('Good afternoon');
-        else if (hour < 21) setGreeting('Good evening');
-        else setGreeting('Winding down');
+    const networthQuery = useApi<NetWorthResponse>('/api/networth?months=2', { onError: logDashboardError });
+    const budgetQuery = useApi<BudgetResponse>('/api/budget', { onError: logDashboardError });
+    const transactionsQuery = useApi<TransactionsResponse>('/api/transactions?limit=5', { onError: logDashboardError });
+    const aomQuery = useApi<AgeOfMoneyResponse>('/api/age-of-money', { onError: logDashboardError });
+    const queries = [networthQuery, budgetQuery, transactionsQuery, aomQuery];
 
-        async function fetchDashboard() {
-            setError(null);
-            setLoading(true);
-            try {
-                const [networthRes, budgetRes, transactionsRes, aomRes] = await Promise.allSettled([
-                    fetchJson<NetWorthResponse>('/api/networth?months=2'),
-                    fetchJson<BudgetResponse>('/api/budget'),
-                    fetchJson<TransactionsResponse>('/api/transactions?limit=5'),
-                    fetchJson<AgeOfMoneyResponse>('/api/age-of-money'),
-                ]);
+    const loading = queries.some(q => q.isLoading);
+    // Individual sources fall back to zeros; only fail if every source failed.
+    const error = queries.every(q => q.error) ? 'All dashboard data sources failed to load' : null;
+    const data = useMemo<DashboardData | null>(() => {
+        const networth = networthQuery.data ?? { accountBalance: 0, assetValue: 0, currentNetWorth: 0 };
+        const budget = budgetQuery.data ?? { totals: { readyToAssign: 0 } };
+        const transactions = transactionsQuery.data ?? { total: 0, transactions: [] };
+        const aom = aomQuery.data ?? { ageOfMoney: 0 };
 
-                // Check if any critical fetches failed
-                if (
-                    networthRes.status === 'rejected' &&
-                    budgetRes.status === 'rejected' &&
-                    transactionsRes.status === 'rejected' &&
-                    aomRes.status === 'rejected'
-                ) {
-                    throw new Error('All dashboard data sources failed to load');
-                }
+        const accountsTotal = networth.accountBalance || 0;
+        const assetsTotal = networth.assetValue || 0;
+        const currentNetWorth = networth.currentNetWorth || 0;
 
-                const networth =
-                    networthRes.status === 'fulfilled'
-                        ? networthRes.value
-                        : { accountBalance: 0, assetValue: 0, currentNetWorth: 0 };
-                const budget =
-                    budgetRes.status === 'fulfilled'
-                        ? budgetRes.value
-                        : { totals: { readyToAssign: 0 } };
-                const transactions =
-                    transactionsRes.status === 'fulfilled'
-                        ? transactionsRes.value
-                        : { total: 0, transactions: [] };
-                const aom =
-                    aomRes.status === 'fulfilled'
-                        ? aomRes.value
-                        : { ageOfMoney: 0 };
+        // Net-worth delta vs end of last month.
+        // history[].netWorth is in dollars; currentNetWorth is in cents.
+        const history = networth.history || [];
+        const priorEntry = history.length >= 2 ? history[history.length - 2] : null;
+        const priorNetWorthCents = priorEntry ? Math.round(priorEntry.netWorth * 100) : 0;
+        const netWorthChangeAmount = priorEntry ? currentNetWorth - priorNetWorthCents : 0;
+        const netWorthChange = priorEntry && priorNetWorthCents !== 0
+            ? Math.round((netWorthChangeAmount / Math.abs(priorNetWorthCents)) * 1000) / 10
+            : 0;
 
-                const accountsTotal = networth.accountBalance || 0;
-                const assetsTotal = networth.assetValue || 0;
-                const currentNetWorth = networth.currentNetWorth || 0;
-
-                // Net-worth delta vs end of last month.
-                // history[].netWorth is in dollars; currentNetWorth is in cents.
-                const history = networth.history || [];
-                const priorEntry = history.length >= 2 ? history[history.length - 2] : null;
-                const priorNetWorthCents = priorEntry ? Math.round(priorEntry.netWorth * 100) : 0;
-                const netWorthChangeAmount = priorEntry ? currentNetWorth - priorNetWorthCents : 0;
-                const netWorthChange = priorEntry && priorNetWorthCents !== 0
-                    ? Math.round((netWorthChangeAmount / Math.abs(priorNetWorthCents)) * 1000) / 10
-                    : 0;
-
-                setData({
-                    netWorth: currentNetWorth,
-                    netWorthChange,
-                    netWorthChangeAmount,
-                    readyToAssign: budget.totals?.readyToAssign || 0,
-                    accountsTotal,
-                    assetsTotal,
-                    transactionsThisMonth: transactions.total || 0,
-                    ageOfMoney: aom.ageOfMoney || 0,
-                    recentTransactions: (transactions.transactions || []).slice(0, 5),
-                });
-            } catch (err) {
-                console.error('Failed to fetch dashboard:', err);
-                setError(err instanceof Error ? err.message : 'Failed to load dashboard data');
-            } finally {
-                setLoading(false);
-            }
-        }
-
-        fetchDashboard();
-    }, [refreshKey]);
+        return {
+            netWorth: currentNetWorth,
+            netWorthChange,
+            netWorthChangeAmount,
+            readyToAssign: budget.totals?.readyToAssign || 0,
+            accountsTotal,
+            assetsTotal,
+            transactionsThisMonth: transactions.total || 0,
+            ageOfMoney: aom.ageOfMoney || 0,
+            recentTransactions: (transactions.transactions || []).slice(0, 5),
+        };
+    }, [networthQuery.data, budgetQuery.data, transactionsQuery.data, aomQuery.data]);
 
     // Retry handler
     function handleRetry() {
-        setError(null);
-        setLoading(true);
-        setData(null);
-        setRefreshKey(prev => prev + 1);
+        for (const q of queries) void q.mutate();
     }
 
     if (loading) {
