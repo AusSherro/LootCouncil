@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import {
+    actionOf,
     boundedText,
     centsAmount,
     formatZodError,
@@ -13,10 +14,13 @@ import {
     nonNegativeMoneyAmount,
     nullableId,
     parseBody,
+    parseFormBody,
     parseWith,
     positiveMoneyAmount,
+    readJsonBody,
     requiredText,
     toCents,
+    uploadedFile,
 } from './validation';
 
 function jsonRequest(body: string) {
@@ -166,5 +170,66 @@ describe('parseBody', () => {
         const result = z.object({ a: z.object({ b: z.string() }) }).safeParse({ a: { b: 1 } });
         expect(result.success).toBe(false);
         expect(formatZodError(result.error!)).toMatch(/^a\.b: /);
+    });
+});
+
+describe('readJsonBody and actionOf', () => {
+    it('returns the raw body so a route can branch on action', async () => {
+        const raw = await readJsonBody(jsonRequest(JSON.stringify({ action: 'apply', x: 1 })));
+        expect(raw.success).toBe(true);
+        expect(actionOf(raw.data)).toBe('apply');
+    });
+
+    it('ignores non-string actions and non-object bodies', () => {
+        expect(actionOf({ action: 5 })).toBeUndefined();
+        expect(actionOf(null)).toBeUndefined();
+        expect(actionOf('apply')).toBeUndefined();
+    });
+
+    it('rejects malformed JSON with a 400', async () => {
+        const raw = await readJsonBody(jsonRequest('nope'));
+        expect(raw.response?.status).toBe(400);
+    });
+});
+
+describe('parseFormBody', () => {
+    const schema = z.object({
+        file: uploadedFile,
+        accountId: nullableId.optional(),
+        action: z.enum(['preview', 'import']).optional(),
+    });
+
+    function formRequest(form: FormData) {
+        return new Request('http://localhost/api/test', { method: 'POST', body: form });
+    }
+
+    it('validates fields and passes files through', async () => {
+        const form = new FormData();
+        form.append('file', new File(['a,b'], 'x.csv', { type: 'text/csv' }));
+        form.append('accountId', '');
+        form.append('action', 'preview');
+        const result = await parseFormBody(formRequest(form), schema);
+        expect(result.success).toBe(true);
+        expect(result.data?.file).toBeInstanceOf(File);
+        expect(result.data?.accountId).toBeNull();
+        expect(result.data?.action).toBe('preview');
+    });
+
+    it('rejects a missing file or an unknown action', async () => {
+        const noFile = new FormData();
+        noFile.append('action', 'preview');
+        const missing = await parseFormBody(formRequest(noFile), schema);
+        expect(missing.response?.status).toBe(400);
+        expect((await missing.response!.json()).error).toContain('No file provided');
+
+        const badAction = new FormData();
+        badAction.append('file', new File(['a'], 'x.csv'));
+        badAction.append('action', 'delete-everything');
+        expect((await parseFormBody(formRequest(badAction), schema)).response?.status).toBe(400);
+    });
+
+    it('rejects a body that is not form data', async () => {
+        const result = await parseFormBody(jsonRequest('{}'), schema);
+        expect(result.response?.status).toBe(400);
     });
 });

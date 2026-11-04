@@ -169,3 +169,30 @@ export function actionOf(body: unknown): string | undefined {
     const action = (body as { action?: unknown }).action;
     return typeof action === 'string' ? action : undefined;
 }
+
+/** An uploaded file field in a multipart form. */
+export const uploadedFile = z.instanceof(File, { error: 'No file provided' });
+
+/**
+ * Reads a multipart form body and validates its fields (each field's first
+ * value; files arrive as `File`). A body that is not form data yields a 400.
+ */
+export async function parseFormBody<S extends z.ZodType>(
+    request: Request,
+    schema: S,
+): Promise<ParseResult<z.output<S>>> {
+    let form: FormData;
+    try {
+        form = await request.formData();
+    } catch {
+        return {
+            success: false,
+            response: NextResponse.json({ error: 'Invalid request: body must be multipart form data' }, { status: 400 }),
+        };
+    }
+    const fields: Record<string, FormDataEntryValue> = {};
+    for (const [key, value] of form.entries()) {
+        if (!(key in fields)) fields[key] = value;
+    }
+    return parseWith(schema, fields);
+}

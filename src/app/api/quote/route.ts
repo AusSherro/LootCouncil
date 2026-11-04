@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { parseBody, requiredText } from '@/lib/validation';
 
 // Yahoo Finance quote endpoint (public, no API key needed)
 const YAHOO_QUOTE_URL = 'https://query1.finance.yahoo.com/v8/finance/chart';
@@ -89,15 +91,16 @@ export async function GET(request: NextRequest) {
     }
 }
 
+const quotesSchema = z.object({
+    symbols: z.array(requiredText(30)).min(1, 'Symbols array required').max(100, 'Too many symbols'),
+});
+
 // POST - Fetch multiple quotes at once
 export async function POST(request: NextRequest) {
     try {
-        const body = await request.json();
-        const { symbols } = body;
-
-        if (!symbols || !Array.isArray(symbols) || symbols.length === 0) {
-            return NextResponse.json({ error: 'Symbols array required' }, { status: 400 });
-        }
+        const parsed = await parseBody(request, quotesSchema);
+        if (!parsed.success) return parsed.response;
+        const { symbols } = parsed.data;
 
         const quotes: QuoteResult[] = [];
         const errors: { symbol: string; error: string }[] = [];

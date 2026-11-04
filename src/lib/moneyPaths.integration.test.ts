@@ -68,6 +68,29 @@ describe('transaction creation', () => {
         }
         expect(await accountBalances(chequingId)).toEqual(before);
     });
+
+    it('rejects malformed JSON and out-of-range amounts with a 400', async () => {
+        const before = await accountBalances(chequingId);
+        const malformed = await createTransaction(
+            new NextRequest(`http://localhost/api/transactions?profileId=${profileId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: '{"date": "2026-09-01",',
+            })
+        );
+        expect(malformed.status).toBe(400);
+
+        const tooLarge = await createTransaction(
+            jsonRequest(`http://localhost/api/transactions?profileId=${profileId}`, 'POST', {
+                date: '2026-09-01',
+                amount: 1_000_000_000,
+                accountId: chequingId,
+            })
+        );
+        expect(tooLarge.status).toBe(400);
+        expect((await tooLarge.json()).error).toMatch(/^Invalid request: amount: /);
+        expect(await accountBalances(chequingId)).toEqual(before);
+    });
 });
 
 describe('transfers', () => {

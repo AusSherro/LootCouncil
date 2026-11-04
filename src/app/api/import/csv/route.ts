@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { nullableId, parseFormBody, uploadedFile } from '@/lib/validation';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
 
@@ -77,18 +79,19 @@ const BANK_FORMATS: BankFormat[] = [
     },
 ];
 
+const csvImportSchema = z.object({
+    file: uploadedFile,
+    accountId: nullableId.optional(),
+    action: z.enum(['preview', 'import']).optional(),
+});
+
 // POST - Analyze CSV and return preview
 export async function POST(request: NextRequest) {
     try {
         const profileId = await getProfileId(request);
-        const formData = await request.formData();
-        const file = formData.get('file') as File;
-        const accountId = formData.get('accountId') as string;
-        const action = formData.get('action') as string; // 'preview' or 'import'
-        
-        if (!file) {
-            return NextResponse.json({ error: 'No file provided' }, { status: 400 });
-        }
+        const parsed = await parseFormBody(request, csvImportSchema);
+        if (!parsed.success) return parsed.response;
+        const { file, accountId, action } = parsed.data;
 
         const text = await file.text();
         const rows = parseCSV(text);

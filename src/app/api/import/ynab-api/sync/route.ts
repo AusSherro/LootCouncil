@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { parseBody, requiredText } from '@/lib/validation';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
 import { toLocalMonthString } from '@/lib/utils';
@@ -107,16 +109,16 @@ export async function GET(request: NextRequest) {
   }
 }
 
+const ynabToken = requiredText(500);
+const syncSchema = z.object({ token: ynabToken });
+
 // POST - Perform delta sync
 export async function POST(request: NextRequest) {
   try {
     const profileId = await getProfileId(request);
-    const body = await request.json();
-    const { token } = body;
-
-    if (!token) {
-      return NextResponse.json({ error: 'Token required' }, { status: 400 });
-    }
+    const parsed = await parseBody(request, syncSchema);
+    if (!parsed.success) return parsed.response;
+    const { token } = parsed.data;
 
     // Get stored sync state
     const settings = await prisma.settings.findFirst({ where: { profileId } });

@@ -4,7 +4,17 @@ import { getProfileId } from '@/lib/profile';
 import { findMatchingRule } from '@/lib/ruleEngine';
 import { findOwnedCategory, findOwnedRule } from '@/lib/profileOwnership';
 import { z } from 'zod';
-import { boundedText, idString, moneyAmount, nullableId, parseBody, parseWith, requiredText } from '@/lib/validation';
+import {
+    actionOf,
+    boundedText,
+    idString,
+    moneyAmount,
+    nullableId,
+    parseBody,
+    parseWith,
+    readJsonBody,
+    requiredText,
+} from '@/lib/validation';
 
 const matchField = z.enum(['payee', 'memo', 'amount']);
 // 'exact' is what the rules settings form sends for "Exact Match"; the rule
@@ -64,15 +74,12 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
     try {
         const profileId = await getProfileId(request);
-        let body: unknown;
-        try {
-            body = await request.json();
-        } catch {
-            return NextResponse.json({ error: 'Invalid request: body must be valid JSON' }, { status: 400 });
-        }
+        const raw = await readJsonBody(request);
+        if (!raw.success) return raw.response;
+        const body = raw.data;
 
         // If applying rules to a transaction
-        if ((body as { action?: unknown } | null)?.action === 'apply') {
+        if (actionOf(body) === 'apply') {
             const applyParsed = parseWith(applyRulesSchema, body);
             if (!applyParsed.success) return applyParsed.response;
             const { payee, memo, amount } = applyParsed.data;

@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { parseFormBody, uploadedFile } from '@/lib/validation';
 import prisma from '@/lib/prisma';
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
@@ -104,15 +106,14 @@ function getCategoryGroupName(row: YNABRow): string | undefined {
     return undefined;
 }
 
+const ynabFileSchema = z.object({ file: uploadedFile });
+
 export async function POST(request: NextRequest) {
     try {
         const profileId = await getProfileId(request);
-        const formData = await request.formData();
-        const file = formData.get('file') as File;
-
-        if (!file) {
-            return NextResponse.json({ error: 'No file provided' }, { status: 400 });
-        }
+        const parsed = await parseFormBody(request, ynabFileSchema);
+        if (!parsed.success) return parsed.response;
+        const { file } = parsed.data;
 
         const buffer = await file.arrayBuffer();
         let transactionData: YNABTransaction[] = [];
