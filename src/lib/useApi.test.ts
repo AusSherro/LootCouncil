@@ -51,6 +51,12 @@ describe('revalidateApi', () => {
         const f = filterFor();
         expect(f('/api/accounts')).toBe(true);
         expect(f('not-an-api-key')).toBe(false);
-        expect(f(['/api/accounts'])).toBe(false);
+        expect(f(['not-an-api-key'])).toBe(false);
+    });
+
+    it('matches useApiQuery array keys by their leading API path', () => {
+        const f = filterFor('/api/transactions');
+        expect(f(['/api/transactions', 'income-expense', 12])).toBe(true);
+        expect(f(['/api/accounts', 'x'])).toBe(false);
     });
 });

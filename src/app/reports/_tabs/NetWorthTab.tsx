@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
+import { useApi } from '@/lib/useApi';
 import { Calendar, Filter, TrendingUp, X } from 'lucide-react';
 import {
     ResponsiveContainer,
@@ -54,8 +55,6 @@ const DATE_RANGE_PRESETS = [
 export default function NetWorthTab({ currency, excludeCategoryNames: _excludeCategoryNames }: Props) {
     void _excludeCategoryNames;
 
-    const [data, setData] = useState<NetWorthData[]>([]);
-    const [loading, setLoading] = useState(true);
     const [months, setMonths] = useState(12);
     const [showRangeDropdown, setShowRangeDropdown] = useState(false);
 
@@ -66,33 +65,26 @@ export default function NetWorthTab({ currency, excludeCategoryNames: _excludeCa
     const [excludeSuper, setExcludeSuper] = useState(false);
     const [showFilter, setShowFilter] = useState(false);
 
-    const fetchData = useCallback(async () => {
-        setLoading(true);
-        try {
-            const monthsParam = months === 0 ? 0 : months;
-            const excludeAccountsParam = Array.from(excludedAccounts).join(',');
-            const excludeAssetsParam = Array.from(excludedAssets).join(',');
-            const url = `/api/networth?months=${monthsParam}&excludeAccounts=${excludeAccountsParam}&excludeAssets=${excludeAssetsParam}${excludeSuper ? '&excludeAssetClass=super' : ''}`;
-            const res = await fetch(url);
-            const json = await res.json();
-            setData(json.history || []);
-            // Only set available items on first load (don't overwrite when filtering)
-            if (json.availableAccounts && availableAccounts.length === 0) {
-                setAvailableAccounts(json.availableAccounts);
-            }
-            if (json.availableAssets && availableAssets.length === 0) {
-                setAvailableAssets(json.availableAssets);
-            }
-        } catch (err) {
-            console.error('Failed to fetch net worth data:', err);
-        } finally {
-            setLoading(false);
-        }
-    }, [months, excludedAccounts, excludedAssets, excludeSuper, availableAccounts.length, availableAssets.length]);
-
-    useEffect(() => {
-        fetchData();
-    }, [fetchData]);
+    const monthsParam = months === 0 ? 0 : months;
+    const excludeAccountsParam = Array.from(excludedAccounts).join(',');
+    const excludeAssetsParam = Array.from(excludedAssets).join(',');
+    const { data: json, isLoading: loading } = useApi<{
+        history?: NetWorthData[];
+        availableAccounts?: NetWorthFilterItem[];
+        availableAssets?: NetWorthFilterItem[];
+    }>(
+        `/api/networth?months=${monthsParam}&excludeAccounts=${excludeAccountsParam}&excludeAssets=${excludeAssetsParam}${excludeSuper ? '&excludeAssetClass=super' : ''}`,
+        { onError: err => console.error('Failed to fetch net worth data:', err) }
+    );
+    const data = json?.history ?? [];
+    // Only take the filter options from the first load (filtering must not
+    // shrink the list); adjusted during render rather than in an effect.
+    if (json?.availableAccounts && availableAccounts.length === 0 && json.availableAccounts.length > 0) {
+        setAvailableAccounts(json.availableAccounts);
+    }
+    if (json?.availableAssets && availableAssets.length === 0 && json.availableAssets.length > 0) {
+        setAvailableAssets(json.availableAssets);
+    }
 
     return (
         <div className="card">

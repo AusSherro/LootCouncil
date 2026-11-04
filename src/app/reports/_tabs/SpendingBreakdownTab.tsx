@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useMemo } from 'react';
+import { useApi } from '@/lib/useApi';
 import { BarChart3, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 import {
     ResponsiveContainer,
@@ -50,65 +51,57 @@ function getMonthRange(date: Date) {
  * month, plus a top-categories list. Honors the global category exclusion set
  * passed from the parent.
  */
+interface SpendingTransaction {
+    amount: number;
+    payee?: string | null;
+    transferId?: string | null;
+    category?: { id?: string; name?: string } | null;
+}
+
 export default function SpendingBreakdownTab({ currency, excludeCategoryNames }: Props) {
     const router = useRouter();
     const [selectedDate, setSelectedDate] = useState(() => new Date());
     const [showYearPicker, setShowYearPicker] = useState(false);
-    const [spendingData, setSpendingData] = useState<SpendingData[]>([]);
-    const [totalIncome, setTotalIncome] = useState(0);
-    const [loading, setLoading] = useState(true);
 
-    const fetchSpendingData = useCallback(async () => {
-        setLoading(true);
-        try {
-            const { start, end } = getMonthRange(selectedDate);
-            const res = await fetch(
-                `/api/transactions?limit=1000&startDate=${start.toISOString()}&endDate=${end.toISOString()}`
-            );
-            const data = await res.json();
-            const transactions = data.transactions || [];
+    const { start, end } = getMonthRange(selectedDate);
+    const { data: json, isLoading: loading } = useApi<{ transactions?: SpendingTransaction[] }>(
+        `/api/transactions?limit=1000&startDate=${start.toISOString()}&endDate=${end.toISOString()}`,
+        { onError: err => console.error('Failed to fetch spending data:', err) }
+    );
 
-            const categoryTotals = new Map<string, { name: string; value: number; categoryId?: string }>();
-            let totalInc = 0;
+    const { spendingData, totalIncome } = useMemo(() => {
+        const transactions = json?.transactions || [];
+        const categoryTotals = new Map<string, { name: string; value: number; categoryId?: string }>();
+        let totalInc = 0;
 
-            for (const t of transactions) {
-                // Transfers between your own accounts are plumbing, not spending.
-                if (t.transferId) continue;
-                // Reconciliation adjustments are bookkeeping plugs, not spending.
-                if (typeof t.payee === 'string' && t.payee.includes(RECONCILIATION_ADJUSTMENT_PAYEE)) continue;
-                if (t.amount < 0) {
-                    const category = t.category?.name || 'Uncategorized';
-                    const key = t.category?.id || `__uncat__${category}`;
-                    const current = categoryTotals.get(key) || { name: category, value: 0, categoryId: t.category?.id };
-                    current.value += Math.abs(t.amount);
-                    categoryTotals.set(key, current);
-                } else if (t.amount > 0) {
-                    totalInc += t.amount;
-                }
+        for (const t of transactions) {
+            // Transfers between your own accounts are plumbing, not spending.
+            if (t.transferId) continue;
+            // Reconciliation adjustments are bookkeeping plugs, not spending.
+            if (typeof t.payee === 'string' && t.payee.includes(RECONCILIATION_ADJUSTMENT_PAYEE)) continue;
+            if (t.amount < 0) {
+                const category = t.category?.name || 'Uncategorized';
+                const key = t.category?.id || `__uncat__${category}`;
+                const current = categoryTotals.get(key) || { name: category, value: 0, categoryId: t.category?.id };
+                current.value += Math.abs(t.amount);
+                categoryTotals.set(key, current);
+            } else if (t.amount > 0) {
+                totalInc += t.amount;
             }
-
-            const sorted = Array.from(categoryTotals.values())
-                .sort((a, b) => b.value - a.value)
-                .slice(0, 10)
-                .map((entry, i) => ({
-                    name: entry.name,
-                    value: entry.value,
-                    color: COLORS[i % COLORS.length],
-                    categoryId: entry.categoryId,
-                }));
-
-            setSpendingData(sorted);
-            setTotalIncome(totalInc);
-        } catch (err) {
-            console.error('Failed to fetch spending data:', err);
-        } finally {
-            setLoading(false);
         }
-    }, [selectedDate]);
 
-    useEffect(() => {
-        fetchSpendingData();
-    }, [fetchSpendingData]);
+        const sorted: SpendingData[] = Array.from(categoryTotals.values())
+            .sort((a, b) => b.value - a.value)
+            .slice(0, 10)
+            .map((entry, i) => ({
+                name: entry.name,
+                value: entry.value,
+                color: COLORS[i % COLORS.length],
+                categoryId: entry.categoryId,
+            }));
+
+        return { spendingData: sorted, totalIncome: totalInc };
+    }, [json]);
 
     function changeMonth(delta: number) {
         setSelectedDate(prev => {

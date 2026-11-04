@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useMemo } from 'react';
+import { useApi } from '@/lib/useApi';
 import { BarChart3, Calendar } from 'lucide-react';
 import {
     ResponsiveContainer,
@@ -43,32 +44,19 @@ export default function ByPayeeTab({ currency, excludeCategoryNames }: Props) {
     const router = useRouter();
     const [months, setMonths] = useState(6);
     const [showRangeDropdown, setShowRangeDropdown] = useState(false);
-    const [data, setData] = useState<PayeeSpendingData[]>([]);
-    const [loading, setLoading] = useState(true);
 
     const excludeQueryParam = useMemo(
         () => Array.from(excludeCategoryNames).join(','),
         [excludeCategoryNames]
     );
 
-    const fetchData = useCallback(async () => {
-        setLoading(true);
-        try {
-            const params = new URLSearchParams({ type: 'spending-by-payee', months: String(months) });
-            if (excludeQueryParam) params.set('excludeCategories', excludeQueryParam);
-            const res = await fetch(`/api/reports/advanced?${params.toString()}`);
-            const json = await res.json();
-            setData(json.data || []);
-        } catch (err) {
-            console.error('Failed to fetch payee data:', err);
-        } finally {
-            setLoading(false);
-        }
-    }, [months, excludeQueryParam]);
-
-    useEffect(() => {
-        fetchData();
-    }, [fetchData]);
+    const params = new URLSearchParams({ type: 'spending-by-payee', months: String(months) });
+    if (excludeQueryParam) params.set('excludeCategories', excludeQueryParam);
+    const { data: json, isLoading: loading } = useApi<{ data?: PayeeSpendingData[] }>(
+        `/api/reports/advanced?${params.toString()}`,
+        { onError: err => console.error('Failed to fetch payee data:', err) }
+    );
+    const data = json?.data ?? [];
 
     return (
         <div className="space-y-6">

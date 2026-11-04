@@ -58,6 +58,28 @@ export function useApi<T = unknown>(
     return useSWR<T, Error>(url, apiFetcher<T>, config);
 }
 
+/** Key for `useApiQuery`: an API path followed by any extra key parts. */
+export type ApiQueryKey = readonly [path: string, ...rest: unknown[]];
+
+/**
+ * Like `useApi`, for reads that need more than one GET (e.g. a report built
+ * from several requests). The first key element is the API path the data
+ * comes from, so `revalidateApi(path)` refreshes it too.
+ */
+export function useApiQuery<T, K extends ApiQueryKey = ApiQueryKey>(
+    key: K | null,
+    fetcher: (key: K) => Promise<T>,
+    config?: SWRConfiguration<T, Error>
+): SWRResponse<T, Error> {
+    return useSWR<T, Error>(key, (k: K) => fetcher(k), config);
+}
+
+function keyPath(key: unknown): string | null {
+    if (typeof key === 'string') return key;
+    if (Array.isArray(key) && typeof key[0] === 'string') return key[0];
+    return null;
+}
+
 function matchesPrefix(key: string, prefix: string): boolean {
     return key === prefix || key.startsWith(`${prefix}?`) || key.startsWith(`${prefix}/`);
 }
@@ -69,10 +91,12 @@ function matchesPrefix(key: string, prefix: string): boolean {
  * `/api/budget?month=...` and `/api/budget/forecast?...`).
  */
 export function revalidateApi(...paths: string[]): Promise<unknown[]> {
-    return globalMutate(
-        (key) =>
-            typeof key === 'string' &&
-            key.startsWith('/api/') &&
-            (paths.length === 0 || paths.some((p) => matchesPrefix(key, p)))
-    );
+    return globalMutate((key) => {
+        const path = keyPath(key);
+        return (
+            path !== null &&
+            path.startsWith('/api/') &&
+            (paths.length === 0 || paths.some((p) => matchesPrefix(path, p)))
+        );
+    });
 }
