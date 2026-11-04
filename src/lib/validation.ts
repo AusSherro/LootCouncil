@@ -21,13 +21,13 @@ const NUMERIC_STRING = /^\s*[-+]?(?:\d+\.?\d*|\.\d+)\s*$/;
  * Accepts a finite number, or a string that is entirely a decimal number
  * (form inputs sometimes arrive as strings). Anything else is rejected.
  */
-const numberLike = z.union([
+export const finiteNumber = z.union([
     z.number(),
     z.string().regex(NUMERIC_STRING, 'must be a number').transform(Number),
 ], { error: 'must be a number' }).refine(Number.isFinite, 'must be a finite number');
 
 /** A dollar amount from the client, within ±MAX_AMOUNT_DOLLARS. Output is still dollars. */
-export const moneyAmount = numberLike.refine(
+export const moneyAmount = finiteNumber.refine(
     value => Math.abs(value) <= MAX_AMOUNT_DOLLARS,
     `must be between -${MAX_AMOUNT_DOLLARS} and ${MAX_AMOUNT_DOLLARS}`,
 );

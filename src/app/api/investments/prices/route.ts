@@ -2,8 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import YahooFinance from 'yahoo-finance2';
 import { getProfileId } from '@/lib/profile';
+import { z } from 'zod';
+import { parseWith, requiredText } from '@/lib/validation';
 
 const yahooFinance = new YahooFinance();
+
+const refreshPricesSchema = z.object({
+    symbols: z.array(requiredText(30)).max(500).optional(),
+    assetClass: requiredText(30).optional(),
+});
 
 // Fetch live prices for assets
 export async function POST(request: NextRequest) {
@@ -12,16 +19,18 @@ export async function POST(request: NextRequest) {
         let symbols: string[] | undefined;
         let assetClass: string | undefined;
         
-        // Handle empty or invalid JSON body gracefully
-        try {
-            const text = await request.text();
-            if (text) {
-                const body = JSON.parse(text);
-                symbols = body.symbols;
-                assetClass = body.assetClass;
+        // An empty body means "refresh everything"; a body must be valid JSON.
+        const text = await request.text();
+        if (text.trim()) {
+            let body: unknown;
+            try {
+                body = JSON.parse(text);
+            } catch {
+                return NextResponse.json({ error: 'Invalid request: body must be valid JSON' }, { status: 400 });
             }
-        } catch {
-            // Body is empty or invalid JSON - proceed with defaults (fetch all)
+            const parsed = parseWith(refreshPricesSchema, body);
+            if (!parsed.success) return parsed.response;
+            ({ symbols, assetClass } = parsed.data);
         }
 
         // If no symbols provided, fetch all non-manual assets for this profile

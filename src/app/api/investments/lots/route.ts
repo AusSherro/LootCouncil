@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
+import { z } from 'zod';
+import { finiteNumber, idString, isoDate, MAX_AMOUNT_CENTS, parseBody } from '@/lib/validation';
 
 // GET all lots for an asset
 export async function GET(request: NextRequest) {
@@ -51,18 +53,28 @@ export async function GET(request: NextRequest) {
     }
 }
 
+// unitPrice and brokerage arrive in cents but may be fractional (the form
+// multiplies a dollar input by 100); they are rounded below.
+const centsInput = finiteNumber.refine(
+    value => value >= 0 && value <= MAX_AMOUNT_CENTS,
+    'must be a non-negative amount in cents',
+);
+
+const createLotSchema = z.object({
+    assetId: idString,
+    purchaseDate: isoDate,
+    units: finiteNumber.refine(value => value > 0 && value <= 1e12, 'must be greater than 0'),
+    unitPrice: centsInput.refine(value => value > 0, 'must be greater than 0'),
+    brokerage: centsInput.nullish(),
+});
+
 // POST create new lot (purchase)
 export async function POST(request: NextRequest) {
     try {
         const profileId = await getProfileId(request);
-        const body = await request.json();
-        const { assetId, purchaseDate, units, unitPrice, brokerage } = body;
-
-        if (!assetId || !purchaseDate || !units || !unitPrice) {
-            return NextResponse.json({ 
-                error: 'assetId, purchaseDate, units, and unitPrice are required' 
-            }, { status: 400 });
-        }
+        const parsed = await parseBody(request, createLotSchema);
+        if (!parsed.success) return parsed.response;
+        const { assetId, purchaseDate, units, unitPrice, brokerage } = parsed.data;
 
         // Verify asset belongs to profile
         const asset = await prisma.asset.findUnique({ where: { id: assetId, profileId } });
@@ -70,16 +82,15 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Asset not found' }, { status: 404 });
         }
 
-        // unitPrice and brokerage are already in cents from the client
-        const parsedUnits = parseFloat(units);
-        const parsedUnitPrice = Math.round(parseFloat(unitPrice));
-        const parsedBrokerage = Math.round(parseFloat(brokerage) || 0);
+        const parsedUnits = units;
+        const parsedUnitPrice = Math.round(unitPrice);
+        const parsedBrokerage = Math.round(brokerage ?? 0);
         const totalCost = Math.round(parsedUnits * parsedUnitPrice) + parsedBrokerage;
 
         const lot = await prisma.assetLot.create({
             data: {
                 assetId,
-                purchaseDate: new Date(purchaseDate),
+                purchaseDate,
                 units: parsedUnits,
                 unitPrice: parsedUnitPrice,
                 totalCost,

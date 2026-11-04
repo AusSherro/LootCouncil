@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
+import { z } from 'zod';
+import { parseBody, requiredText } from '@/lib/validation';
 import { getExchangeRate } from '@/lib/exchangeRate';
 
 const HOME_CURRENCY = 'AUD';
@@ -101,16 +103,21 @@ export async function GET(request: NextRequest) {
     }
 }
 
+const allocationTargetsSchema = z.object({
+    targets: z.array(z.object({
+        assetClass: requiredText(30),
+        targetPct: z.number().finite().min(0).max(1).nullish(),
+        priority: z.number().int().min(0).max(1000).nullish(),
+    })).max(50),
+});
+
 // POST/PUT update allocation targets
 export async function POST(request: NextRequest) {
     try {
         const profileId = await getProfileId(request);
-        const body = await request.json();
-        const { targets } = body;
-
-        if (!Array.isArray(targets)) {
-            return NextResponse.json({ error: 'targets array is required' }, { status: 400 });
-        }
+        const parsed = await parseBody(request, allocationTargetsSchema);
+        if (!parsed.success) return parsed.response;
+        const { targets } = parsed.data;
 
         // Validate total doesn't exceed 100%
         const totalTarget = targets.reduce((sum, t) => sum + (t.targetPct || 0), 0);
