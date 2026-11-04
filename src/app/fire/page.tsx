@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import {
     Flame, RefreshCw, Settings, DollarSign,
     Calendar, Target, Save, ChevronRight
@@ -9,6 +9,7 @@ import { formatCurrency } from '@/lib/utils';
 import { useSettings } from '@/components/SettingsProvider';
 import { useToast } from '@/components/Toast';
 import GoldCoinSpinner from '@/components/GoldCoinSpinner';
+import { useApi } from '@/lib/useApi';
 
 interface FIREData {
     settings: {
@@ -51,11 +52,16 @@ export default function FIREPage() {
     const { showToast } = useToast();
     const currency = settings?.currency || 'AUD';
     const fmt = useCallback((cents: number) => formatFireCurrency(cents, currency), [currency]);
-    const [data, setData] = useState<FIREData | null>(null);
-    const [loading, setLoading] = useState(true);
+    const fireQuery = useApi<FIREData>('/api/fire', {
+        onError: err => console.error('Failed to fetch FIRE data:', err),
+    });
+    const data = fireQuery.data ?? null;
+    // Show the spinner on first load and while retrying after an error
+    const loading = fireQuery.isLoading || (fireQuery.isValidating && !!fireQuery.error);
+    const loadError = fireQuery.error ? (fireQuery.error.message || 'Failed to load FIRE data') : null;
+    const fetchData = fireQuery.mutate;
     const [editing, setEditing] = useState(false);
     const [saving, setSaving] = useState(false);
-    const [loadError, setLoadError] = useState<string | null>(null);
 
     // Form state
     const [currentAge, setCurrentAge] = useState(30);
@@ -64,36 +70,20 @@ export default function FIREPage() {
     const [expectedReturn, setExpectedReturn] = useState(7);
     const [inflationRate, setInflationRate] = useState(3);
 
-    const fetchData = useCallback(async () => {
-        try {
-            const res = await fetch('/api/fire');
-            if (!res.ok) throw new Error('Failed to load FIRE data');
-            const fireData = await res.json();
-            setData(fireData);
-            setLoadError(null);
-
-            // Populate form with current settings
-            if (fireData.settings) {
-                // Calculate current age from year of birth
-                const age = new Date().getFullYear() - (fireData.settings.yearOfBirth || 1990);
-                setCurrentAge(age);
-                setTargetExpenses(Math.round((fireData.settings.annualExpenses || 0) / 100));
-                // Convert from decimal to percentage for display
-                setWithdrawalRate((fireData.settings.withdrawalRate || 0.04) * 100);
-                setExpectedReturn((fireData.settings.expectedReturn || 0.07) * 100);
-                setInflationRate((fireData.settings.inflationRate || 0.03) * 100);
-            }
-        } catch (err) {
-            console.error('Failed to fetch FIRE data:', err);
-            setLoadError(err instanceof Error ? err.message : 'Failed to load FIRE data');
-        } finally {
-            setLoading(false);
+    // Populate the form from the saved settings when editing starts
+    function toggleEditing() {
+        if (!editing && data?.settings) {
+            // Calculate current age from year of birth
+            const age = new Date().getFullYear() - (data.settings.yearOfBirth || 1990);
+            setCurrentAge(age);
+            setTargetExpenses(Math.round((data.settings.annualExpenses || 0) / 100));
+            // Convert from decimal to percentage for display
+            setWithdrawalRate((data.settings.withdrawalRate || 0.04) * 100);
+            setExpectedReturn((data.settings.expectedReturn || 0.07) * 100);
+            setInflationRate((data.settings.inflationRate || 0.03) * 100);
         }
-    }, []);
-
-    useEffect(() => {
-        fetchData();
-    }, [fetchData]);
+        setEditing(!editing);
+    }
 
     async function handleSave() {
         setSaving(true);
@@ -142,7 +132,7 @@ export default function FIREPage() {
                     <h2 className="text-lg font-semibold text-foreground mb-2">Couldn&apos;t load FIRE data</h2>
                     <p className="text-neutral mb-6">{loadError}</p>
                     <button
-                        onClick={() => { setLoading(true); fetchData(); }}
+                        onClick={() => { void fetchData(); }}
                         className="btn btn-secondary inline-flex items-center gap-2"
                     >
                         <RefreshCw className="w-4 h-4" />
@@ -171,7 +161,7 @@ export default function FIREPage() {
                     </div>
                 </div>
                 <button
-                    onClick={() => setEditing(!editing)}
+                    onClick={toggleEditing}
                     className="btn btn-ghost"
                 >
                     {editing ? (

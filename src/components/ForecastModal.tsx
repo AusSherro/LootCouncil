@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { X, TrendingUp, Calendar, DollarSign, AlertTriangle, CheckCircle2, ChevronDown, Sparkles, Info } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import { getMonthOffset } from '@/lib/budgetUtils';
@@ -93,8 +93,12 @@ export default function ForecastModal({
     const [error, setError] = useState<string | null>(null);
     const [hasQueried, setHasQueried] = useState(false);
 
-    // Reset when modal opens
-    useEffect(() => {
+    // Reset when the modal opens (adjusting state during render rather than in
+    // an effect).
+    const resetKey = `${isOpen}|${currentMonth}`;
+    const [prevResetKey, setPrevResetKey] = useState(resetKey);
+    if (resetKey !== prevResetKey) {
+        setPrevResetKey(resetKey);
         if (isOpen) {
             setTargetMonth(getMonthOffset(currentMonth, 3));
             setExpenseMonth(getMonthOffset(currentMonth, 3));
@@ -107,19 +111,21 @@ export default function ForecastModal({
             setError(null);
             setHasQueried(false);
         }
-    }, [isOpen, currentMonth]);
+    }
 
-    // Sync expense month with target month when target changes
-    useEffect(() => {
-        setExpenseMonth(prev => prev > targetMonth ? targetMonth : prev);
-    }, [targetMonth]);
+    // Keep the expense month within the forecast window when the target moves
+    function changeTargetMonth(month: string) {
+        setTargetMonth(month);
+        setExpenseMonth(prev => prev > month ? month : prev);
+    }
 
-    // Auto-extend target month if expense month is set beyond it
-    useEffect(() => {
-        if (expenseMonth > targetMonth) {
-            setTargetMonth(expenseMonth);
+    // Auto-extend the target month if the expense month is set beyond it
+    function changeExpenseMonth(month: string) {
+        setExpenseMonth(month);
+        if (month > targetMonth) {
+            setTargetMonth(month);
         }
-    }, [expenseMonth, targetMonth]);
+    }
 
     const fetchForecast = useCallback(async () => {
         setLoading(true);
@@ -261,7 +267,7 @@ export default function ForecastModal({
                                 type="month"
                                 value={targetMonth}
                                 min={minTargetMonth}
-                                onChange={(e) => setTargetMonth(e.target.value)}
+                                onChange={(e) => changeTargetMonth(e.target.value)}
                                 className="input w-full"
                             />
                         </div>
@@ -280,7 +286,7 @@ export default function ForecastModal({
                                 type="month"
                                 value={expenseMonth}
                                 min={minTargetMonth}
-                                onChange={(e) => setExpenseMonth(e.target.value)}
+                                onChange={(e) => changeExpenseMonth(e.target.value)}
                                 className="input w-full"
                             />
                         </div>

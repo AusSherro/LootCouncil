@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useMemo, useState } from 'react';
+import { apiFetcher, useApiQuery } from '@/lib/useApi';
 import { BarChart3, Calendar } from 'lucide-react';
 import {
     ResponsiveContainer,
@@ -52,93 +53,121 @@ function getMonthRange(date: Date) {
  * configurable range, plus summary cards (avg income/expense/savings) and a
  * monthly breakdown table. Honors the global category exclusion set.
  */
+interface RawMonth {
+    month: string;
+    startDate: string;
+    endDate: string;
+    /** Cents */
+    income: number;
+    /** Cents of outflow keyed by category name ('Uncategorized' when none) */
+    expenseByCategory: Record<string, number>;
+}
+
+interface ReportTransaction {
+    date: string;
+    amount: number;
+    payee?: string | null;
+    transferId?: string | null;
+    category?: { name?: string } | null;
+}
+
+/** Fetch per-month income and per-category expense totals for the report. */
+async function fetchIncomeExpenseMonths(requestedMonths: number): Promise<RawMonth[]> {
+    const now = new Date();
+    let monthsToFetch = requestedMonths;
+
+    // For "All Time", fetch all transactions and calculate range
+    if (monthsToFetch === 0) {
+        const allData = await apiFetcher<{ transactions?: ReportTransaction[] }>('/api/transactions?limit=10000');
+        const transactions = allData.transactions || [];
+
+        if (transactions.length > 0) {
+            const dates = transactions.map(t => new Date(t.date));
+            const oldest = new Date(Math.min(...dates.map(d => d.getTime())));
+            const diffMonths = (now.getFullYear() - oldest.getFullYear()) * 12 + (now.getMonth() - oldest.getMonth()) + 1;
+            monthsToFetch = Math.max(diffMonths, 12);
+        } else {
+            monthsToFetch = 12;
+        }
+    }
+
+    const months: RawMonth[] = [];
+
+    for (let i = monthsToFetch - 1; i >= 0; i--) {
+        const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const { start, end } = getMonthRange(date);
+
+        const json = await apiFetcher<{ transactions?: ReportTransaction[] }>(
+            `/api/transactions?limit=2000&startDate=${start.toISOString()}&endDate=${end.toISOString()}`
+        );
+        const transactions = json.transactions || [];
+
+        let income = 0;
+        const expenseByCategory: Record<string, number> = {};
+
+        for (const t of transactions) {
+            // Transfers between your own accounts aren't real income or expense.
+            if (t.transferId) continue;
+            // Reconciliation adjustments aren't real money flow either — they're
+            // bookkeeping plugs created when matching the bank statement.
+            if (typeof t.payee === 'string' && t.payee.includes(RECONCILIATION_ADJUSTMENT_PAYEE)) continue;
+            if (t.amount > 0) {
+                // Income always counts — even if uncategorized — otherwise
+                // paychecks the user hasn't categorised get hidden.
+                income += t.amount;
+            } else {
+                // The global category exclusion is applied to expenses later.
+                const catName = t.category?.name || 'Uncategorized';
+                expenseByCategory[catName] = (expenseByCategory[catName] ?? 0) + Math.abs(t.amount);
+            }
+        }
+
+        const monthLabel = monthsToFetch > 12
+            ? date.toLocaleDateString('en-AU', { month: 'short', year: '2-digit' })
+            : date.toLocaleDateString('en-AU', { month: 'short' });
+
+        months.push({
+            month: monthLabel,
+            startDate: start.toISOString(),
+            endDate: end.toISOString(),
+            income,
+            expenseByCategory,
+        });
+    }
+
+    return months;
+}
+
 export default function IncomeExpenseTab({ currency, excludeCategoryNames }: Props) {
     const router = useRouter();
     const [incomeExpenseMonths, setIncomeExpenseMonths] = useState(12);
     const [showRangeDropdown, setShowRangeDropdown] = useState(false);
-    const [data, setData] = useState<IncomeExpenseData[]>([]);
-    const [loading, setLoading] = useState(true);
 
-    const fetchData = useCallback(async () => {
-        setLoading(true);
-        try {
-            const now = new Date();
-            let monthsToFetch = incomeExpenseMonths;
+    const { data: rawMonths, isLoading: loading } = useApiQuery(
+        ['/api/transactions', 'income-expense-report', incomeExpenseMonths] as const,
+        ([, , months]) => fetchIncomeExpenseMonths(months),
+        { onError: err => console.error('Failed to fetch income/expense data:', err) }
+    );
 
-            // For "All Time", fetch all transactions and calculate range
-            if (monthsToFetch === 0) {
-                const allRes = await fetch('/api/transactions?limit=10000');
-                const allData = await allRes.json();
-                const transactions = allData.transactions || [];
-
-                if (transactions.length > 0) {
-                    const dates = transactions.map((t: { date: string }) => new Date(t.date));
-                    const oldest = new Date(Math.min(...dates.map((d: Date) => d.getTime())));
-                    const diffMonths = (now.getFullYear() - oldest.getFullYear()) * 12 + (now.getMonth() - oldest.getMonth()) + 1;
-                    monthsToFetch = Math.max(diffMonths, 12);
-                } else {
-                    monthsToFetch = 12;
-                }
+    // The category exclusion only affects expenses and is applied locally, so
+    // toggling it does not refetch.
+    const data = useMemo<IncomeExpenseData[]>(() => {
+        if (!rawMonths) return [];
+        return rawMonths.map(m => {
+            let expense = 0;
+            for (const [catName, amount] of Object.entries(m.expenseByCategory)) {
+                if (!excludeCategoryNames.has(catName)) expense += amount;
             }
-
-            const months: IncomeExpenseData[] = [];
-
-            for (let i = monthsToFetch - 1; i >= 0; i--) {
-                const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
-                const { start, end } = getMonthRange(date);
-
-                const res = await fetch(
-                    `/api/transactions?limit=2000&startDate=${start.toISOString()}&endDate=${end.toISOString()}`
-                );
-                const json = await res.json();
-                const transactions = json.transactions || [];
-
-                let income = 0;
-                let expense = 0;
-
-                for (const t of transactions) {
-                    // Transfers between your own accounts aren't real income or expense.
-                    if (t.transferId) continue;
-                    // Reconciliation adjustments aren't real money flow either — they're
-                    // bookkeeping plugs created when matching the bank statement.
-                    if (typeof t.payee === 'string' && t.payee.includes(RECONCILIATION_ADJUSTMENT_PAYEE)) continue;
-                    if (t.amount > 0) {
-                        // Income always counts — even if uncategorized — otherwise
-                        // paychecks the user hasn't categorised get hidden.
-                        income += t.amount;
-                    } else {
-                        // Apply the global category exclusion only to expenses.
-                        const catName = t.category?.name || 'Uncategorized';
-                        if (excludeCategoryNames.has(catName)) continue;
-                        expense += Math.abs(t.amount);
-                    }
-                }
-
-                const monthLabel = monthsToFetch > 12
-                    ? date.toLocaleDateString('en-AU', { month: 'short', year: '2-digit' })
-                    : date.toLocaleDateString('en-AU', { month: 'short' });
-
-                months.push({
-                    month: monthLabel,
-                    income: income / 100,
-                    expense: expense / 100,
-                    net: (income - expense) / 100,
-                    startDate: start.toISOString(),
-                    endDate: end.toISOString(),
-                });
-            }
-
-            setData(months);
-        } catch (err) {
-            console.error('Failed to fetch income/expense data:', err);
-        } finally {
-            setLoading(false);
-        }
-    }, [incomeExpenseMonths, excludeCategoryNames]);
-
-    useEffect(() => {
-        fetchData();
-    }, [fetchData]);
+            return {
+                month: m.month,
+                income: m.income / 100,
+                expense: expense / 100,
+                net: (m.income - expense) / 100,
+                startDate: m.startDate,
+                endDate: m.endDate,
+            };
+        });
+    }, [rawMonths, excludeCategoryNames]);
 
     const avgIncome = data.length > 0
         ? data.reduce((sum, d) => sum + d.income, 0) / data.length

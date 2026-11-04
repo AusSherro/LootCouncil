@@ -1,8 +1,9 @@
 'use client';
 
 import { CheckSquare, Square, X, Lock, AlertCircle, Check } from 'lucide-react';
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import { formatCurrency } from '@/lib/utils';
+import { useApi } from '@/lib/useApi';
 import ModalDialog from './ModalDialog';
 
 interface Transaction {
@@ -23,6 +24,17 @@ interface ReconcileStatus {
     accountBalance: number;
 }
 
+interface ReconcileResponse {
+    calculatedClearedBalance?: number;
+    calculatedReconciledBalance?: number;
+    unreconciledCleared?: unknown[];
+    account?: {
+        clearedBalance?: number;
+        lastReconciled?: string | null;
+        balance?: number;
+    };
+}
+
 interface Props {
     isOpen: boolean;
     onClose: () => void;
@@ -37,59 +49,45 @@ function formatDate(dateStr: string): string {
 }
 
 export default function ReconciliationModeModal({ isOpen, onClose, onSuccess, accountId, accountName }: Props) {
-    const [status, setStatus] = useState<ReconcileStatus | null>(null);
-    const [transactions, setTransactions] = useState<Transaction[]>([]);
-    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-    const [loading, setLoading] = useState(true);
+    const { data: statusData, mutate: refreshStatus } = useApi<ReconcileResponse>(
+        isOpen ? `/api/reconcile?accountId=${encodeURIComponent(accountId)}` : null
+    );
+    const { data: transactionsData, isLoading: loading, mutate: refreshTransactions } = useApi<{ transactions?: Transaction[] }>(
+        isOpen ? `/api/transactions?accountId=${encodeURIComponent(accountId)}&limit=500` : null
+    );
+
+    const status: ReconcileStatus | null = statusData
+        ? {
+            clearedBalance: statusData.calculatedClearedBalance ?? statusData.account?.clearedBalance ?? 0,
+            reconciledBalance: statusData.calculatedReconciledBalance ?? 0,
+            unclearedCount: statusData.unreconciledCleared?.length ?? 0,
+            lastReconciled: statusData.account?.lastReconciled ?? null,
+            accountBalance: statusData.account?.balance ?? 0,
+        }
+        : null;
+    // Only show cleared but not yet reconciled transactions
+    const transactions = (transactionsData?.transactions ?? []).filter(t => t.cleared && !t.isReconciled);
+
+    // `null` means "everything loaded" — all transactions are selected by default.
+    const [selection, setSelectedIds] = useState<Set<string> | null>(null);
+    const selectedIds = selection ?? new Set(transactions.map(t => t.id));
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [statementBalance, setStatementBalance] = useState('');
     const [step, setStep] = useState<'select' | 'confirm'>('select');
 
-    const fetchStatus = useCallback(async () => {
-        try {
-            const res = await fetch(`/api/reconcile?accountId=${accountId}`);
-            const data = await res.json();
-            setStatus({
-                clearedBalance: data.calculatedClearedBalance ?? data.account?.clearedBalance ?? 0,
-                reconciledBalance: data.calculatedReconciledBalance ?? 0,
-                unclearedCount: data.unreconciledCleared?.length ?? 0,
-                lastReconciled: data.account?.lastReconciled ?? null,
-                accountBalance: data.account?.balance ?? 0,
-            });
-        } catch (err) {
-            console.error('Failed to fetch reconcile status:', err);
-        }
-    }, [accountId]);
-
-    const fetchTransactions = useCallback(async () => {
-        setLoading(true);
-        try {
-            const res = await fetch(`/api/transactions?accountId=${accountId}&limit=500`);
-            const data = await res.json();
-            // Filter to only show cleared but not yet reconciled transactions
-            const clearedUnreconciled = (data.transactions || []).filter(
-                (t: Transaction) => t.cleared && !t.isReconciled
-            );
-            setTransactions(clearedUnreconciled);
-            // Select all by default
-            setSelectedIds(new Set(clearedUnreconciled.map((t: Transaction) => t.id)));
-        } catch (err) {
-            console.error('Failed to fetch transactions:', err);
-        } finally {
-            setLoading(false);
-        }
-    }, [accountId]);
-
-    useEffect(() => {
+    // Reset the wizard each time the modal opens (adjusting state during
+    // render rather than in an effect).
+    const resetKey = `${isOpen}|${accountId}`;
+    const [prevResetKey, setPrevResetKey] = useState(resetKey);
+    if (resetKey !== prevResetKey) {
+        setPrevResetKey(resetKey);
         if (isOpen) {
-            fetchStatus();
-            fetchTransactions();
-            setSelectedIds(new Set());
+            setSelectedIds(null);
             setStatementBalance('');
             setStep('select');
         }
-    }, [isOpen, fetchStatus, fetchTransactions]);
+    }
 
     function toggleTransaction(id: string) {
         const newSet = new Set(selectedIds);
@@ -141,7 +139,9 @@ export default function ReconciliationModeModal({ isOpen, onClose, onSuccess, ac
                     throw new Error('Failed to mark transactions as reconciled');
                 }
 
-                await Promise.all([fetchStatus(), fetchTransactions()]);
+                await Promise.all([refreshStatus(), refreshTransactions()]);
+                // Select all remaining transactions again
+                setSelectedIds(null);
             }
 
             setStep('confirm');

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import { 
     Calendar, Plus, RefreshCw, Trash2, Edit3, Clock, 
     AlertTriangle, CheckCircle, X, Repeat, ChevronRight 
@@ -9,6 +9,7 @@ import { formatCurrency, toLocalDateString } from '@/lib/utils';
 import { useToast } from '@/components/Toast';
 import { useConfirmDialog } from '@/components/ConfirmDialog';
 import ModalDialog from './ModalDialog';
+import { revalidateApi, useApi } from '@/lib/useApi';
 
 interface ScheduledTransaction {
     id: string;
@@ -66,59 +67,35 @@ interface ScheduledTransactionsProps {
 }
 
 export default function ScheduledTransactions({ compact, limit, onViewAll }: ScheduledTransactionsProps) {
-    const [scheduled, setScheduled] = useState<ScheduledTransaction[]>([]);
-    const [loading, setLoading] = useState(true);
     const [showAddModal, setShowAddModal] = useState(false);
     const [editingItem, setEditingItem] = useState<ScheduledTransaction | null>(null);
-    const [accounts, setAccounts] = useState<Account[]>([]);
-    const [categories, setCategories] = useState<Category[]>([]);
     const { showToast } = useToast();
     const { confirm, Dialog: ConfirmDialogModal } = useConfirmDialog();
 
-    const fetchScheduled = useCallback(async () => {
-        setLoading(true);
-        try {
-            const res = await fetch('/api/scheduled');
-            if (!res.ok) throw new Error('Failed to load scheduled transactions');
-            const data = await res.json();
-            setScheduled(data.scheduled || []);
-        } catch (err) {
-            console.error('Failed to fetch scheduled transactions:', err);
-        } finally {
-            setLoading(false);
-        }
-    }, []);
+    const { data: scheduledData, isLoading: loading, mutate: refreshScheduled } = useApi<{ scheduled?: ScheduledTransaction[] }>(
+        '/api/scheduled',
+        { onError: err => console.error('Failed to fetch scheduled transactions:', err) }
+    );
+    const scheduled = scheduledData?.scheduled ?? [];
+    function fetchScheduled() {
+        return refreshScheduled();
+    }
 
-    useEffect(() => {
-        fetchScheduled();
-        // Fetch accounts and categories for the form
-        fetch('/api/accounts')
-            .then(r => {
-                if (!r.ok) throw new Error('Failed to load accounts');
-                return r.json();
-            })
-            .then(d => setAccounts(d.accounts || []))
-            .catch(err => {
-                console.error('Failed to fetch accounts:', err);
-                showToast('Could not load accounts', 'error');
-            });
-        fetch('/api/categories')
-            .then(r => {
-                if (!r.ok) throw new Error('Failed to load categories');
-                return r.json();
-            })
-            .then(d => {
-                const allCats: Category[] = [];
-                (d.categoryGroups || []).forEach((g: { categories: Category[] }) => {
-                    allCats.push(...g.categories);
-                });
-                setCategories(allCats);
-            })
-            .catch(err => {
-                console.error('Failed to fetch categories:', err);
-                showToast('Could not load categories', 'error');
-            });
-    }, [fetchScheduled, showToast]);
+    // Accounts and categories for the form
+    const { data: accountsData } = useApi<{ accounts?: Account[] }>('/api/accounts', {
+        onError: err => {
+            console.error('Failed to fetch accounts:', err);
+            showToast('Could not load accounts', 'error');
+        },
+    });
+    const accounts = accountsData?.accounts ?? [];
+    const { data: categoriesData } = useApi<{ categoryGroups?: Array<{ categories: Category[] }> }>('/api/categories', {
+        onError: err => {
+            console.error('Failed to fetch categories:', err);
+            showToast('Could not load categories', 'error');
+        },
+    });
+    const categories = (categoriesData?.categoryGroups ?? []).flatMap(g => g.categories);
 
     async function handleDelete(id: string) {
         confirm({
@@ -146,7 +123,8 @@ export default function ScheduledTransactions({ compact, limit, onViewAll }: Sch
             if (!res.ok) throw new Error(data.error || 'Failed to process scheduled transactions');
             if (data.processed > 0) {
                 showToast(`Created ${data.processed} transaction${data.processed === 1 ? '' : 's'} from scheduled items.`, 'success');
-                fetchScheduled();
+                // New transactions change balances, budget activity and lists
+                void revalidateApi();
             } else {
                 showToast('No scheduled transactions are due for auto-creation.', 'info');
             }

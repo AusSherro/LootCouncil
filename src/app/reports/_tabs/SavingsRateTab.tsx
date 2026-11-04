@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useMemo } from 'react';
+import { useApi } from '@/lib/useApi';
 import { useRouter } from 'next/navigation';
 import { Calendar, PiggyBank } from 'lucide-react';
 import {
@@ -63,47 +64,32 @@ export default function SavingsRateTab({ currency, excludeCategoryNames }: Props
     const router = useRouter();
     const [months, setMonths] = useState(12);
     const [showRangeDropdown, setShowRangeDropdown] = useState(false);
-    const [data, setData] = useState<SavingsRow[]>([]);
-    const [loading, setLoading] = useState(true);
 
     const excludeQueryParam = useMemo(
         () => Array.from(excludeCategoryNames).join(','),
         [excludeCategoryNames]
     );
 
-    const fetchData = useCallback(async () => {
-        setLoading(true);
-        try {
-            const params = new URLSearchParams({ type: 'income-expense', months: String(months) });
-            if (excludeQueryParam) params.set('excludeCategories', excludeQueryParam);
-            const res = await fetch(`/api/reports/advanced?${params.toString()}`);
-            const json = await res.json();
-            const rows: ApiIncomeExpenseRow[] = json.data || [];
-            const transformed: SavingsRow[] = rows.map(r => {
-                const income = r.income / 100;
-                const expense = r.expense / 100;
-                const net = (r.income - r.expense) / 100;
-                const savingsRate = r.income > 0 ? (r.income - r.expense) / r.income * 100 : 0;
-                return {
-                    month: r.month,
-                    monthLabel: formatMonthKey(r.month),
-                    income,
-                    expense,
-                    net,
-                    savingsRate: Math.round(savingsRate * 10) / 10,
-                };
-            });
-            setData(transformed);
-        } catch (err) {
-            console.error('Failed to fetch savings rate data:', err);
-        } finally {
-            setLoading(false);
-        }
-    }, [months, excludeQueryParam]);
-
-    useEffect(() => {
-        fetchData();
-    }, [fetchData]);
+    const params = new URLSearchParams({ type: 'income-expense', months: String(months) });
+    if (excludeQueryParam) params.set('excludeCategories', excludeQueryParam);
+    const { data: json, isLoading: loading } = useApi<{ data?: ApiIncomeExpenseRow[] }>(
+        `/api/reports/advanced?${params.toString()}`,
+        { onError: err => console.error('Failed to fetch savings rate data:', err) }
+    );
+    const data = useMemo<SavingsRow[]>(() => (json?.data ?? []).map(r => {
+        const income = r.income / 100;
+        const expense = r.expense / 100;
+        const net = (r.income - r.expense) / 100;
+        const savingsRate = r.income > 0 ? (r.income - r.expense) / r.income * 100 : 0;
+        return {
+            month: r.month,
+            monthLabel: formatMonthKey(r.month),
+            income,
+            expense,
+            net,
+            savingsRate: Math.round(savingsRate * 10) / 10,
+        };
+    }), [json]);
 
     const summary = useMemo(() => {
         if (data.length === 0) {

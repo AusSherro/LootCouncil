@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { X, ArrowRight, DollarSign } from 'lucide-react';
 import ModalDialog from './ModalDialog';
 import { toLocalDateString } from '@/lib/utils';
+import { revalidateApi, useApi } from '@/lib/useApi';
 
 interface Account {
     id: string;
@@ -25,7 +26,11 @@ export default function QuickTransferModal({
     onSuccess,
     defaultSourceAccountId,
 }: QuickTransferModalProps) {
-    const [accounts, setAccounts] = useState<Account[]>([]);
+    const { data: accountsData } = useApi<{ accounts?: Array<Account & { closed?: boolean }> }>(
+        isOpen ? '/api/accounts' : null
+    );
+    // Filter out closed accounts
+    const accounts: Account[] = (accountsData?.accounts ?? []).filter(a => !a.closed);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -36,29 +41,15 @@ export default function QuickTransferModal({
     const [memo, setMemo] = useState('');
     const [date, setDate] = useState(toLocalDateString());
 
-    async function fetchAccounts() {
-        try {
-            const res = await fetch('/api/accounts');
-            const data = await res.json();
-            const allAccounts = data.accounts || [];
-            // Filter out closed accounts
-            setAccounts(allAccounts.filter((a: Account & { closed?: boolean }) => !a.closed));
-        } catch (err) {
-            console.error('Failed to fetch accounts:', err);
-        }
-    }
-
-    useEffect(() => {
-        if (isOpen) {
-            fetchAccounts();
-        }
-    }, [isOpen]);
-
-    useEffect(() => {
+    // Follow changes to the default source account (adjusting state during
+    // render rather than in an effect).
+    const [prevDefaultSource, setPrevDefaultSource] = useState(defaultSourceAccountId);
+    if (defaultSourceAccountId !== prevDefaultSource) {
+        setPrevDefaultSource(defaultSourceAccountId);
         if (defaultSourceAccountId) {
             setSourceAccountId(defaultSourceAccountId);
         }
-    }, [defaultSourceAccountId]);
+    }
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
@@ -89,6 +80,8 @@ export default function QuickTransferModal({
             setDestinationAccountId('');
 
             onSuccess();
+            // Balances and transaction lists change after a transfer
+            void revalidateApi();
             onClose();
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to create transfer');

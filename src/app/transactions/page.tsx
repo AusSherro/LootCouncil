@@ -1,7 +1,8 @@
 'use client';
 
 import { ScrollText, Plus, Search, Filter, Check, X, RefreshCw, Calendar, Upload, Download, CheckSquare, Square, Trash2, Tag, Inbox, ChevronLeft, ChevronRight } from 'lucide-react';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import TransactionForm from '@/components/TransactionForm';
 import ScheduledTransactions from '@/components/ScheduledTransactions';
 import CSVImportModal from '@/components/CSVImportModal';
@@ -13,7 +14,7 @@ import { InlineCategorySelect } from '@/components/InlineEdit';
 import { formatCurrency, toLocalDateString } from '@/lib/utils';
 import { useSettings } from '@/components/SettingsProvider';
 import { useProfile } from '@/components/ProfileProvider';
-import { fetchJsonCached } from '@/lib/clientCache';
+import { revalidateApi, useApi } from '@/lib/useApi';
 import ModalDialog from '@/components/ModalDialog';
 
 interface Transaction {
@@ -189,122 +190,151 @@ function TransactionRow({
     );
 }
 
+const EMPTY_TRANSACTIONS: Transaction[] = [];
+
+interface TransactionsUrlState {
+    tab: 'all' | 'scheduled' | null;
+    openNewForm: boolean;
+    drillDown: Partial<Filters> | null;
+    q: string;
+    shouldCleanUrl: boolean;
+}
+
+// Parse URL query parameters (tab, ?new=1, Reports drill-down filters, search).
+function parseTransactionsUrl(params: URLSearchParams | null): TransactionsUrlState {
+    const state: TransactionsUrlState = { tab: null, openNewForm: false, drillDown: null, q: '', shouldCleanUrl: false };
+    if (!params) return state;
+
+    const tab = params.get('tab');
+    if (tab === 'scheduled' || tab === 'all') {
+        state.tab = tab;
+        state.shouldCleanUrl = true;
+    }
+
+    if (params.get('new') === '1') {
+        state.openNewForm = true;
+        state.shouldCleanUrl = true;
+        return state;
+    }
+
+    // Drill-down support: when navigated from Reports with filter params,
+    // apply only the drill-down filters cleanly without merging stale localStorage filters.
+    const next: Partial<Filters> = {};
+    const accountId = params.get('accountId');
+    const categoryId = params.get('categoryId');
+    const startDate = params.get('startDate');
+    const endDate = params.get('endDate');
+    const minAmount = params.get('minAmount');
+    const maxAmount = params.get('maxAmount');
+    const q = params.get('q');
+    if (accountId) next.accountId = accountId;
+    if (categoryId) next.categoryId = categoryId;
+    if (startDate) next.startDate = startDate;
+    if (endDate) next.endDate = endDate;
+    if (minAmount) next.minAmount = minAmount;
+    if (maxAmount) next.maxAmount = maxAmount;
+    if (Object.keys(next).length > 0) {
+        state.drillDown = next;
+        state.shouldCleanUrl = true;
+    }
+    if (q) {
+        state.q = q;
+        state.shouldCleanUrl = true;
+    }
+    return state;
+}
+
+type SavedFilters = Partial<Filters> & { hideReconciliationAdjustments?: boolean };
+
+function readSavedFilters(storageKey: string): SavedFilters | null {
+    try {
+        const raw = localStorage.getItem(storageKey);
+        return raw ? (JSON.parse(raw) as SavedFilters) : null;
+    } catch {
+        // Ignore corrupt JSON / unavailable storage.
+        return null;
+    }
+}
+
 export default function TransactionsPage() {
+    // useSearchParams needs a Suspense boundary for the static build.
+    return (
+        <Suspense fallback={<SkeletonTransactionList />}>
+            <TransactionsPageContent />
+        </Suspense>
+    );
+}
+
+function TransactionsPageContent() {
     const { showToast } = useToast();
     const { confirm: confirmDialog, Dialog: ConfirmDialogModal } = useConfirmDialog();
     const { settings } = useSettings();
     const { activeProfile } = useProfile();
     const currency = settings?.currency || 'AUD';
-    const [activeTab, setActiveTab] = useState<'all' | 'scheduled'>('all');
-    const [transactions, setTransactions] = useState<Transaction[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [showForm, setShowForm] = useState(false);
+    // URL params (e.g. a Reports drill-down) seed the initial state once.
+    const searchParams = useSearchParams();
+    const [urlState] = useState(() => parseTransactionsUrl(searchParams));
+    const [activeTab, setActiveTab] = useState<'all' | 'scheduled'>(urlState.tab ?? 'all');
+    const [showForm, setShowForm] = useState(urlState.openNewForm);
     const [showImport, setShowImport] = useState(false);
     const [editTransaction, setEditTransaction] = useState<Transaction | null>(null);
-    const [searchQuery, setSearchQuery] = useState('');
-    const [debouncedSearch, setDebouncedSearch] = useState('');
+    const [searchQuery, setSearchQuery] = useState(urlState.q);
+    const [debouncedSearch, setDebouncedSearch] = useState(urlState.q);
     const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const [showFilters, setShowFilters] = useState(false);
-    const [accounts, setAccounts] = useState<Account[]>([]);
-    const [categories, setCategories] = useState<Category[]>([]);
+    const [showFilters, setShowFilters] = useState(urlState.drillDown !== null);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [showBulkEdit, setShowBulkEdit] = useState(false);
     const [bulkCategory, setBulkCategory] = useState('');
     const [bulkCleared, setBulkCleared] = useState<'' | 'true' | 'false'>('');
     const [keyboardIndex, setKeyboardIndex] = useState(-1);
-    const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
+    const [filters, setFilters] = useState<Filters>(
+        urlState.drillDown ? { ...DEFAULT_FILTERS, ...urlState.drillDown } : DEFAULT_FILTERS
+    );
     const [hideReconciliationAdjustments, setHideReconciliationAdjustments] = useState(true);
-    const filtersHydrated = useRef(false);
-    const isUrlDrillDown = useRef(false);
-    const initialUrlFilters = useRef<Partial<Filters>>({});
+    const isUrlDrillDown = useRef(urlState.drillDown !== null);
 
-    // Parse URL query parameters first on mount before localStorage filter hydration runs.
+    // Drop the consumed params from the address bar.
     useEffect(() => {
-        if (typeof window === 'undefined') return;
-        const params = new URLSearchParams(window.location.search);
-        let shouldCleanUrl = false;
-
-        const tab = params.get('tab');
-        if (tab === 'scheduled' || tab === 'all') {
-            setActiveTab(tab);
-            shouldCleanUrl = true;
-        }
-
-        if (params.get('new') === '1') {
-            setShowForm(true);
-            window.history.replaceState({}, '', '/transactions');
-            return;
-        }
-
-        // Drill-down support: when navigated from Reports with filter params,
-        // apply only the drill-down filters cleanly without merging stale localStorage filters.
-        const next: Partial<Filters> = {};
-        const accountId = params.get('accountId');
-        const categoryId = params.get('categoryId');
-        const startDate = params.get('startDate');
-        const endDate = params.get('endDate');
-        const minAmount = params.get('minAmount');
-        const maxAmount = params.get('maxAmount');
-        const q = params.get('q');
-        if (accountId) next.accountId = accountId;
-        if (categoryId) next.categoryId = categoryId;
-        if (startDate) next.startDate = startDate;
-        if (endDate) next.endDate = endDate;
-        if (minAmount) next.minAmount = minAmount;
-        if (maxAmount) next.maxAmount = maxAmount;
-        if (Object.keys(next).length > 0) {
-            isUrlDrillDown.current = true;
-            initialUrlFilters.current = next;
-            setFilters({ ...DEFAULT_FILTERS, ...next });
-            setShowFilters(true);
-            shouldCleanUrl = true;
-        }
-        if (q) {
-            setSearchQuery(q);
-            shouldCleanUrl = true;
-        }
-        if (shouldCleanUrl) {
+        if (urlState.shouldCleanUrl) {
             window.history.replaceState({}, '', '/transactions');
         }
-    }, []);
+    }, [urlState]);
 
     // Per-profile localStorage key for persisting filters across reloads.
     const filterStorageKey = activeProfile ? `loot-council-tx-filters-${activeProfile.id}` : null;
 
-    // Load saved filters when profile changes (unless navigated via URL drill-down).
-    useEffect(() => {
-        if (typeof window === 'undefined' || !filterStorageKey) return;
-        try {
-            const raw = localStorage.getItem(filterStorageKey);
-            if (raw) {
-                const parsed = JSON.parse(raw) as Partial<Filters> & { hideReconciliationAdjustments?: boolean };
-                if (typeof parsed.hideReconciliationAdjustments === 'boolean') {
-                    setHideReconciliationAdjustments(parsed.hideReconciliationAdjustments);
-                }
-                if (!isUrlDrillDown.current) {
-                    setFilters({
-                        accountId: parsed.accountId ?? '',
-                        categoryId: parsed.categoryId ?? '',
-                        startDate: parsed.startDate ?? '',
-                        endDate: parsed.endDate ?? '',
-                        minAmount: parsed.minAmount ?? '',
-                        maxAmount: parsed.maxAmount ?? '',
-                        cleared: parsed.cleared ?? 'all',
-                    });
-                }
+    // Load saved filters when the profile becomes known or changes, unless we
+    // arrived via a URL drill-down (adjusting state during render rather than
+    // in an effect; the profile is never known during the server render).
+    const [hydratedFilterKey, setHydratedFilterKey] = useState<string | null>(null);
+    if (filterStorageKey && filterStorageKey !== hydratedFilterKey) {
+        setHydratedFilterKey(filterStorageKey);
+        const saved = readSavedFilters(filterStorageKey);
+        if (saved) {
+            if (typeof saved.hideReconciliationAdjustments === 'boolean') {
+                setHideReconciliationAdjustments(saved.hideReconciliationAdjustments);
             }
-        } catch {
-            // Ignore corrupt JSON.
+            if (urlState.drillDown === null) {
+                setFilters({
+                    accountId: saved.accountId ?? '',
+                    categoryId: saved.categoryId ?? '',
+                    startDate: saved.startDate ?? '',
+                    endDate: saved.endDate ?? '',
+                    minAmount: saved.minAmount ?? '',
+                    maxAmount: saved.maxAmount ?? '',
+                    cleared: saved.cleared ?? 'all',
+                });
+            }
         }
-        filtersHydrated.current = true;
-    }, [filterStorageKey]);
+    }
+    const filtersHydrated = filterStorageKey !== null && hydratedFilterKey === filterStorageKey;
 
     // Persist filters whenever they change (after the initial hydration, skipping one-off URL drill-downs until user modifies filters).
     useEffect(() => {
-        if (typeof window === 'undefined' || !filterStorageKey || !filtersHydrated.current) return;
+        if (typeof window === 'undefined' || !filterStorageKey || !filtersHydrated) return;
         if (isUrlDrillDown.current) {
             // Once the initial URL drill-down render settles, subsequent user edits should persist normally
-            const urlFilters = initialUrlFilters.current;
+            const urlFilters = urlState.drillDown ?? {};
             const stillMatchesDrillDown = (Object.keys(DEFAULT_FILTERS) as Array<keyof Filters>).every(
                 k => filters[k] === (urlFilters[k] ?? DEFAULT_FILTERS[k])
             );
@@ -319,7 +349,7 @@ export default function TransactionsPage() {
         } catch {
             // Quota / privacy mode — silently ignore.
         }
-    }, [filters, hideReconciliationAdjustments, filterStorageKey]);
+    }, [filters, hideReconciliationAdjustments, filterStorageKey, filtersHydrated, urlState]);
 
     // Date-range preset helpers (FEAT-4 ergonomics)
     const fmtDate = toLocalDateString;
@@ -364,7 +394,6 @@ export default function TransactionsPage() {
     // FEAT-4: pagination state
     const PAGE_SIZE = 100;
     const [offset, setOffset] = useState(0);
-    const [total, setTotal] = useState(0);
     const [exporting, setExporting] = useState(false);
 
     // Debounce search input by 300ms
@@ -414,7 +443,8 @@ export default function TransactionsPage() {
             setShowBulkEdit(false);
             setBulkCategory('');
             setBulkCleared('');
-            fetchTransactions();
+            // Balances and budget activity change with the transactions
+            void revalidateApi();
         } catch (err) {
             console.error('Bulk edit failed:', err);
             showToast(`Failed to update ${selectedIds.size} transactions. Please try again.`, 'error');
@@ -438,7 +468,8 @@ export default function TransactionsPage() {
                     });
                     if (!res.ok) throw new Error('Server returned an error');
                     setSelectedIds(new Set());
-                    fetchTransactions();
+                    // Balances and budget activity change with the transactions
+                    void revalidateApi();
                 } catch (err) {
                     console.error('Bulk delete failed:', err);
                     showToast(`Failed to delete ${selectedIds.size} transactions. Please try again.`, 'error');
@@ -446,37 +477,64 @@ export default function TransactionsPage() {
             },
         });
     }
-    const [activeFiltersCount, setActiveFiltersCount] = useState(0);
+    const activeFiltersCount = [
+        filters.accountId,
+        filters.categoryId,
+        filters.startDate,
+        filters.endDate,
+        filters.minAmount,
+        filters.maxAmount,
+        filters.cleared !== 'all',
+    ].filter(Boolean).length;
 
-    const fetchTransactions = useCallback(async (signal?: AbortSignal) => {
-        setLoading(true);
-        try {
-            const params = new URLSearchParams({
-                limit: String(PAGE_SIZE),
-                offset: String(offset),
-            });
+    // FEAT-4: reset to first page when filters/search/visibility toggle changes
+    // (adjusting state during render rather than in an effect).
+    const queryKey = JSON.stringify([filters, debouncedSearch, hideReconciliationAdjustments]);
+    const [prevQueryKey, setPrevQueryKey] = useState(queryKey);
+    if (queryKey !== prevQueryKey) {
+        setPrevQueryKey(queryKey);
+        setOffset(0);
+    }
 
-            if (filters.accountId) params.set('accountId', filters.accountId);
-            if (filters.categoryId) params.set('categoryId', filters.categoryId);
-            if (filters.startDate) params.set('startDate', filters.startDate);
-            if (filters.endDate) params.set('endDate', filters.endDate);
-            if (filters.minAmount) params.set('minAmount', filters.minAmount);
-            if (filters.maxAmount) params.set('maxAmount', filters.maxAmount);
-            if (filters.cleared !== 'all') params.set('cleared', String(filters.cleared === 'cleared'));
-            if (debouncedSearch) params.set('q', debouncedSearch);
-            params.set('hideReconciliationAdjustments', String(hideReconciliationAdjustments));
+    const transactionsParams = new URLSearchParams({
+        limit: String(PAGE_SIZE),
+        offset: String(offset),
+    });
+    if (filters.accountId) transactionsParams.set('accountId', filters.accountId);
+    if (filters.categoryId) transactionsParams.set('categoryId', filters.categoryId);
+    if (filters.startDate) transactionsParams.set('startDate', filters.startDate);
+    if (filters.endDate) transactionsParams.set('endDate', filters.endDate);
+    if (filters.minAmount) transactionsParams.set('minAmount', filters.minAmount);
+    if (filters.maxAmount) transactionsParams.set('maxAmount', filters.maxAmount);
+    if (filters.cleared !== 'all') transactionsParams.set('cleared', String(filters.cleared === 'cleared'));
+    if (debouncedSearch) transactionsParams.set('q', debouncedSearch);
+    transactionsParams.set('hideReconciliationAdjustments', String(hideReconciliationAdjustments));
 
-            const res = await fetch(`/api/transactions?${params.toString()}`, { signal });
-            const data = await res.json();
-            setTransactions(data.transactions || []);
-            setTotal(typeof data.total === 'number' ? data.total : (data.transactions?.length ?? 0));
-        } catch (err) {
-            if (err instanceof DOMException && err.name === 'AbortError') return;
-            console.error('Failed to fetch transactions:', err);
-        } finally {
-            setLoading(false);
-        }
-    }, [filters, debouncedSearch, hideReconciliationAdjustments, offset]);
+    const transactionsQuery = useApi<{ transactions?: Transaction[]; total?: number }>(
+        `/api/transactions?${transactionsParams.toString()}`,
+        { onError: err => console.error('Failed to fetch transactions:', err) }
+    );
+    const transactions = transactionsQuery.data?.transactions ?? EMPTY_TRANSACTIONS;
+    const total = typeof transactionsQuery.data?.total === 'number'
+        ? transactionsQuery.data.total
+        : transactions.length;
+    // Skeleton on the first load of a page/filter; spinner on any refresh.
+    const loading = transactionsQuery.isLoading;
+    const refreshing = transactionsQuery.isValidating;
+    const { mutate: mutateTransactions } = transactionsQuery;
+    const fetchTransactions = useCallback(() => {
+        void mutateTransactions();
+    }, [mutateTransactions]);
+
+    // Filter metadata changes rarely; SWR serves it from cache between visits.
+    const { data: accountsData } = useApi<{ accounts?: Account[] }>('/api/accounts', {
+        onError: err => console.error('Failed to fetch filter metadata:', err),
+    });
+    const accounts = accountsData?.accounts ?? [];
+    const { data: categoriesData } = useApi<{ categoryGroups?: Array<{ categories: Category[] }> }>('/api/categories', {
+        onError: err => console.error('Failed to fetch filter metadata:', err),
+    });
+    const categories = (categoriesData?.categoryGroups ?? []).flatMap(g => g.categories);
 
     // Inline category change handler
     const handleInlineCategoryChange = useCallback(async (transactionId: string, categoryId: string) => {
@@ -491,69 +549,21 @@ export default function TransactionsPage() {
                 showToast(errData.error || 'Failed to update category', 'error');
                 return;
             }
-            setTransactions(prev => prev.map(t => 
-                t.id === transactionId 
-                    ? { ...t, category: categories.find(c => c.id === categoryId) || null }
-                    : t
-            ));
+            void mutateTransactions(prev => prev && {
+                ...prev,
+                transactions: (prev.transactions ?? []).map(t =>
+                    t.id === transactionId
+                        ? { ...t, category: categories.find(c => c.id === categoryId) || null }
+                        : t
+                ),
+            }, { revalidate: false });
+            // Category activity changed
+            void revalidateApi('/api/budget');
         } catch (err) {
             console.error('Failed to update category:', err);
             showToast('Failed to update category', 'error');
         }
-    }, [categories, showToast]);
-
-    useEffect(() => {
-        const controller = new AbortController();
-        fetchTransactions(controller.signal);
-        return () => controller.abort();
-    }, [fetchTransactions]);
-
-    // FEAT-4: reset to first page when filters/search/visibility toggle changes
-    useEffect(() => {
-        setOffset(0);
-    }, [filters, debouncedSearch, hideReconciliationAdjustments]);
-
-    useEffect(() => {
-        let cancelled = false;
-
-        async function fetchFilterMetadata() {
-            try {
-                const [accountsData, categoriesData] = await Promise.all([
-                    fetchJsonCached<{ accounts?: Account[] }>('/api/accounts', 300_000),
-                    fetchJsonCached<{ categoryGroups?: Array<{ categories: Category[] }> }>('/api/categories', 300_000),
-                ]);
-
-                if (cancelled) return;
-                setAccounts(accountsData.accounts || []);
-
-                const allCats: Category[] = [];
-                (categoriesData.categoryGroups || []).forEach((g) => {
-                    allCats.push(...g.categories);
-                });
-                setCategories(allCats);
-            } catch (err) {
-                console.error('Failed to fetch filter metadata:', err);
-            }
-        }
-
-        fetchFilterMetadata();
-        return () => {
-            cancelled = true;
-        };
-    }, []);
-
-    // Calculate active filters count
-    useEffect(() => {
-        let count = 0;
-        if (filters.accountId) count++;
-        if (filters.categoryId) count++;
-        if (filters.startDate) count++;
-        if (filters.endDate) count++;
-        if (filters.minAmount) count++;
-        if (filters.maxAmount) count++;
-        if (filters.cleared !== 'all') count++;
-        setActiveFiltersCount(count);
-    }, [filters]);
+    }, [categories, mutateTransactions, showToast]);
 
     const filteredTransactions = transactions;
 
@@ -705,8 +715,8 @@ export default function TransactionsPage() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                    <button onClick={() => fetchTransactions()} className="btn btn-ghost" disabled={loading} aria-label="Refresh transactions">
-                        <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
+                    <button onClick={() => fetchTransactions()} className="btn btn-ghost" disabled={refreshing} aria-label="Refresh transactions">
+                        <RefreshCw className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
                     </button>
                     <button onClick={handleExportCSV} className="btn btn-ghost" disabled={exporting || loading} aria-label="Export CSV" title="Export filtered transactions as CSV">
                         <Download className={`w-5 h-5 ${exporting ? 'animate-pulse' : ''}`} />

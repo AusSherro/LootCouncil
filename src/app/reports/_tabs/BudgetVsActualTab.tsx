@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useMemo } from 'react';
+import { useApi } from '@/lib/useApi';
 import { BarChart3, Calendar } from 'lucide-react';
 import {
     ResponsiveContainer,
@@ -55,36 +56,24 @@ export default function BudgetVsActualTab({ currency, excludeCategoryNames }: Pr
     const router = useRouter();
     const [months, setMonths] = useState(6);
     const [showRangeDropdown, setShowRangeDropdown] = useState(false);
-    const [data, setData] = useState<BudgetVsActualData[]>([]);
-    const [summary, setSummary] = useState<BudgetVsActualSummary[]>([]);
-    const [totals, setTotals] = useState<{ budgeted: number; actual: number; variance: number }>({ budgeted: 0, actual: 0, variance: 0 });
-    const [loading, setLoading] = useState(true);
 
     const excludeQueryParam = useMemo(
         () => Array.from(excludeCategoryNames).join(','),
         [excludeCategoryNames]
     );
 
-    const fetchData = useCallback(async () => {
-        setLoading(true);
-        try {
-            const params = new URLSearchParams({ type: 'budget-vs-actual', months: String(months) });
-            if (excludeQueryParam) params.set('excludeCategories', excludeQueryParam);
-            const res = await fetch(`/api/reports/advanced?${params.toString()}`);
-            const json = await res.json();
-            setData(json.data || []);
-            setSummary(json.monthlySummary || []);
-            setTotals(json.totals || { budgeted: 0, actual: 0, variance: 0 });
-        } catch (err) {
-            console.error('Failed to fetch budget vs actual data:', err);
-        } finally {
-            setLoading(false);
-        }
-    }, [months, excludeQueryParam]);
-
-    useEffect(() => {
-        fetchData();
-    }, [fetchData]);
+    const params = new URLSearchParams({ type: 'budget-vs-actual', months: String(months) });
+    if (excludeQueryParam) params.set('excludeCategories', excludeQueryParam);
+    const { data: json, isLoading: loading } = useApi<{
+        data?: BudgetVsActualData[];
+        monthlySummary?: BudgetVsActualSummary[];
+        totals?: { budgeted: number; actual: number; variance: number };
+    }>(`/api/reports/advanced?${params.toString()}`, {
+        onError: err => console.error('Failed to fetch budget vs actual data:', err),
+    });
+    const data = json?.data ?? [];
+    const summary = json?.monthlySummary ?? [];
+    const totals = json?.totals ?? { budgeted: 0, actual: 0, variance: 0 };
 
     return (
         <div className="space-y-6">

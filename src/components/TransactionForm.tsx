@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useId } from 'react';
+import { useState, useMemo, useId } from 'react';
 import { X, Calendar, DollarSign, Tag, FileText, Building2, Split, AlertCircle, RefreshCw } from 'lucide-react';
 import PayeeAutocomplete from './PayeeAutocomplete';
 import SplitTransactionModal from './SplitTransactionModal';
@@ -9,6 +9,7 @@ import { useModalA11y } from '@/lib/useModalA11y';
 import { useProfile } from './ProfileProvider';
 import { getLastTransactionAccountKey, resolveTransactionAccountId } from '@/lib/transactionFormPreferences';
 import { toLocalDateString } from '@/lib/utils';
+import { revalidateApi, useApi } from '@/lib/useApi';
 
 interface Account {
     id: string;
@@ -64,37 +65,50 @@ export default function TransactionForm({ isOpen, onClose, onSuccess, defaultAcc
     const categoryIdField = `${formId}-category`;
     const memoId = `${formId}-memo`;
     const dialogRef = useModalA11y(isOpen, onClose);
-    const [accounts, setAccounts] = useState<Account[]>([]);
-    const [categoryGroups, setCategoryGroups] = useState<CategoryGroup[]>([]);
-    const [optionsLoading, setOptionsLoading] = useState(false);
     const [loading, setLoading] = useState(false);
     const [deleting, setDeleting] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [fetchError, setFetchError] = useState<string | null>(null);
 
     // Form state
     const [date, setDate] = useState(toLocalDateString());
     const [payee, setPayee] = useState('');
     const [amount, setAmount] = useState('');
     const [isOutflow, setIsOutflow] = useState(true);
-    const [accountId, setAccountId] = useState(defaultAccountId || '');
+    // `null` until the user picks an account; until then the default below applies.
+    const [chosenAccountId, setAccountId] = useState<string | null>(null);
     const [categoryId, setCategoryId] = useState('');
     const [memo, setMemo] = useState('');
     const [cleared, setCleared] = useState(false);
     const [showSplitModal, setShowSplitModal] = useState(false);
 
     const isEditing = !!editTransaction;
+    const editAccountId = editTransaction?.account?.id || editTransaction?.accountId;
+    const editCategoryId = editTransaction?.category?.id || editTransaction?.categoryId;
 
-    // Populate form when editing
-    useEffect(() => {
+    // Populate the form when it opens, or when the transaction being edited
+    // changes (adjusting state during render rather than in an effect).
+    const [populatedFor, setPopulatedFor] = useState<{
+        isOpen: boolean;
+        editTransaction: Transaction | null | undefined;
+        defaultAccountId: string | undefined;
+        defaultIsInflow: boolean | undefined;
+    } | null>(null);
+    if (
+        !populatedFor ||
+        populatedFor.isOpen !== isOpen ||
+        populatedFor.editTransaction !== editTransaction ||
+        populatedFor.defaultAccountId !== defaultAccountId ||
+        populatedFor.defaultIsInflow !== defaultIsInflow
+    ) {
+        setPopulatedFor({ isOpen, editTransaction, defaultAccountId, defaultIsInflow });
         if (editTransaction && isOpen) {
             setDate(editTransaction.date.split('T')[0]);
             setPayee(editTransaction.payee || '');
             const absAmount = Math.abs(editTransaction.amount) / 100;
             setAmount(absAmount.toFixed(2));
             setIsOutflow(editTransaction.amount < 0);
-            setAccountId(editTransaction.account?.id || editTransaction.accountId || '');
+            setAccountId(null);
             setCategoryId(editTransaction.isSplit ? '' : (editTransaction.category?.id || editTransaction.categoryId || ''));
             setMemo(editTransaction.memo || '');
             setCleared(editTransaction.cleared);
@@ -104,95 +118,75 @@ export default function TransactionForm({ isOpen, onClose, onSuccess, defaultAcc
             setPayee('');
             setAmount('');
             setIsOutflow(defaultIsInflow ? false : true);
-            setAccountId('');
+            setAccountId(null);
             setCategoryId('');
             setMemo('');
             setCleared(false);
         }
-    }, [editTransaction, isOpen, defaultAccountId, defaultIsInflow]);
+    }
 
-    const fetchFormOptions = useCallback(async (signal?: AbortSignal) => {
-        if (!activeProfile) return;
+    const optionsKey = isOpen && activeProfile;
+    const {
+        data: accountsData,
+        error: accountsError,
+        isLoading: accountsLoading,
+        mutate: refreshAccounts,
+    } = useApi<{ accounts?: Account[] }>(optionsKey ? '/api/accounts' : null, {
+        onError: err => console.error('Failed to fetch accounts:', err),
+    });
+    const {
+        data: categoriesData,
+        error: categoriesError,
+        isLoading: categoriesLoading,
+        mutate: refreshCategories,
+    } = useApi<{ categoryGroups?: CategoryGroup[] }>(optionsKey ? '/api/categories?showHidden=true' : null, {
+        onError: err => console.error('Failed to fetch categories:', err),
+    });
+    const optionsLoading = accountsLoading || categoriesLoading;
 
-        setOptionsLoading(true);
-        setFetchError(null);
-        setAccounts([]);
-        setCategoryGroups([]);
+    const accounts = useMemo(
+        () => (accountsData?.accounts ?? []).filter(account => !account.closed || account.id === editAccountId),
+        [accountsData, editAccountId]
+    );
+    const categoryGroups = useMemo(
+        () => (categoriesData?.categoryGroups ?? [])
+            .map(group => ({
+                ...group,
+                name: group.isHidden ? `${group.name} (hidden)` : group.name,
+                categories: group.categories
+                    .filter(category => (!group.isHidden && !category.isHidden) || category.id === editCategoryId)
+                    .map(category => ({
+                        ...category,
+                        name: category.isHidden ? `${category.name} (hidden)` : category.name,
+                    })),
+            }))
+            .filter(group => group.categories.length > 0),
+        [categoriesData, editCategoryId]
+    );
 
-        const [accountsResult, categoriesResult] = await Promise.allSettled([
-            fetch('/api/accounts', { cache: 'no-store', signal }).then(async response => {
-                if (!response.ok) throw new Error('Failed to load accounts');
-                return response.json() as Promise<{ accounts?: Account[] }>;
-            }),
-            fetch('/api/categories?showHidden=true', { cache: 'no-store', signal }).then(async response => {
-                if (!response.ok) throw new Error('Failed to load categories');
-                return response.json() as Promise<{ categoryGroups?: CategoryGroup[] }>;
-            }),
-        ]);
-
-        if (signal?.aborted) return;
-
-        const failedOptions: string[] = [];
-        if (accountsResult.status === 'fulfilled') {
-            const editAccountId = editTransaction?.account?.id || editTransaction?.accountId;
-            const selectableAccounts = (accountsResult.value.accounts || []).filter(
-                account => !account.closed || account.id === editAccountId
-            );
-            setAccounts(selectableAccounts);
-
-            let storedAccountId: string | null = null;
-            try {
-                storedAccountId = localStorage.getItem(getLastTransactionAccountKey(activeProfile.id));
-            } catch {
-                // Storage may be unavailable in privacy mode.
-            }
-            setAccountId(resolveTransactionAccountId(
-                selectableAccounts,
-                editAccountId,
-                defaultAccountId,
-                storedAccountId,
-            ));
-        } else {
-            failedOptions.push('accounts');
-            if (!(accountsResult.reason instanceof DOMException && accountsResult.reason.name === 'AbortError')) {
-                console.error('Failed to fetch accounts:', accountsResult.reason);
-            }
+    // Default account: the edited transaction's, then the page default, then
+    // the last account used in this profile.
+    const defaultResolvedAccountId = useMemo(() => {
+        if (!accountsData || !activeProfile) return editAccountId || defaultAccountId || '';
+        let storedAccountId: string | null = null;
+        try {
+            storedAccountId = localStorage.getItem(getLastTransactionAccountKey(activeProfile.id));
+        } catch {
+            // Storage may be unavailable in privacy mode.
         }
+        return resolveTransactionAccountId(accounts, editAccountId, defaultAccountId, storedAccountId);
+    }, [accountsData, accounts, activeProfile, editAccountId, defaultAccountId]);
+    const accountId = chosenAccountId ?? defaultResolvedAccountId;
 
-        if (categoriesResult.status === 'fulfilled') {
-            const editCategoryId = editTransaction?.category?.id || editTransaction?.categoryId;
-            const selectableGroups = (categoriesResult.value.categoryGroups || [])
-                .map(group => ({
-                    ...group,
-                    name: group.isHidden ? `${group.name} (hidden)` : group.name,
-                    categories: group.categories
-                        .filter(category => (!group.isHidden && !category.isHidden) || category.id === editCategoryId)
-                        .map(category => ({
-                            ...category,
-                            name: category.isHidden ? `${category.name} (hidden)` : category.name,
-                        })),
-                }))
-                .filter(group => group.categories.length > 0);
-            setCategoryGroups(selectableGroups);
-        } else {
-            failedOptions.push('categories');
-            if (!(categoriesResult.reason instanceof DOMException && categoriesResult.reason.name === 'AbortError')) {
-                console.error('Failed to fetch categories:', categoriesResult.reason);
-            }
-        }
+    const failedOptions = [accountsError && 'accounts', categoriesError && 'categories'].filter(Boolean);
+    const fetchError = failedOptions.length > 0
+        ? `Could not load ${failedOptions.join(' or ')}. Please try again.`
+        : null;
 
-        if (failedOptions.length > 0) {
-            setFetchError(`Could not load ${failedOptions.join(' or ')}. Please try again.`);
-        }
-        setOptionsLoading(false);
-    }, [activeProfile, defaultAccountId, editTransaction]);
-
-    useEffect(() => {
-        if (!isOpen || !activeProfile) return;
-        const controller = new AbortController();
-        void fetchFormOptions(controller.signal);
-        return () => controller.abort();
-    }, [isOpen, activeProfile, fetchFormOptions]);
+    function fetchFormOptions() {
+        void refreshAccounts();
+        void refreshCategories();
+    }
 
     function handleAccountChange(nextAccountId: string) {
         setAccountId(nextAccountId);
@@ -262,6 +256,8 @@ export default function TransactionForm({ isOpen, onClose, onSuccess, defaultAcc
             setCleared(false);
 
             onSuccess();
+            // Balances, budget activity and transaction lists all depend on this
+            void revalidateApi();
             onClose();
         } catch (err) {
             setError(err instanceof Error ? err.message : `Failed to ${isEditing ? 'update' : 'create'} transaction`);
@@ -290,6 +286,8 @@ export default function TransactionForm({ isOpen, onClose, onSuccess, defaultAcc
             }
             
             onSuccess();
+            // Balances, budget activity and transaction lists all depend on this
+            void revalidateApi();
             onClose();
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Failed to delete transaction');

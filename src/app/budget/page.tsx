@@ -1,7 +1,7 @@
 'use client';
 
 import { PiggyBank, ChevronRight, ChevronLeft, ChevronDown, Plus, Eye, EyeOff, MoreHorizontal, Edit3, X, GripVertical, Target, FileCheck2, Copy, AlertTriangle, Clock, Calculator, Zap, Search, LayoutGrid, List, DollarSign, ArrowDownUp, TrendingUp } from 'lucide-react';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import GoalProgress from '@/components/GoalProgress';
 import GoalEditorModal from '@/components/GoalEditorModal';
@@ -15,6 +15,7 @@ import { useToast } from '@/components/Toast';
 import { formatCurrency, toLocalMonthString } from '@/lib/utils';
 import GoldCoinSpinner from '@/components/GoldCoinSpinner';
 import ModalDialog from '@/components/ModalDialog';
+import { useApi } from '@/lib/useApi';
 import {
     DndContext,
     closestCenter,
@@ -683,9 +684,21 @@ function CreateModal({ isOpen, onClose, groups, onCreated }: CreateModalProps) {
 export default function BudgetPage() {
     const { showToast } = useToast();
     const [currentMonth, setCurrentMonth] = useState(() => toLocalMonthString());
-    const [budgetData, setBudgetData] = useState<BudgetData | null>(null);
-    const [loading, setLoading] = useState(true);
     const [showHidden, setShowHidden] = useState(false);
+    const budgetQuery = useApi<BudgetData>(`/api/budget?month=${currentMonth}&showHidden=${showHidden}`, {
+        onError: err => console.error('Failed to fetch budget:', err),
+    });
+    const loading = budgetQuery.isLoading;
+    // Only use data if it has the expected structure
+    const budgetData = budgetQuery.data?.totals ? budgetQuery.data : null;
+    const { mutate: mutateBudget } = budgetQuery;
+    const fetchBudget = useCallback(() => {
+        void mutateBudget();
+    }, [mutateBudget]);
+    // Optimistic local update (drag-and-drop); the server is the source of truth
+    const setBudgetData = useCallback((next: BudgetData) => {
+        void mutateBudget(next, { revalidate: false });
+    }, [mutateBudget]);
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [activeId, setActiveId] = useState<string | null>(null);
     const [editingGoal, setEditingGoal] = useState<Category | null>(null);
@@ -711,30 +724,6 @@ export default function BudgetPage() {
             coordinateGetter: sortableKeyboardCoordinates,
         })
     );
-
-    const fetchBudget = useCallback(async () => {
-        setLoading(true);
-        try {
-            const res = await fetch(`/api/budget?month=${currentMonth}&showHidden=${showHidden}`);
-            const data = await res.json();
-            // Only set data if it has the expected structure
-            if (data && data.totals) {
-                setBudgetData(data);
-            } else {
-                console.error('Invalid budget response:', data);
-                setBudgetData(null);
-            }
-        } catch (err) {
-            console.error('Failed to fetch budget:', err);
-            setBudgetData(null);
-        } finally {
-            setLoading(false);
-        }
-    }, [currentMonth, showHidden]);
-
-    useEffect(() => {
-        fetchBudget();
-    }, [fetchBudget]);
 
     const prevMonth = () => setCurrentMonth(getMonthOffset(currentMonth, -1));
     const nextMonth = () => setCurrentMonth(getMonthOffset(currentMonth, 1));

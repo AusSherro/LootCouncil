@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
     TrendingUp, RefreshCw, Plus, DollarSign,
     PieChart, Target, Wallet, ChevronDown, ChevronRight,
@@ -24,6 +24,7 @@ import {
 import ChartTooltip from '@/components/ChartTooltip';
 import { useConfirmDialog } from '@/components/ConfirmDialog';
 import ModalDialog from '@/components/ModalDialog';
+import { useApi } from '@/lib/useApi';
 
 interface Asset {
     id: string;
@@ -131,10 +132,6 @@ export default function InvestmentsPage() {
     const { showToast } = useToast();
     const currency = settings?.currency || 'AUD';
     const fmt = useCallback((cents: number) => formatCurrencyShort(cents, currency), [currency]);
-    const [data, setData] = useState<InvestmentData | null>(null);
-    const [allocations, setAllocations] = useState<AllocationData | null>(null);
-    const [netWorthData, setNetWorthData] = useState<NetWorthData | null>(null);
-    const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [showAddModal, setShowAddModal] = useState(false);
     const [editingManualAsset, setEditingManualAsset] = useState<Asset | null>(null);
@@ -142,63 +139,40 @@ export default function InvestmentsPage() {
     const [showAllocationSettings, setShowAllocationSettings] = useState(false);
     const [expandedAsset, setExpandedAsset] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<'overview' | 'portfolio' | 'allocation' | 'cgt'>('overview');
-    const [binanceConnected, setBinanceConnected] = useState(false);
     const [syncingBinance, setSyncingBinance] = useState(false);
     const [hideZeroBalances, setHideZeroBalances] = useState(true);
     const [excludeSuperFromNetWorth, setExcludeSuperFromNetWorth] = useState(false);
+
+    const onLoadError = useCallback((err: Error) => {
+        console.error('Failed to fetch investments:', err);
+        showToast('Could not load investment data', 'error');
+    }, [showToast]);
+    const investQuery = useApi<InvestmentData>('/api/investments', { onError: onLoadError });
+    const allocQuery = useApi<AllocationData>('/api/investments/allocations', { onError: onLoadError });
+    // Keep showing the previous chart while the super toggle refetches
+    const netWorthQuery = useApi<NetWorthData>(
+        `/api/networth?months=12${excludeSuperFromNetWorth ? '&excludeAssetClass=super' : ''}`,
+        { onError: onLoadError, keepPreviousData: true }
+    );
+    const data = investQuery.data ?? null;
+    const allocations = allocQuery.data ?? null;
+    const netWorthData = netWorthQuery.data ?? null;
+    const loading = investQuery.isLoading || allocQuery.isLoading || (netWorthQuery.isLoading && !netWorthQuery.data);
+    const { mutate: mutateInvest } = investQuery;
+    const { mutate: mutateAlloc } = allocQuery;
+    const { mutate: mutateNetWorth } = netWorthQuery;
+    const fetchData = useCallback(async () => {
+        await Promise.all([mutateInvest(), mutateAlloc(), mutateNetWorth()]);
+    }, [mutateInvest, mutateAlloc, mutateNetWorth]);
+
+    // Check if Binance is connected
+    const { data: integrationsData } = useApi<{ integrations?: Array<{ provider: string; enabled: boolean }> }>('/api/integrations');
+    const binanceConnected = !!integrationsData?.integrations?.some(i => i.provider === 'binance' && i.enabled);
     const [dismissedSuperReminder, setDismissedSuperReminder] = useState(false);
 
     // PERF-2b: Capture `now` once at mount so render-time derivations stay pure.
     // Stable per session; "30+ days old" doesn't need millisecond precision.
     const [nowMs] = useState(() => Date.now());
-
-    const fetchData = useCallback(async () => {
-        try {
-            const [investRes, allocRes, netWorthRes] = await Promise.all([
-                fetch('/api/investments'),
-                fetch('/api/investments/allocations'),
-                fetch(`/api/networth?months=12${excludeSuperFromNetWorth ? '&excludeAssetClass=super' : ''}`),
-            ]);
-
-            if (!investRes.ok || !allocRes.ok || !netWorthRes.ok) {
-                throw new Error('Failed to load investment data');
-            }
-
-            const investData = await investRes.json();
-            const allocData = await allocRes.json();
-            const nwData = await netWorthRes.json();
-            
-            setData(investData);
-            setAllocations(allocData);
-            setNetWorthData(nwData);
-        } catch (err) {
-            console.error('Failed to fetch investments:', err);
-            showToast('Could not load investment data', 'error');
-        } finally {
-            setLoading(false);
-        }
-    }, [excludeSuperFromNetWorth, showToast]);
-
-    useEffect(() => {
-        fetchData();
-    }, [fetchData]);
-
-    // Check if Binance is connected
-    useEffect(() => {
-        async function checkBinance() {
-            try {
-                const res = await fetch('/api/integrations');
-                const data = await res.json();
-                const binance = data.integrations?.find((i: { provider: string; enabled: boolean }) => 
-                    i.provider === 'binance' && i.enabled
-                );
-                setBinanceConnected(!!binance);
-            } catch {
-                setBinanceConnected(false);
-            }
-        }
-        checkBinance();
-    }, []);
 
     async function refreshPrices() {
         setRefreshing(true);
@@ -858,16 +832,25 @@ function AllocationView({
     setShowSettings: (v: boolean) => void;
     formatMoney: (cents: number) => string;
 }) {
-    const [targets, setTargets] = useState<Record<string, number>>({});
+    // Unsaved edits; `null` shows the saved targets.
+    const [draftTargets, setTargets] = useState<Record<string, number> | null>(null);
     const [saving, setSaving] = useState(false);
 
-    useEffect(() => {
+    // Discard edits when fresh allocations arrive (adjusting state during
+    // render rather than in an effect).
+    const [prevAllocations, setPrevAllocations] = useState(allocations);
+    if (allocations !== prevAllocations) {
+        setPrevAllocations(allocations);
+        setTargets(null);
+    }
+    const savedTargets = useMemo(() => {
         const initial: Record<string, number> = {};
         allocations.allocations.forEach(a => {
             initial[a.assetClass] = a.targetPct * 100;
         });
-        setTargets(initial);
+        return initial;
     }, [allocations]);
+    const targets = draftTargets ?? savedTargets;
 
     async function saveTargets() {
         setSaving(true);

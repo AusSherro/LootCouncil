@@ -101,11 +101,11 @@
   - **Fix:** Moved filter/search params into `GET /api/transactions` query params and updated transactions page to fetch filtered records from the API.
   - **Priority:** Medium
 
-- [ ] **PERF-2: No Data Caching (SWR/React Query)**
+- [x] **PERF-2: No Data Caching (SWR/React Query)**
   - **Files:** `src/app/page.tsx`, most page components
   - **Problem:** Dashboard fires 4+ parallel fetch calls on every mount with no caching. All pages fetch fresh on every visit.
   - **Fix:** Adopt SWR or React Query for automatic caching, revalidation, and deduplication.
-  - **Progress:** A lightweight cache remains for slow-changing transaction form/filter metadata. Dashboard reads intentionally bypass it so financial totals revalidate on every mount; broader SWR/React Query migration is still pending.
+  - **Resolution:** Adopted SWR (see FEAT-1). Reads are cached stale-while-revalidate and refetched on every mount, so financial totals still refresh on each visit; `src/lib/clientCache.ts` was removed.
   - **Priority:** Medium — improves UX significantly
 
 - [x] **PERF-3: TransactionForm Refetches on Every Open**
@@ -265,8 +265,9 @@
 
 ## Feature Suggestions
 
-- [ ] **FEAT-1: Adopt SWR / React Query**
+- [x] **FEAT-1: Adopt SWR / React Query**
   - Replace raw `fetch` + `useEffect` with a caching data layer. Eliminates duplicate requests, simplifies loading/error states across all pages.
+  - **Resolution:** `src/lib/useApi.ts` wraps SWR: `useApi(url)` for GET reads (pass `null` to skip, e.g. while a modal is closed), `useApiQuery([path, ...], fetcher)` for multi-request reads, and `revalidateApi(...paths)` to refresh cached reads after a mutation (no arguments = every API read). `DataProvider` (in the root layout) sets the fetcher and revalidates everything when the active profile changes. Mutations that move money (transactions, splits, transfers, card payments, bulk edits, processing scheduled items) call `revalidateApi()`. With the hand-rolled effects gone, `react-hooks/set-state-in-effect` runs at its default severity again.
 
 - [ ] **FEAT-2: Zod Validation Layer**
   - Shared schema validation for all API inputs. Better error messages, prevents invalid data, reduces boilerplate.

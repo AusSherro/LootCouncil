@@ -1,10 +1,11 @@
 'use client';
 
 import { X, Plus, Trash2, Split, AlertCircle } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { formatCurrency } from '@/lib/utils';
 import { useSettings } from '@/components/SettingsProvider';
 import ModalDialog from './ModalDialog';
+import { revalidateApi, useApi } from '@/lib/useApi';
 
 interface Category {
     id: string;
@@ -18,6 +19,11 @@ interface SplitItem {
     memo: string;
 }
 
+const EMPTY_SPLITS: SplitItem[] = [
+    { categoryId: '', amount: '', memo: '' },
+    { categoryId: '', amount: '', memo: '' },
+];
+
 interface Props {
     isOpen: boolean;
     onClose: () => void;
@@ -28,69 +34,53 @@ interface Props {
 }
 
 export default function SplitTransactionModal({ isOpen, onClose, onSuccess, transactionId, transactionAmount, transactionPayee }: Props) {
-    const [categories, setCategories] = useState<Category[]>([]);
-    const [splits, setSplits] = useState<SplitItem[]>([
-        { categoryId: '', amount: '', memo: '' },
-        { categoryId: '', amount: '', memo: '' },
-    ]);
-    const [hasExistingSplits, setHasExistingSplits] = useState(false);
+    const [draftSplits, setSplits] = useState<SplitItem[] | null>(null);
     const [loading, setLoading] = useState(false);
     const [unsplitting, setUnsplitting] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const [actionError, setError] = useState<string | null>(null);
     const { settings } = useSettings();
     const currency = settings?.currency || 'AUD';
 
-    useEffect(() => {
+    const { data: categoriesData, error: categoriesError } = useApi<{
+        categoryGroups?: Array<{ name: string; categories: { id: string; name: string }[] }>;
+    }>(isOpen ? '/api/categories' : null, {
+        onError: err => console.error('Failed to fetch categories:', err),
+    });
+    const categories: Category[] = (categoriesData?.categoryGroups ?? []).flatMap(g =>
+        g.categories.map(c => ({ ...c, groupName: g.name }))
+    );
+
+    const { data: splitsData } = useApi<{
+        splits?: Array<{ categoryId: string | null; amount: number; memo: string | null }>;
+    }>(isOpen && transactionId ? `/api/splits?transactionId=${encodeURIComponent(transactionId)}` : null, {
+        onError: err => console.error('Failed to fetch splits:', err),
+    });
+    const existingSplits = Array.isArray(splitsData?.splits) && splitsData.splits.length >= 2
+        ? splitsData.splits
+        : null;
+    const hasExistingSplits = existingSplits !== null;
+    // Until the user edits them, the rows mirror the saved splits (or two blanks).
+    const splits: SplitItem[] = draftSplits ?? (existingSplits
+        ? existingSplits.map(s => ({
+            categoryId: s.categoryId || '',
+            amount: (Math.abs(s.amount) / 100).toFixed(2),
+            memo: s.memo || '',
+        }))
+        : EMPTY_SPLITS);
+
+    const error = actionError ?? (categoriesError ? 'Could not load categories. Close and try again.' : null);
+
+    // Discard edits and errors each time the modal opens (adjusting state
+    // during render rather than in an effect).
+    const resetKey = `${isOpen}|${transactionId}`;
+    const [prevResetKey, setPrevResetKey] = useState(resetKey);
+    if (resetKey !== prevResetKey) {
+        setPrevResetKey(resetKey);
         if (isOpen) {
             setError(null);
-            fetch('/api/categories')
-                .then(r => {
-                    if (!r.ok) throw new Error('Failed to load categories');
-                    return r.json();
-                })
-                .then(d => {
-                    const allCats: Category[] = [];
-                    (d.categoryGroups || []).forEach((g: { name: string; categories: { id: string; name: string }[] }) => {
-                        g.categories.forEach(c => {
-                            allCats.push({ ...c, groupName: g.name });
-                        });
-                    });
-                    setCategories(allCats);
-                })
-                .catch(err => {
-                    console.error('Failed to fetch categories:', err);
-                    setError('Could not load categories. Close and try again.');
-                });
-
-            if (transactionId) {
-                fetch(`/api/splits?transactionId=${encodeURIComponent(transactionId)}`)
-                    .then(r => {
-                        if (!r.ok) throw new Error('Failed to load existing splits');
-                        return r.json();
-                    })
-                    .then(d => {
-                        if (Array.isArray(d.splits) && d.splits.length >= 2) {
-                            setHasExistingSplits(true);
-                            setSplits(d.splits.map((s: { categoryId: string | null; amount: number; memo: string | null }) => ({
-                                categoryId: s.categoryId || '',
-                                amount: (Math.abs(s.amount) / 100).toFixed(2),
-                                memo: s.memo || '',
-                            })));
-                        } else {
-                            setHasExistingSplits(false);
-                            setSplits([
-                                { categoryId: '', amount: '', memo: '' },
-                                { categoryId: '', amount: '', memo: '' },
-                            ]);
-                        }
-                    })
-                    .catch(err => {
-                        console.error('Failed to fetch splits:', err);
-                        setHasExistingSplits(false);
-                    });
-            }
+            setSplits(null);
         }
-    }, [isOpen, transactionId]);
+    }
 
     const totalSplitAmount = splits.reduce((sum, s) => {
         const val = parseFloat(s.amount) || 0;
@@ -157,11 +147,8 @@ export default function SplitTransactionModal({ isOpen, onClose, onSuccess, tran
 
             onSuccess();
             onClose();
-            setHasExistingSplits(false);
-            setSplits([
-                { categoryId: '', amount: '', memo: '' },
-                { categoryId: '', amount: '', memo: '' },
-            ]);
+            setSplits(null);
+            void revalidateApi();
         } catch (err) {
             setError(err instanceof Error ? err.message : 'An error occurred');
         } finally {
@@ -180,7 +167,7 @@ export default function SplitTransactionModal({ isOpen, onClose, onSuccess, tran
                 const data = await res.json().catch(() => ({}));
                 throw new Error(data.error || 'Failed to unsplit transaction');
             }
-            setHasExistingSplits(false);
+            void revalidateApi();
             onSuccess();
             onClose();
         } catch (err) {

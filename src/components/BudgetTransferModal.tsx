@@ -49,7 +49,12 @@ export default function BudgetTransferModal({
     const fromRef = useRef<HTMLDivElement>(null);
     const toRef = useRef<HTMLDivElement>(null);
 
-    useEffect(() => {
+    // Reset the form whenever the modal opens or its preselection changes
+    // (adjusting state during render rather than in an effect).
+    const resetKey = `${isOpen}|${preselectedFromId ?? ''}|${preselectedToId ?? ''}`;
+    const [prevResetKey, setPrevResetKey] = useState(resetKey);
+    if (resetKey !== prevResetKey) {
+        setPrevResetKey(resetKey);
         if (isOpen) {
             setFromCategoryId(preselectedFromId || '');
             setToCategoryId(preselectedToId || '');
@@ -58,7 +63,7 @@ export default function BudgetTransferModal({
             setFromSearch('');
             setToSearch('');
         }
-    }, [isOpen, preselectedFromId, preselectedToId]);
+    }
 
     // Focus amount input when both categories are selected
     useEffect(() => {

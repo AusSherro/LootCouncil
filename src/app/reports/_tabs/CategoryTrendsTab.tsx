@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useMemo } from 'react';
+import { useApi } from '@/lib/useApi';
 import { Calendar, TrendingUp } from 'lucide-react';
 import {
     ResponsiveContainer,
@@ -46,34 +47,20 @@ const DATE_RANGE_PRESETS = [
 export default function CategoryTrendsTab({ currency, excludeCategoryNames }: Props) {
     const [months, setMonths] = useState(6);
     const [showRangeDropdown, setShowRangeDropdown] = useState(false);
-    const [data, setData] = useState<CategoryTrendData[]>([]);
-    const [trendCategories, setTrendCategories] = useState<string[]>([]);
-    const [loading, setLoading] = useState(true);
 
     const excludeQueryParam = useMemo(
         () => Array.from(excludeCategoryNames).join(','),
         [excludeCategoryNames]
     );
 
-    const fetchData = useCallback(async () => {
-        setLoading(true);
-        try {
-            const params = new URLSearchParams({ type: 'category-trends', months: String(months) });
-            if (excludeQueryParam) params.set('excludeCategories', excludeQueryParam);
-            const res = await fetch(`/api/reports/advanced?${params.toString()}`);
-            const json = await res.json();
-            setData(json.data || []);
-            setTrendCategories(json.categories || []);
-        } catch (err) {
-            console.error('Failed to fetch trend data:', err);
-        } finally {
-            setLoading(false);
-        }
-    }, [months, excludeQueryParam]);
-
-    useEffect(() => {
-        fetchData();
-    }, [fetchData]);
+    const params = new URLSearchParams({ type: 'category-trends', months: String(months) });
+    if (excludeQueryParam) params.set('excludeCategories', excludeQueryParam);
+    const { data: json, isLoading: loading } = useApi<{ data?: CategoryTrendData[]; categories?: string[] }>(
+        `/api/reports/advanced?${params.toString()}`,
+        { onError: err => console.error('Failed to fetch trend data:', err) }
+    );
+    const data = json?.data ?? [];
+    const trendCategories = json?.categories ?? [];
 
     return (
         <div className="space-y-6">

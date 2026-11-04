@@ -1,7 +1,7 @@
 'use client';
 
 import { Coins, Plus, ArrowUpRight, ArrowDownLeft, RefreshCw, Lock, MoreVertical, Archive, ArrowRightLeft, CreditCard, ChevronDown, ChevronRight, AlertTriangle, Landmark } from 'lucide-react';
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import QuickTransferModal from '@/components/QuickTransferModal';
 import ReconciliationModeModal from '@/components/ReconciliationModeModal';
 import CreditCardPaymentModal from '@/components/CreditCardPaymentModal';
@@ -9,6 +9,7 @@ import TransactionForm from '@/components/TransactionForm';
 import { formatCurrency } from '@/lib/utils';
 import GoldCoinSpinner from '@/components/GoldCoinSpinner';
 import ModalDialog from '@/components/ModalDialog';
+import { useApi } from '@/lib/useApi';
 
 interface Account {
     id: string;
@@ -153,8 +154,11 @@ function AccountCard({ account, onReconcile, onClose, onReopen, onDeposit, onTra
 }
 
 export default function AccountsPage() {
-    const [accounts, setAccounts] = useState<Account[]>([]);
-    const [loading, setLoading] = useState(true);
+    const { data: accountsData, isLoading: loading, mutate: refreshAccounts } = useApi<{ accounts?: Account[] }>(
+        '/api/accounts',
+        { onError: err => console.error('Failed to fetch accounts:', err) }
+    );
+    const accounts = accountsData?.accounts ?? [];
     const [showAddForm, setShowAddForm] = useState(false);
     const [showTransferModal, setShowTransferModal] = useState(false);
     const [transferSourceAccount, setTransferSourceAccount] = useState<string | undefined>(undefined);
@@ -165,22 +169,9 @@ export default function AccountsPage() {
     const [showClosedAccounts, setShowClosedAccounts] = useState(false);
     const [newAccount, setNewAccount] = useState({ name: '', type: 'checking', balance: '' });
 
-    const fetchAccounts = useCallback(async () => {
-        setLoading(true);
-        try {
-            const res = await fetch('/api/accounts');
-            const data = await res.json();
-            setAccounts(data.accounts || []);
-        } catch (err) {
-            console.error('Failed to fetch accounts:', err);
-        } finally {
-            setLoading(false);
-        }
-    }, []);
-
-    useEffect(() => {
-        fetchAccounts();
-    }, [fetchAccounts]);
+    function fetchAccounts() {
+        void refreshAccounts();
+    }
 
     async function handleAddAccount(e: React.FormEvent) {
         e.preventDefault();

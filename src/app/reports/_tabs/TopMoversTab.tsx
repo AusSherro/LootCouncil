@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useMemo } from 'react';
+import { useApi } from '@/lib/useApi';
 import { useRouter } from 'next/navigation';
 import { ArrowUpRight, ArrowDownRight, Calendar, TrendingUp } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
@@ -46,37 +47,23 @@ export default function TopMoversTab({ currency, excludeCategoryNames }: Props) 
         const now = new Date();
         return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     });
-    const [data, setData] = useState<TopMoversResponse | null>(null);
-    const [loading, setLoading] = useState(true);
 
     const excludeQueryParam = useMemo(
         () => Array.from(excludeCategoryNames).join(','),
         [excludeCategoryNames]
     );
 
-    const fetchData = useCallback(async () => {
-        setLoading(true);
-        try {
-            const params = new URLSearchParams({
-                type: 'top-movers',
-                month: selectedMonth,
-                compareWith,
-            });
-            if (excludeQueryParam) params.set('excludeCategories', excludeQueryParam);
-            const res = await fetch(`/api/reports/advanced?${params.toString()}`);
-            const json = await res.json();
-            setData(json);
-        } catch (err) {
-            console.error('Failed to fetch top movers:', err);
-            setData(null);
-        } finally {
-            setLoading(false);
-        }
-    }, [selectedMonth, compareWith, excludeQueryParam]);
-
-    useEffect(() => {
-        fetchData();
-    }, [fetchData]);
+    const params = new URLSearchParams({
+        type: 'top-movers',
+        month: selectedMonth,
+        compareWith,
+    });
+    if (excludeQueryParam) params.set('excludeCategories', excludeQueryParam);
+    const { data: json, isLoading: loading } = useApi<TopMoversResponse>(
+        `/api/reports/advanced?${params.toString()}`,
+        { onError: err => console.error('Failed to fetch top movers:', err) }
+    );
+    const data = json ?? null;
 
     function navigateToCategory(mover: Mover, period: 'current' | 'previous') {
         if (!mover.categoryId) return;

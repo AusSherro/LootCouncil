@@ -1,11 +1,45 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useSyncExternalStore } from 'react';
 import { 
     Sparkles, Send, Loader2, MessageCircle, Lightbulb, 
     TrendingUp, Bot, User, RefreshCw,
     AlertTriangle, CheckCircle, ArrowUpRight, ArrowDownRight
 } from 'lucide-react';
+import { revalidateApi, useApi } from '@/lib/useApi';
+
+const AI_CONSENT_KEY = 'loot-council-ai-consent';
+
+function readStoredConsent(): boolean {
+    try {
+        return localStorage.getItem(AI_CONSENT_KEY) === 'true';
+    } catch (err) {
+        console.warn('Failed to read AI consent setting:', err);
+        return false;
+    }
+}
+
+function subscribeToStorage(onChange: () => void) {
+    window.addEventListener('storage', onChange);
+    return () => window.removeEventListener('storage', onChange);
+}
+
+// AI responses are slow and cost money: fetch once per session (or on an
+// explicit refresh) rather than every time the tab is shown.
+const AI_QUERY_OPTIONS = {
+    revalidateIfStale: false,
+    revalidateOnReconnect: false,
+} as const;
+
+interface InsightsResponse {
+    insights?: Insight[];
+    summary?: { totalSpent: number; totalIncome: number; savingsRate: number } | null;
+}
+
+interface OptimizeResponse {
+    recommendations?: Recommendation[];
+    summary?: { totalIncome: number; currentBudgeted: number; potentialSavings: number } | null;
+}
 
 interface ChatMessage {
     role: 'user' | 'assistant';
@@ -29,26 +63,18 @@ interface Recommendation {
 
 export default function AssistantPage() {
     const [activeTab, setActiveTab] = useState<'chat' | 'insights' | 'optimize'>('chat');
-    const [hasConsented, setHasConsented] = useState(false);
-
-    // Check for prior consent on mount
-    useEffect(() => {
-        try {
-            if (localStorage.getItem('loot-council-ai-consent') === 'true') {
-                setHasConsented(true);
-            }
-        } catch (err) {
-            console.warn('Failed to read AI consent setting:', err);
-        }
-    }, []);
+    // Prior consent lives in localStorage; the server render assumes none.
+    const storedConsent = useSyncExternalStore(subscribeToStorage, readStoredConsent, () => false);
+    const [consentedNow, setConsentedNow] = useState(false);
+    const hasConsented = storedConsent || consentedNow;
 
     const acceptConsent = () => {
         try {
-            localStorage.setItem('loot-council-ai-consent', 'true');
+            localStorage.setItem(AI_CONSENT_KEY, 'true');
         } catch (err) {
             console.warn('Failed to persist AI consent setting:', err);
         }
-        setHasConsented(true);
+        setConsentedNow(true);
     };
     
     // Chat state
@@ -63,24 +89,30 @@ export default function AssistantPage() {
     const [chatLoading, setChatLoading] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
-    // Insights state
-    const [insights, setInsights] = useState<Insight[]>([]);
-    const [insightsLoading, setInsightsLoading] = useState(false);
-    const [insightsSummary, setInsightsSummary] = useState<{
-        totalSpent: number;
-        totalIncome: number;
-        savingsRate: number;
-    } | null>(null);
+    // Insights state (loaded when the Insights tab is shown)
+    const insightsQuery = useApi<InsightsResponse>(
+        hasConsented && activeTab === 'insights' ? '/api/ai/insights' : null,
+        { ...AI_QUERY_OPTIONS, onError: () => console.error('Failed to fetch insights') }
+    );
+    const insights = insightsQuery.data?.insights ?? [];
+    const insightsSummary = insightsQuery.data?.summary ?? null;
+    const insightsLoading = insightsQuery.isValidating;
+    const fetchInsights = () => {
+        void insightsQuery.mutate();
+    };
 
-    // Optimizer state
-    const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
-    const [optimizeLoading, setOptimizeLoading] = useState(false);
+    // Optimizer state (loaded when the Optimize tab is shown)
+    const optimizeQuery = useApi<OptimizeResponse>(
+        hasConsented && activeTab === 'optimize' ? '/api/ai/optimize' : null,
+        { ...AI_QUERY_OPTIONS, onError: () => console.error('Failed to fetch optimizations') }
+    );
+    const recommendations = optimizeQuery.data?.recommendations ?? [];
+    const optimizeSummary = optimizeQuery.data?.summary ?? null;
+    const optimizeLoading = optimizeQuery.isValidating;
+    const fetchOptimizations = () => {
+        void optimizeQuery.mutate();
+    };
     const [applyingOptimizations, setApplyingOptimizations] = useState(false);
-    const [optimizeSummary, setOptimizeSummary] = useState<{
-        totalIncome: number;
-        currentBudgeted: number;
-        potentialSavings: number;
-    } | null>(null);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -130,34 +162,6 @@ export default function AssistantPage() {
         }
     };
 
-    const fetchInsights = async () => {
-        setInsightsLoading(true);
-        try {
-            const res = await fetch('/api/ai/insights');
-            const data = await res.json();
-            setInsights(data.insights || []);
-            setInsightsSummary(data.summary);
-        } catch {
-            console.error('Failed to fetch insights');
-        } finally {
-            setInsightsLoading(false);
-        }
-    };
-
-    const fetchOptimizations = async () => {
-        setOptimizeLoading(true);
-        try {
-            const res = await fetch('/api/ai/optimize');
-            const data = await res.json();
-            setRecommendations(data.recommendations || []);
-            setOptimizeSummary(data.summary);
-        } catch {
-            console.error('Failed to fetch optimizations');
-        } finally {
-            setOptimizeLoading(false);
-        }
-    };
-
     const applyOptimizations = async () => {
         if (recommendations.length === 0 || applyingOptimizations) return;
         
@@ -173,8 +177,10 @@ export default function AssistantPage() {
             
             if (res.ok) {
                 // Clear recommendations and show success in chat
-                setRecommendations([]);
-                setOptimizeSummary(null);
+                // Drop the applied recommendations; fresh ones load next time
+                // the Optimize tab is opened.
+                void optimizeQuery.mutate(undefined, { revalidate: false });
+                void revalidateApi('/api/budget', '/api/categories');
                 setMessages(prev => [...prev, {
                     role: 'assistant',
                     content: `Successfully applied ${data.updated} budget optimizations. Your category allocations have been updated.`,
@@ -190,15 +196,6 @@ export default function AssistantPage() {
             setApplyingOptimizations(false);
         }
     };
-
-    // Load data when switching tabs
-    useEffect(() => {
-        if (activeTab === 'insights' && insights.length === 0) {
-            fetchInsights();
-        } else if (activeTab === 'optimize' && recommendations.length === 0) {
-            fetchOptimizations();
-        }
-    }, [activeTab, insights.length, recommendations.length]);
 
     const getInsightIcon = (type: string) => {
         switch (type) {
