@@ -1,8 +1,9 @@
 'use client';
 
 import { CreditCard, X, Link2, Unlink, AlertCircle, Check, DollarSign } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { formatCurrency } from '@/lib/utils';
+import { revalidateApi, useApi } from '@/lib/useApi';
 import ModalDialog from './ModalDialog';
 
 interface Account {
@@ -23,8 +24,10 @@ interface Props {
 }
 
 export default function CreditCardPaymentModal({ isOpen, onClose, onSuccess }: Props) {
-    const [accounts, setAccounts] = useState<Account[]>([]);
-    const [loading, setLoading] = useState(true);
+    const { data: accountsData, isLoading: loading, mutate: refreshAccounts } = useApi<{ accounts?: Account[] }>(
+        isOpen ? '/api/accounts' : null
+    );
+    const accounts = accountsData?.accounts ?? [];
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
@@ -38,25 +41,19 @@ export default function CreditCardPaymentModal({ isOpen, onClose, onSuccess }: P
     const [paymentCardId, setPaymentCardId] = useState('');
     const [paymentAmount, setPaymentAmount] = useState('');
 
-    useEffect(() => {
+    // Clear status messages each time the modal opens (adjusting state during
+    // render rather than in an effect).
+    const [wasOpen, setWasOpen] = useState(isOpen);
+    if (isOpen !== wasOpen) {
+        setWasOpen(isOpen);
         if (isOpen) {
-            fetchAccounts();
             setError(null);
             setSuccess(null);
         }
-    }, [isOpen]);
+    }
 
-    async function fetchAccounts() {
-        setLoading(true);
-        try {
-            const res = await fetch('/api/accounts');
-            const data = await res.json();
-            setAccounts(data.accounts || []);
-        } catch (err) {
-            console.error('Failed to fetch accounts:', err);
-        } finally {
-            setLoading(false);
-        }
+    function fetchAccounts() {
+        void refreshAccounts();
     }
 
     const creditCards = accounts.filter(a => a.type === 'credit' && !a.closed);
@@ -160,7 +157,8 @@ export default function CreditCardPaymentModal({ isOpen, onClose, onSuccess }: P
             setShowPayment(false);
             setPaymentCardId('');
             setPaymentAmount('');
-            fetchAccounts();
+            // A payment is a transfer: balances, budget and transaction lists change
+            void revalidateApi();
             onSuccess();
         } catch (err) {
             setError(err instanceof Error ? err.message : 'An error occurred');

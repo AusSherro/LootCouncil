@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { X, Target, Calendar, DollarSign, Trash2 } from 'lucide-react';
 import ModalDialog from './ModalDialog';
 
@@ -57,8 +57,15 @@ export default function GoalEditorModal({
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    // Reset form when modal opens with new category
-    useEffect(() => {
+    // Reset form when modal opens with new category (adjusting state during
+    // render rather than in an effect).
+    const resetKey = JSON.stringify([
+        isOpen, categoryId, currentGoalType, currentGoalTarget, currentGoalDueDate,
+        currentGoalCadence, currentGoalCadenceFrequency,
+    ]);
+    const [prevResetKey, setPrevResetKey] = useState(resetKey);
+    if (resetKey !== prevResetKey) {
+        setPrevResetKey(resetKey);
         if (isOpen) {
             setGoalType(currentGoalType || '');
             setTargetAmount(currentGoalTarget ? (currentGoalTarget / 100).toFixed(2) : '');
@@ -67,7 +74,7 @@ export default function GoalEditorModal({
             setCadenceFrequency(currentGoalCadenceFrequency || 1);
             setError(null);
         }
-    }, [isOpen, categoryId, currentGoalType, currentGoalTarget, currentGoalDueDate, currentGoalCadence, currentGoalCadenceFrequency]);
+    }
 
     async function handleSave() {
         setSaving(true);
