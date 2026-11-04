@@ -53,6 +53,23 @@ afterAll(async () => {
     await prisma.$disconnect();
 });
 
+describe('transaction creation', () => {
+    it('rejects an invalid date without touching the balance', async () => {
+        const before = await accountBalances(chequingId);
+        for (const date of ['not-a-date', 12345]) {
+            const response = await createTransaction(
+                jsonRequest(`http://localhost/api/transactions?profileId=${profileId}`, 'POST', {
+                    date,
+                    amount: -12.5,
+                    accountId: chequingId,
+                })
+            );
+            expect(response.status).toBe(400);
+        }
+        expect(await accountBalances(chequingId)).toEqual(before);
+    });
+});
+
 describe('transfers', () => {
     let transferId: string;
 

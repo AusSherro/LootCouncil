@@ -187,6 +187,11 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         );
     }
 
+    const parsedDate = parseDate(typeof date === 'string' ? date : null);
+    if (!parsedDate) {
+        return NextResponse.json({ error: 'Invalid date' }, { status: 400 });
+    }
+
     // Validate input lengths and types
     if (typeof amount !== 'number' || !isFinite(amount) || Math.abs(amount) > 999999999) {
         return NextResponse.json({ error: 'Invalid amount' }, { status: 400 });
@@ -243,7 +248,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
     const transaction = await prisma.$transaction(async (tx) => {
         const created = await tx.transaction.create({
             data: {
-                date: new Date(date),
+                date: parsedDate,
                 amount: amountCents,
                 payee: payee || null,
                 memo: memo || null,
