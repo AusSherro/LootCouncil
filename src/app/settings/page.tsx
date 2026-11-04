@@ -979,6 +979,8 @@ export default function SettingsPage() {
                       const res = await fetch('/api/reset/budget', { method: 'DELETE' });
                       if (res.ok) {
                         showToast('Budget data cleared. Investments preserved.', 'success');
+                        // Full reload on purpose: drops every cached client-side state after the reset.
+                        // eslint-disable-next-line @next/next/no-location-assign-relative-destination
                         setTimeout(() => { window.location.href = '/'; }, 800);
                       } else {
                         showToast('Failed to clear budget data.', 'error');
@@ -1009,6 +1011,8 @@ export default function SettingsPage() {
                       const res = await fetch('/api/reset', { method: 'DELETE' });
                       if (res.ok) {
                         showToast('All data has been reset.', 'success');
+                        // Full reload on purpose: drops every cached client-side state after the reset.
+                        // eslint-disable-next-line @next/next/no-location-assign-relative-destination
                         setTimeout(() => { window.location.href = '/'; }, 800);
                       } else {
                         showToast('Failed to reset data.', 'error');

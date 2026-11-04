@@ -39,6 +39,24 @@ export function useSettings() {
     return useContext(SettingsContext);
 }
 
+// Apply theme to document
+function applyTheme(theme: string) {
+    const root = document.documentElement;
+
+    // Remove any previously applied theme-* class to prevent conflicting variables.
+    for (const className of Array.from(root.classList)) {
+        if (className.startsWith('theme-')) {
+            root.classList.remove(className);
+        }
+    }
+
+    // Add new theme class
+    root.classList.add(`theme-${theme}`);
+    
+    // Also store in localStorage for instant load on next visit
+    localStorage.setItem('loot-council-theme', theme);
+}
+
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
     const [settings, setSettings] = useState<Settings | null>(null);
     const [loading, setLoading] = useState(true);
@@ -72,24 +90,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         }
         loadSettings();
     }, [activeProfile]);
-
-    // Apply theme to document
-    const applyTheme = (theme: string) => {
-        const root = document.documentElement;
-
-        // Remove any previously applied theme-* class to prevent conflicting variables.
-        for (const className of Array.from(root.classList)) {
-            if (className.startsWith('theme-')) {
-                root.classList.remove(className);
-            }
-        }
-
-        // Add new theme class
-        root.classList.add(`theme-${theme}`);
-        
-        // Also store in localStorage for instant load on next visit
-        localStorage.setItem('loot-council-theme', theme);
-    };
 
     const updateSettings = async (newSettings: Partial<Settings>) => {
         if (!settings || !activeProfile) return;

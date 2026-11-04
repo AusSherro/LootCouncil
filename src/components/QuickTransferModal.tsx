@@ -36,18 +36,6 @@ export default function QuickTransferModal({
     const [memo, setMemo] = useState('');
     const [date, setDate] = useState(toLocalDateString());
 
-    useEffect(() => {
-        if (isOpen) {
-            fetchAccounts();
-        }
-    }, [isOpen]);
-
-    useEffect(() => {
-        if (defaultSourceAccountId) {
-            setSourceAccountId(defaultSourceAccountId);
-        }
-    }, [defaultSourceAccountId]);
-
     async function fetchAccounts() {
         try {
             const res = await fetch('/api/accounts');
@@ -59,6 +47,18 @@ export default function QuickTransferModal({
             console.error('Failed to fetch accounts:', err);
         }
     }
+
+    useEffect(() => {
+        if (isOpen) {
+            fetchAccounts();
+        }
+    }, [isOpen]);
+
+    useEffect(() => {
+        if (defaultSourceAccountId) {
+            setSourceAccountId(defaultSourceAccountId);
+        }
+    }, [defaultSourceAccountId]);
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
