@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { actionOf, boundedText, centsAmount, idString, monthKey, parseBody, parseWith, readJsonBody, requiredText } from '@/lib/validation';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
 import { findOwnedTemplate, ownsAllCategories } from '@/lib/profileOwnership';
@@ -44,18 +46,52 @@ export async function GET(request: NextRequest) {
     }
 }
 
+// Template item amounts are integer cents (the budget page's values).
+const templateItems = z
+    .array(z.object({ categoryId: idString, amount: centsAmount }))
+    .max(1000, 'Too many template items');
+const templateName = requiredText(100);
+const templateDescription = boundedText(500).nullish();
+
+const applyTemplateSchema = z.object({
+    action: z.literal('apply'),
+    templateId: idString,
+    month: monthKey,
+});
+
+const saveFromMonthSchema = z.object({
+    action: z.literal('saveFromMonth'),
+    name: templateName,
+    description: templateDescription,
+    month: monthKey,
+});
+
+const createTemplateSchema = z.object({
+    name: templateName,
+    description: templateDescription,
+    items: templateItems.optional(),
+});
+
+const updateTemplateSchema = z.object({
+    id: idString,
+    name: templateName.optional(),
+    description: templateDescription,
+    items: templateItems.optional(),
+});
+
 // POST - Create a new template OR apply a template to a month
 export async function POST(request: NextRequest) {
     try {
         const profileId = await getProfileId(request);
-        const body = await request.json();
+        const raw = await readJsonBody(request);
+        if (!raw.success) return raw.response;
+        const action = actionOf(raw.data);
 
         // Apply template to a month
-        if (body.action === 'apply') {
-            const { templateId, month } = body;
-            if (!templateId || !month) {
-                return NextResponse.json({ error: 'Missing templateId or month' }, { status: 400 });
-            }
+        if (action === 'apply') {
+            const parsed = parseWith(applyTemplateSchema, raw.data);
+            if (!parsed.success) return parsed.response;
+            const { templateId, month } = parsed.data;
 
             const template = await prisma.budgetTemplate.findFirst({
                 where: { id: templateId, profileId },
@@ -119,11 +155,10 @@ export async function POST(request: NextRequest) {
         }
 
         // Save current month as template
-        if (body.action === 'saveFromMonth') {
-            const { name, description, month } = body;
-            if (!name || !month) {
-                return NextResponse.json({ error: 'Missing name or month' }, { status: 400 });
-            }
+        if (action === 'saveFromMonth') {
+            const parsed = parseWith(saveFromMonthSchema, raw.data);
+            if (!parsed.success) return parsed.response;
+            const { name, description, month } = parsed.data;
 
             // Get all monthly budgets for this month
             const monthlyBudgets = await prisma.monthlyBudget.findMany({
@@ -153,13 +188,12 @@ export async function POST(request: NextRequest) {
         }
 
         // Create a new template manually
-        const { name, description, items } = body;
-        if (!name) {
-            return NextResponse.json({ error: 'Missing template name' }, { status: 400 });
-        }
+        const parsed = parseWith(createTemplateSchema, raw.data);
+        if (!parsed.success) return parsed.response;
+        const { name, description, items } = parsed.data;
 
-        const itemList = Array.isArray(items) ? items : [];
-        if (!(await ownsAllCategories(profileId, itemList.map((item: { categoryId: string }) => item.categoryId)))) {
+        const itemList = items ?? [];
+        if (!(await ownsAllCategories(profileId, itemList.map(item => item.categoryId)))) {
             return NextResponse.json({ error: 'One or more categories were not found' }, { status: 404 });
         }
 
@@ -169,7 +203,7 @@ export async function POST(request: NextRequest) {
                 description: description || null,
                 profileId,
                 items: itemList.length > 0 ? {
-                    create: itemList.map((item: { categoryId: string; amount: number }) => ({
+                    create: itemList.map(item => ({
                         categoryId: item.categoryId,
                         amount: item.amount,
                     })),
@@ -189,16 +223,13 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
     try {
         const profileId = await getProfileId(request);
-        const body = await request.json();
-        const { id, name, description, items } = body;
-
-        if (!id) {
-            return NextResponse.json({ error: 'Missing template ID' }, { status: 400 });
-        }
+        const parsed = await parseBody(request, updateTemplateSchema);
+        if (!parsed.success) return parsed.response;
+        const { id, name, description, items } = parsed.data;
         if (!(await findOwnedTemplate(profileId, id))) {
             return NextResponse.json({ error: 'Template not found' }, { status: 404 });
         }
-        if (items && !(await ownsAllCategories(profileId, items.map((item: { categoryId: string }) => item.categoryId)))) {
+        if (items && !(await ownsAllCategories(profileId, items.map(item => item.categoryId)))) {
             return NextResponse.json({ error: 'One or more categories were not found' }, { status: 404 });
         }
 
@@ -214,7 +245,7 @@ export async function PATCH(request: NextRequest) {
             if (items) {
                 await tx.budgetTemplateItem.deleteMany({ where: { templateId: id } });
                 await tx.budgetTemplateItem.createMany({
-                    data: items.map((item: { categoryId: string; amount: number }) => ({
+                    data: items.map(item => ({
                         templateId: id,
                         categoryId: item.categoryId,
                         amount: item.amount,

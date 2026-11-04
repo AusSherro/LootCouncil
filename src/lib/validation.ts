@@ -142,14 +142,30 @@ export async function parseBody<S extends z.ZodType>(
     request: Request,
     schema: S,
 ): Promise<ParseResult<z.output<S>>> {
-    let body: unknown;
+    const body = await readJsonBody(request);
+    if (!body.success) return body;
+    return parseWith(schema, body.data);
+}
+
+/**
+ * Reads the JSON body without validating it, for routes that pick a schema
+ * from a field such as `action`. Malformed JSON still yields a 400. Read
+ * `action` with `actionOf`, then validate with `parseWith`.
+ */
+export async function readJsonBody(request: Request): Promise<ParseResult<unknown>> {
     try {
-        body = await request.json();
+        return { success: true, data: await request.json() };
     } catch {
         return {
             success: false,
             response: NextResponse.json({ error: 'Invalid request: body must be valid JSON' }, { status: 400 }),
         };
     }
-    return parseWith(schema, body);
+}
+
+/** The body's `action` field when it is a string, otherwise undefined. */
+export function actionOf(body: unknown): string | undefined {
+    if (typeof body !== 'object' || body === null) return undefined;
+    const action = (body as { action?: unknown }).action;
+    return typeof action === 'string' ? action : undefined;
 }

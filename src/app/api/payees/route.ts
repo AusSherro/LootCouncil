@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { parseBody, requiredText } from '@/lib/validation';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
 import { findOwnedPayee } from '@/lib/profileOwnership';
@@ -93,18 +95,15 @@ export async function GET(request: NextRequest) {
     }
 }
 
+const createPayeeSchema = z.object({ name: requiredText(200) });
+
 // POST - Create a new payee
 export async function POST(request: NextRequest) {
     try {
         const profileId = await getProfileId(request);
-        const body = await request.json();
-        const { name } = body;
-
-        if (!name || typeof name !== 'string' || name.trim().length === 0) {
-            return NextResponse.json({ error: 'Payee name is required' }, { status: 400 });
-        }
-
-        const trimmedName = name.trim();
+        const parsed = await parseBody(request, createPayeeSchema);
+        if (!parsed.success) return parsed.response;
+        const trimmedName = parsed.data.name;
 
         // Check this profile first, then adopt a legacy unassigned payee.
         const existing = await prisma.payee.findFirst({

@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { parseBody, requiredText } from '@/lib/validation';
 import prisma from '@/lib/prisma';
 import { withErrorHandler } from '@/lib/apiHandler';
 import { getProfileId } from '@/lib/profile';
@@ -29,9 +31,19 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
 }, 'Fetch settings');
 
 // PUT settings
+const settingsSchema = z.object({
+    budgetName: requiredText(100).optional(),
+    currency: z.string().trim().min(3, 'must be a currency code').max(10).optional(),
+    dateFormat: requiredText(20).optional(),
+    startOfWeek: z.number().int().min(0).max(6).optional(),
+    theme: requiredText(30).optional(),
+});
+
 export const PUT = withErrorHandler(async (request: NextRequest) => {
     const profileId = await getProfileId(request);
-    const body = await request.json();
+    const parsed = await parseBody(request, settingsSchema);
+    if (!parsed.success) return parsed.response;
+    const body = parsed.data;
 
     // Find existing settings for this profile
     const existing = await prisma.settings.findFirst({

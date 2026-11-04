@@ -1,18 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { monthKey, parseBody } from '@/lib/validation';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
 
 import { getCategoryActivityMap, getCategoryAvailableMap, getMonthRange } from '@/lib/budgetHelpers';
 
 // POST - Copy budget from one month to another
+const copyBudgetSchema = z.object({
+    sourceMonth: monthKey,
+    targetMonth: monthKey,
+});
+
 export async function POST(request: NextRequest) {
     try {
         const profileId = await getProfileId(request);
-        const { sourceMonth, targetMonth } = await request.json();
-
-        if (!sourceMonth || !targetMonth) {
-            return NextResponse.json({ error: 'Missing source or target month' }, { status: 400 });
-        }
+        const parsed = await parseBody(request, copyBudgetSchema);
+        if (!parsed.success) return parsed.response;
+        const { sourceMonth, targetMonth } = parsed.data;
 
         // Get source month's budgets for the active profile only
         const sourceBudgets = await prisma.monthlyBudget.findMany({

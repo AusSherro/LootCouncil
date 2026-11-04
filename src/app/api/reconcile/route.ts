@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { centsAmount, idString, parseBody } from '@/lib/validation';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
 import { RECONCILIATION_ADJUSTMENT_PAYEE } from '@/lib/budgetUtils';
@@ -77,16 +79,21 @@ export async function GET(request: NextRequest) {
     }
 }
 
-// POST - Start or complete reconciliation
+// statementBalance is integer cents (the modal converts before sending).
+const reconcileSchema = z.object({
+    accountId: idString,
+    action: z.enum(['reconcile', 'complete'], { error: 'Invalid action' }),
+    statementBalance: centsAmount.optional(),
+    transactionIds: z.array(idString).max(10_000).optional(),
+});
+
+// POST -  Start or complete reconciliation
 export async function POST(request: NextRequest) {
     try {
         const profileId = await getProfileId(request);
-        const body = await request.json();
-        const { accountId, action, statementBalance, transactionIds } = body;
-
-        if (!accountId) {
-            return NextResponse.json({ error: 'Missing accountId' }, { status: 400 });
-        }
+        const parsed = await parseBody(request, reconcileSchema);
+        if (!parsed.success) return parsed.response;
+        const { accountId, action, statementBalance, transactionIds } = parsed.data;
 
         // Verify account belongs to this profile
         const account = await prisma.account.findUnique({ where: { id: accountId, profileId } });
@@ -95,7 +102,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Mark specific transactions as reconciled
-        if (action === 'reconcile' && transactionIds?.length > 0) {
+        if (action === 'reconcile' && transactionIds && transactionIds.length > 0) {
             await prisma.transaction.updateMany({
                 where: { id: { in: transactionIds }, accountId },
                 data: { isReconciled: true },
@@ -189,16 +196,18 @@ export async function POST(request: NextRequest) {
     }
 }
 
+const toggleClearedSchema = z.object({
+    transactionId: idString,
+    cleared: z.boolean().optional(),
+});
+
 // PATCH - Toggle cleared status for a transaction
 export async function PATCH(request: NextRequest) {
     try {
         const profileId = await getProfileId(request);
-        const body = await request.json();
-        const { transactionId, cleared } = body;
-
-        if (!transactionId) {
-            return NextResponse.json({ error: 'Missing transactionId' }, { status: 400 });
-        }
+        const parsed = await parseBody(request, toggleClearedSchema);
+        if (!parsed.success) return parsed.response;
+        const { transactionId, cleared } = parsed.data;
 
         // Get existing transaction to calculate clearedBalance adjustment
         const existing = await prisma.transaction.findFirst({

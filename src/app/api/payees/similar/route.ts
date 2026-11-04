@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { parseBody } from '@/lib/validation';
 import { getOpenAIClient, OPENAI_MODEL } from '@/lib/openai';
 
 interface SimilarGroup {
@@ -157,11 +159,17 @@ Return empty array [] if no similar payees found. Only include groups with 2+ pa
 }
 
 // POST - Find similar payees
+const similarPayeesSchema = z.object({
+    payees: z.array(z.string().max(200)).max(5000, 'Too many payees').optional(),
+});
+
 export async function POST(request: NextRequest) {
     try {
-        const { payees } = await request.json();
+        const parsed = await parseBody(request, similarPayeesSchema);
+        if (!parsed.success) return parsed.response;
+        const { payees } = parsed.data;
 
-        if (!payees || !Array.isArray(payees) || payees.length < 2) {
+        if (!payees || payees.length < 2) {
             return NextResponse.json({ groups: [] });
         }
 

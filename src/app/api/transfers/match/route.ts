@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { idString, parseBody } from '@/lib/validation';
 import { randomUUID } from 'node:crypto';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
@@ -112,16 +114,15 @@ export async function GET(request: NextRequest) {
     }
 }
 
+const matchTransferSchema = z.object({ outflowId: idString, inflowId: idString });
+
 // POST - Link two transactions as a transfer
 export async function POST(request: NextRequest) {
     try {
         const profileId = await getProfileId(request);
-        const body = await request.json();
-        const { outflowId, inflowId } = body;
-
-        if (!outflowId || !inflowId) {
-            return NextResponse.json({ error: 'Missing outflowId or inflowId' }, { status: 400 });
-        }
+        const parsed = await parseBody(request, matchTransferSchema);
+        if (!parsed.success) return parsed.response;
+        const { outflowId, inflowId } = parsed.data;
 
         // Get both transactions
         const [outflow, inflow] = await Promise.all([

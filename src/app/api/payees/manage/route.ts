@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { parseBody, requiredText } from '@/lib/validation';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
 
@@ -42,14 +44,22 @@ export async function GET(request: NextRequest) {
 }
 
 // POST - Merge payees (rename all transactions from one payee to another)
+// Not trimmed: it has to equal the stored payee exactly to match.
+const existingPayee = z.string().min(1, 'is required').max(200, 'must be at most 200 characters');
+
+const payeeActionSchema = z.discriminatedUnion('action', [
+    z.object({ action: z.literal('merge'), fromPayee: existingPayee, toPayee: requiredText(200) }),
+    z.object({ action: z.literal('rename'), fromPayee: existingPayee, newName: requiredText(200) }),
+], { error: 'action must be merge or rename' });
+
 export async function POST(request: NextRequest) {
     try {
-        const { action, fromPayee, toPayee, newName } = await request.json();
+        const parsed = await parseBody(request, payeeActionSchema);
+        if (!parsed.success) return parsed.response;
+        const body = parsed.data;
 
-        if (action === 'merge') {
-            if (!fromPayee || !toPayee) {
-                return NextResponse.json({ error: 'Missing payee names' }, { status: 400 });
-            }
+        if (body.action === 'merge') {
+            const { fromPayee, toPayee } = body;
 
             const profileId = await getProfileId(request);
             const result = await prisma.transaction.updateMany({
@@ -62,10 +72,8 @@ export async function POST(request: NextRequest) {
                 merged: result.count,
                 message: `Merged ${result.count} transactions from "${fromPayee}" to "${toPayee}"`,
             });
-        } else if (action === 'rename') {
-            if (!fromPayee || !newName) {
-                return NextResponse.json({ error: 'Missing payee names' }, { status: 400 });
-            }
+        } else if (body.action === 'rename') {
+            const { fromPayee, newName } = body;
 
             const profileId = await getProfileId(request);
             const result = await prisma.transaction.updateMany({
