@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
-import { matchesRule } from '@/lib/ruleEngine';
+import { findMatchingRule } from '@/lib/ruleEngine';
 import { findOwnedCategory, findOwnedRule } from '@/lib/profileOwnership';
 
 // GET - List all transaction rules
@@ -133,34 +133,17 @@ async function applyRules(profileId: string, payee: string | null, memo: string 
         orderBy: { priority: 'desc' },
     });
 
-    for (const rule of rules) {
-        let valueToMatch = '';
-        switch (rule.matchField) {
-            case 'payee':
-                valueToMatch = payee || '';
-                break;
-            case 'memo':
-                valueToMatch = memo || '';
-                break;
-            case 'amount':
-                valueToMatch = String(amount);
-                break;
-        }
+    const rule = findMatchingRule(rules, { payee, memo, amount });
+    if (!rule) return { matched: false };
 
-        if (matchesRule(valueToMatch, rule.matchType, rule.matchValue)) {
-            // Found a matching rule
-            return {
-                matched: true,
-                rule: {
-                    id: rule.id,
-                    name: rule.name,
-                    categoryId: rule.categoryId,
-                    payeeRename: rule.payeeRename,
-                    memoTemplate: rule.memoTemplate,
-                },
-            };
-        }
-    }
-
-    return { matched: false };
+    return {
+        matched: true,
+        rule: {
+            id: rule.id,
+            name: rule.name,
+            categoryId: rule.categoryId,
+            payeeRename: rule.payeeRename,
+            memoTemplate: rule.memoTemplate,
+        },
+    };
 }

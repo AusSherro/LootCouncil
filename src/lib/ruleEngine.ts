@@ -30,3 +30,32 @@ export function matchesRule(value: string, matchType: string, matchValue: string
             return false;
     }
 }
+
+/** The fields of a stored `TransactionRule` that decide whether it matches. */
+export interface MatchableRule {
+    matchField: string;
+    matchType: string;
+    matchValue: string;
+}
+
+/** The parts of a transaction a rule can match against. `amount` is in dollars. */
+export interface RuleSubject {
+    payee?: string | null;
+    memo?: string | null;
+    amount: number;
+}
+
+/**
+ * The first rule that matches `subject`, or undefined.
+ * Pass `rules` already sorted by priority, highest first.
+ */
+export function findMatchingRule<T extends MatchableRule>(rules: readonly T[], subject: RuleSubject): T | undefined {
+    return rules.find(rule => {
+        const value =
+            rule.matchField === 'payee' ? subject.payee ?? '' :
+            rule.matchField === 'memo' ? subject.memo ?? '' :
+            rule.matchField === 'amount' ? String(subject.amount) :
+            null;
+        return value !== null && matchesRule(value, rule.matchType, rule.matchValue);
+    });
+}

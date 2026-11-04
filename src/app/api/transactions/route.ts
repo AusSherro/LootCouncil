@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import prisma from '@/lib/prisma';
 import { withErrorHandler } from '@/lib/apiHandler';
 import { getProfileId } from '@/lib/profile';
-import { matchesRule } from '@/lib/ruleEngine';
+import { findMatchingRule } from '@/lib/ruleEngine';
 import { RECONCILIATION_ADJUSTMENT_PAYEE } from '@/lib/budgetUtils';
 import { applyCategoryActivityDelta } from '@/lib/budgetHelpers';
 import { findOwnedAccount, findOwnedCategory, findOwnedTransaction } from '@/lib/profileOwnership';
@@ -215,26 +215,11 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
             orderBy: { priority: 'desc' },
         });
 
-        for (const rule of rules) {
-            let valueToMatch = '';
-            switch (rule.matchField) {
-                case 'payee':
-                    valueToMatch = payee || '';
-                    break;
-                case 'memo':
-                    valueToMatch = memo || '';
-                    break;
-                case 'amount':
-                    valueToMatch = String(amount);
-                    break;
-            }
-
-            if (matchesRule(valueToMatch, rule.matchType, rule.matchValue)) {
-                if (rule.categoryId) categoryId = rule.categoryId;
-                if (rule.payeeRename) payee = rule.payeeRename;
-                if (rule.memoTemplate) memo = rule.memoTemplate;
-                break;
-            }
+        const rule = findMatchingRule(rules, { payee, memo, amount });
+        if (rule) {
+            if (rule.categoryId) categoryId = rule.categoryId;
+            if (rule.payeeRename) payee = rule.payeeRename;
+            if (rule.memoTemplate) memo = rule.memoTemplate;
         }
     }
 
