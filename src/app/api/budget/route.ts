@@ -4,6 +4,8 @@ import { withErrorHandler } from '@/lib/apiHandler';
 import { getProfileId } from '@/lib/profile';
 import { getMonthOffset, calculateActivity, isInflowGroup, isHiddenCategoriesGroup, calculateGoalUnderFunded, getCategoryActivityMap, getCategoryAvailableMap, getMonthRange, calculateReadyToAssign } from '@/lib/budgetHelpers';
 import { toLocalMonthString } from '@/lib/utils';
+import { z } from 'zod';
+import { idString, moneyAmount, monthKey, parseBody, toCents } from '@/lib/validation';
 
 // GET budget for a specific month with proper envelope calculations
 export async function GET(request: NextRequest) {
@@ -179,19 +181,19 @@ export async function GET(request: NextRequest) {
     }
 }
 
+const assignBudgetSchema = z.object({
+    categoryId: idString,
+    month: monthKey,
+    amount: moneyAmount,
+});
+
 // POST - Assign money to a category
 export async function POST(request: NextRequest) {
     try {
         const profileId = await getProfileId(request);
-        const body = await request.json();
-        const { categoryId, month, amount } = body;
-
-        if (!categoryId || !month || amount === undefined) {
-            return NextResponse.json(
-                { error: 'Missing required fields: categoryId, month, amount' },
-                { status: 400 }
-            );
-        }
+        const parsed = await parseBody(request, assignBudgetSchema);
+        if (!parsed.success) return parsed.response;
+        const { categoryId, month, amount } = parsed.data;
 
         // SEC-5: Verify the category belongs to the active profile.
         // 404 (not 403) to avoid leaking the existence of cross-profile IDs.
@@ -203,7 +205,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Category not found' }, { status: 404 });
         }
 
-        const amountCents = Math.round(amount * 100);
+        const amountCents = toCents(amount);
         const activity = await calculateActivity(categoryId, month);
         const [existingBudget, currentAvailableMap] = await Promise.all([
             prisma.monthlyBudget.findUnique({

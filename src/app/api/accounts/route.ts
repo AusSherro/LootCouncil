@@ -3,6 +3,32 @@ import prisma from '@/lib/prisma';
 import { withErrorHandler } from '@/lib/apiHandler';
 import { getProfileId } from '@/lib/profile';
 import { findOwnedAccount } from '@/lib/profileOwnership';
+import { z } from 'zod';
+import { idString, isoDate, moneyAmount, nullableId, parseBody, requiredText, toCents } from '@/lib/validation';
+
+const accountName = requiredText(100);
+const accountType = requiredText(50);
+
+const createAccountSchema = z.object({
+    name: accountName,
+    type: accountType,
+    onBudget: z.boolean().optional(),
+    balance: moneyAmount.optional(),
+});
+
+const updateAccountSchema = z.object({
+    id: idString,
+    action: z.enum(['reconcile', 'link', 'reopen', 'update']).optional(),
+    reconcileBalance: moneyAmount.optional(),
+    reconcileDate: isoDate.optional(),
+    linkedAccountId: nullableId.optional(),
+    updates: z.object({
+        name: accountName.optional(),
+        type: accountType.optional(),
+        onBudget: z.boolean().optional(),
+        closed: z.boolean().optional(),
+    }).default({}),
+});
 
 // GET all accounts
 export const GET = withErrorHandler(async (request: NextRequest) => {
@@ -37,30 +63,18 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
 export async function POST(request: NextRequest) {
     try {
         const profileId = await getProfileId(request);
-        const body = await request.json();
-        const { name, type, onBudget, balance } = body;
-
-        if (!name || !type) {
-            return NextResponse.json(
-                { error: 'Missing required fields: name, type' },
-                { status: 400 }
-            );
-        }
-
-        if (typeof name !== 'string' || name.length > 100) {
-            return NextResponse.json({ error: 'Account name too long (max 100 characters)' }, { status: 400 });
-        }
-        if (typeof type !== 'string' || type.length > 50) {
-            return NextResponse.json({ error: 'Invalid account type' }, { status: 400 });
-        }
+        const parsed = await parseBody(request, createAccountSchema);
+        if (!parsed.success) return parsed.response;
+        const { name, type, onBudget, balance } = parsed.data;
+        const balanceCents = balance ? toCents(balance) : 0;
 
         const account = await prisma.account.create({
             data: {
                 name,
                 type,
                 onBudget: onBudget ?? true,
-                balance: balance ? Math.round(balance * 100) : 0,
-                clearedBalance: balance ? Math.round(balance * 100) : 0,
+                balance: balanceCents,
+                clearedBalance: balanceCents,
                 profileId,
             },
         });
@@ -76,12 +90,9 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
     try {
         const profileId = await getProfileId(request);
-        const body = await request.json();
-        const { id, action, updates, reconcileBalance, reconcileDate } = body;
-
-        if (!id) {
-            return NextResponse.json({ error: 'Account ID required' }, { status: 400 });
-        }
+        const parsed = await parseBody(request, updateAccountSchema);
+        if (!parsed.success) return parsed.response;
+        const { id, action, updates, reconcileBalance, reconcileDate, linkedAccountId } = parsed.data;
 
         const account = await findOwnedAccount(profileId, id);
         if (!account) {
@@ -91,7 +102,7 @@ export async function PATCH(request: NextRequest) {
         if (action === 'reconcile') {
             // Reconcile account: lock in cleared balance and mark past transactions as reconciled
             // Mark all cleared transactions before/on reconcileDate as reconciled
-            const cutoffDate = reconcileDate ? new Date(reconcileDate) : new Date();
+            const cutoffDate = reconcileDate ?? new Date();
             await prisma.transaction.updateMany({
                 where: {
                     accountId: id,
@@ -124,7 +135,7 @@ export async function PATCH(request: NextRequest) {
             // If user provided expected balance, check for discrepancy
             let adjustmentNeeded = 0;
             if (reconcileBalance !== undefined) {
-                const expectedCents = Math.round(reconcileBalance * 100);
+                const expectedCents = toCents(reconcileBalance);
                 adjustmentNeeded = expectedCents - newClearedBalance;
             }
 
@@ -138,7 +149,6 @@ export async function PATCH(request: NextRequest) {
             });
         } else if (action === 'link') {
             // Link credit card to payment account
-            const { linkedAccountId } = body;
             if (linkedAccountId && !(await findOwnedAccount(profileId, linkedAccountId))) {
                 return NextResponse.json({ error: 'Linked account not found' }, { status: 404 });
             }
@@ -155,7 +165,7 @@ export async function PATCH(request: NextRequest) {
             return NextResponse.json({ account: updated });
         } else {
             // Regular update — whitelist allowed fields only
-            const { name, type, onBudget, closed } = updates ?? {};
+            const { name, type, onBudget, closed } = updates;
             const safeUpdates: Record<string, unknown> = {};
             if (name !== undefined) safeUpdates.name = name;
             if (type !== undefined) safeUpdates.type = type;
