@@ -11,6 +11,8 @@ export default defineConfig({
     },
     test: {
         environment: 'node',
+        // Claude Code worktrees are full repo copies sharing the same test database.
+        exclude: ['**/node_modules/**', '.claude/**'],
         env: {
             DATABASE_URL: 'file:../data/loot-council-test.db',
         },
