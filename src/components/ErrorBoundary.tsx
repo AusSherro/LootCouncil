@@ -15,7 +15,7 @@ interface State {
     error: Error | null;
 }
 
-export class ErrorBoundary extends Component<Props, State> {
+class ErrorBoundary extends Component<Props, State> {
     constructor(props: Props) {
         super(props);
         this.state = { hasError: false, error: null };
@@ -65,16 +65,6 @@ export class ErrorBoundary extends Component<Props, State> {
     }
 }
 
-// Hook-based error handler for async operations
-export function useErrorHandler() {
-    const handleError = (error: Error, context?: string) => {
-        console.error(`Error${context ? ` in ${context}` : ''}:`, error);
-        // Could integrate with error tracking service here
-    };
-
-    return { handleError };
-}
-
 // Auto-resetting ErrorBoundary that clears errors on route navigation
 export function AutoResetErrorBoundary({ children, fallback }: { children: ReactNode; fallback?: ReactNode }) {
     const pathname = usePathname();
@@ -82,21 +72,5 @@ export function AutoResetErrorBoundary({ children, fallback }: { children: React
         <ErrorBoundary resetKey={pathname} fallback={fallback}>
             {children}
         </ErrorBoundary>
-    );
-}
-
-// Simple error display component
-export function ErrorMessage({ message, onRetry }: { message: string; onRetry?: () => void }) {
-    return (
-        <div className="bg-negative/10 border border-negative/30 rounded-lg p-4 flex items-center gap-3">
-            <AlertTriangle className="w-5 h-5 text-negative flex-shrink-0" />
-            <p className="text-negative flex-1">{message}</p>
-            {onRetry && (
-                <button onClick={onRetry} className="btn btn-ghost text-negative text-sm">
-                    <RefreshCw className="w-4 h-4" />
-                    Retry
-                </button>
-            )}
-        </div>
     );
 }

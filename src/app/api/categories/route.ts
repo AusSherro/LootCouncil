@@ -169,12 +169,17 @@ export async function DELETE(request: NextRequest) {
                 return NextResponse.json({ error: 'Category group not found' }, { status: 404 });
             }
 
-            // Check if group has categories with transactions
+            // Check if group has categories with transactions or split sub-transactions
             const categories = await prisma.category.findMany({
                 where: { groupId: id },
-                include: { transactions: { take: 1 } },
+                include: {
+                    transactions: { take: 1 },
+                    subTransactions: { take: 1 },
+                },
             });
-            const hasTransactions = categories.some(c => c.transactions.length > 0);
+            const hasTransactions = categories.some(
+                c => c.transactions.length > 0 || c.subTransactions.length > 0
+            );
             if (hasTransactions) {
                 return NextResponse.json({ 
                     error: 'Cannot delete group with transactions. Hide it instead.' 
@@ -190,9 +195,12 @@ export async function DELETE(request: NextRequest) {
                 return NextResponse.json({ error: 'Category not found' }, { status: 404 });
             }
 
-            // Check if category has transactions
-            const txCount = await prisma.transaction.count({ where: { categoryId: id } });
-            if (txCount > 0) {
+            // Check if category has transactions or split sub-transactions
+            const [txCount, subTxCount] = await Promise.all([
+                prisma.transaction.count({ where: { categoryId: id } }),
+                prisma.subTransaction.count({ where: { categoryId: id } }),
+            ]);
+            if (txCount > 0 || subTxCount > 0) {
                 return NextResponse.json({ 
                     error: 'Cannot delete category with transactions. Hide it instead.' 
                 }, { status: 400 });

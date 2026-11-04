@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
-import { calculateReadyToAssign } from '@/lib/budgetHelpers';
+import { ownsAllCategories } from '@/lib/profileOwnership';
+import { calculateReadyToAssign, calculateGoalUnderFunded, getCategoryAvailableMap, getCategoryActivityMap, getMonthRange } from '@/lib/budgetHelpers';
 
 interface CategoryWithGoal {
     id: string;
@@ -10,70 +11,26 @@ interface CategoryWithGoal {
     goalTarget: number | null; // cents
     goalDueDate: Date | null;
     goalUnderFunded: number | null; // cents
-    monthlyData: {
-        assigned: number;
-        available: number;
-    } | null;
+    assigned: number;
+    available: number;
 }
 
 function calculateMonthlyNeeded(
     category: CategoryWithGoal,
     currentMonth: string
 ): number {
-    if (!category.goalType || !category.goalTarget) return 0;
-    
-    const currentAvailable = category.monthlyData?.available ?? 0;
-    
-    switch (category.goalType) {
-        case 'TB': // Target Balance - just need to reach the target
-            // How much more do we need to reach target?
-            const neededForTB = Math.max(0, category.goalTarget - currentAvailable);
-            return neededForTB;
-            
-        case 'TBD': // Target by Date - spread remaining over months
-            if (!category.goalDueDate) {
-                // No date, treat like TB
-                return Math.max(0, category.goalTarget - currentAvailable);
-            }
-            
-            // Calculate months remaining
-            const [currentYear, currentMonthNum] = currentMonth.split('-').map(Number);
-            const dueYear = category.goalDueDate.getFullYear();
-            const dueMonth = category.goalDueDate.getMonth() + 1;
-            
-            const monthsRemaining = (dueYear - currentYear) * 12 + (dueMonth - currentMonthNum);
-            
-            if (monthsRemaining <= 0) {
-                // Past due, need full amount
-                return Math.max(0, category.goalTarget - currentAvailable);
-            }
-            
-            // Amount still needed total
-            const amountNeeded = Math.max(0, category.goalTarget - currentAvailable);
-            // Spread over remaining months (including current)
-            const monthlyAmount = Math.ceil(amountNeeded / monthsRemaining);
-            return monthlyAmount;
-            
-        case 'MF': // Monthly Funding - assign target each month
-            // How much more to reach target this month?
-            // Use available (includes rollover) so we don't over-assign
-            const neededForMF = Math.max(0, category.goalTarget - currentAvailable);
-            return neededForMF;
-            
-        case 'NEED': // Needed for Spending
-            // Calculate dynamically from target vs available
-            return Math.max(0, category.goalTarget - currentAvailable);
-            
-        case 'DEBT': // Debt payoff - usually just minimum payment
-            // Just fund what's underfunded
-            if (category.goalUnderFunded !== null && category.goalUnderFunded > 0) {
-                return category.goalUnderFunded;
-            }
-            return 0;
-            
-        default:
-            return 0;
+    if (!category.goalType) return 0;
+    if (category.goalType === 'DEBT' && !category.goalTarget && category.goalUnderFunded && category.goalUnderFunded > 0) {
+        return category.goalUnderFunded;
     }
+    return calculateGoalUnderFunded(
+        category.goalType,
+        category.goalTarget,
+        category.goalDueDate,
+        category.available,
+        currentMonth,
+        category.assigned,
+    );
 }
 
 // POST - Auto-assign money to categories with goals
@@ -100,11 +57,15 @@ export async function POST(request: NextRequest) {
             });
         }
 
-        // Get all categories with goals
+        // Get all categories with goals scoped to the active profile
         const categories = await prisma.category.findMany({
             where: {
                 goalType: { not: null },
                 isHidden: false,
+                group: {
+                    profileId,
+                    isHidden: false,
+                },
             },
             include: {
                 monthlyData: {
@@ -121,12 +82,23 @@ export async function POST(request: NextRequest) {
             ],
         });
 
+        const categoryIds = categories.map(c => c.id);
+        const [availableMap, activityMap] = await Promise.all([
+            getCategoryAvailableMap(categoryIds, month),
+            getCategoryActivityMap(categoryIds, getMonthRange(month)),
+        ]);
+
         const assignments: { categoryId: string; categoryName: string; amount: number }[] = [];
         let totalAssigned = 0;
         let remainingBudget = readyToAssign;
 
         for (const cat of categories) {
             if (remainingBudget <= 0) break;
+
+            const existing = cat.monthlyData[0];
+            const currentAssigned = existing?.assigned ?? 0;
+            const currentAvailable = availableMap.get(cat.id) ?? 0;
+            const currentActivity = activityMap.get(cat.id) ?? 0;
 
             const categoryWithGoal: CategoryWithGoal = {
                 id: cat.id,
@@ -135,7 +107,8 @@ export async function POST(request: NextRequest) {
                 goalTarget: cat.goalTarget,
                 goalDueDate: cat.goalDueDate,
                 goalUnderFunded: cat.goalUnderFunded,
-                monthlyData: cat.monthlyData[0] ?? null,
+                assigned: currentAssigned,
+                available: currentAvailable,
             };
 
             const needed = calculateMonthlyNeeded(categoryWithGoal, month);
@@ -146,27 +119,33 @@ export async function POST(request: NextRequest) {
             const toAssign = Math.min(needed, remainingBudget);
             
             if (toAssign > 0) {
-                // Get current assigned amount
-                const existing = cat.monthlyData[0];
-                const newAssigned = (existing?.assigned ?? 0) + toAssign;
-                const newAvailable = (existing?.available ?? 0) + toAssign;
+                const newAssigned = currentAssigned + toAssign;
+                const newAvailable = currentAvailable + toAssign;
                 
-                // Update or create monthly budget record
-                await prisma.monthlyBudget.upsert({
-                    where: {
-                        month_categoryId: { month, categoryId: cat.id },
-                    },
-                    create: {
-                        month,
-                        categoryId: cat.id,
-                        assigned: toAssign,
-                        activity: 0,
-                        available: toAssign,
-                    },
-                    update: {
-                        assigned: newAssigned,
-                        available: newAvailable,
-                    },
+                // Update or create monthly budget record and cascade delta to future months
+                await prisma.$transaction(async (tx) => {
+                    await tx.monthlyBudget.upsert({
+                        where: {
+                            month_categoryId: { month, categoryId: cat.id },
+                        },
+                        create: {
+                            month,
+                            categoryId: cat.id,
+                            assigned: newAssigned,
+                            activity: currentActivity,
+                            available: newAvailable,
+                        },
+                        update: {
+                            assigned: newAssigned,
+                            activity: currentActivity,
+                            available: newAvailable,
+                        },
+                    });
+
+                    await tx.monthlyBudget.updateMany({
+                        where: { categoryId: cat.id, month: { gt: month } },
+                        data: { available: { increment: toAssign } },
+                    });
                 });
                 
                 assignments.push({
@@ -192,7 +171,7 @@ export async function POST(request: NextRequest) {
     } catch (error) {
         console.error('Auto-assign error:', error);
         return NextResponse.json(
-            { error: 'Failed to auto-assign', details: String(error) },
+            { error: 'Failed to auto-assign' },
             { status: 500 }
         );
     }
@@ -212,11 +191,15 @@ export async function GET(request: NextRequest) {
         const profileId = await getProfileId(request);
         const readyToAssign = await calculateReadyToAssign(profileId, month);
         
-        // Get all categories with goals
+        // Get all categories with goals scoped to the active profile
         const categories = await prisma.category.findMany({
             where: {
                 goalType: { not: null },
                 isHidden: false,
+                group: {
+                    profileId,
+                    isHidden: false,
+                },
             },
             include: {
                 monthlyData: {
@@ -233,6 +216,9 @@ export async function GET(request: NextRequest) {
             ],
         });
 
+        const categoryIds = categories.map(c => c.id);
+        const availableMap = await getCategoryAvailableMap(categoryIds, month);
+
         const preview: { 
             categoryId: string; 
             categoryName: string; 
@@ -247,6 +233,10 @@ export async function GET(request: NextRequest) {
         let remainingBudget = readyToAssign;
 
         for (const cat of categories) {
+            const existing = cat.monthlyData[0];
+            const currentAssigned = existing?.assigned ?? 0;
+            const currentAvailable = availableMap.get(cat.id) ?? 0;
+
             const categoryWithGoal: CategoryWithGoal = {
                 id: cat.id,
                 name: cat.name,
@@ -254,7 +244,8 @@ export async function GET(request: NextRequest) {
                 goalTarget: cat.goalTarget,
                 goalDueDate: cat.goalDueDate,
                 goalUnderFunded: cat.goalUnderFunded,
-                monthlyData: cat.monthlyData[0] ?? null,
+                assigned: currentAssigned,
+                available: currentAvailable,
             };
 
             const needed = calculateMonthlyNeeded(categoryWithGoal, month);
@@ -289,7 +280,7 @@ export async function GET(request: NextRequest) {
     } catch (error) {
         console.error('Auto-assign preview error:', error);
         return NextResponse.json(
-            { error: 'Failed to preview auto-assign', details: String(error) },
+            { error: 'Failed to preview auto-assign' },
             { status: 500 }
         );
     }
@@ -298,6 +289,7 @@ export async function GET(request: NextRequest) {
 // DELETE - Undo a previous auto-assign operation
 export async function DELETE(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         const body = await request.json();
         const { month, categories } = body as {
             month: string;
@@ -308,28 +300,41 @@ export async function DELETE(request: NextRequest) {
             return NextResponse.json({ error: 'Month and categories required' }, { status: 400 });
         }
 
+        if (categories.some(c => !Number.isInteger(c.amount))) {
+            return NextResponse.json({ error: 'Amounts must be integer cents' }, { status: 400 });
+        }
+
+        // Never let a caller reverse assignments in another profile's categories.
+        if (!(await ownsAllCategories(profileId, categories.map(c => c.categoryId)))) {
+            return NextResponse.json({ error: 'One or more categories were not found' }, { status: 404 });
+        }
+
         let totalReversed = 0;
 
-        for (const { categoryId, amount } of categories) {
-            const existing = await prisma.monthlyBudget.findUnique({
-                where: { month_categoryId: { month, categoryId } },
-            });
+        await prisma.$transaction(async (tx) => {
+            for (const { categoryId, amount } of categories) {
+                const existing = await tx.monthlyBudget.findUnique({
+                    where: { month_categoryId: { month, categoryId } },
+                });
 
-            if (!existing) continue;
+                if (!existing) continue;
 
-            const newAssigned = existing.assigned - amount;
-            const newAvailable = existing.available - amount;
+                await tx.monthlyBudget.update({
+                    where: { month_categoryId: { month, categoryId } },
+                    data: {
+                        assigned: existing.assigned - amount,
+                        available: existing.available - amount,
+                    },
+                });
 
-            await prisma.monthlyBudget.update({
-                where: { month_categoryId: { month, categoryId } },
-                data: {
-                    assigned: newAssigned,
-                    available: newAvailable,
-                },
-            });
+                await tx.monthlyBudget.updateMany({
+                    where: { categoryId, month: { gt: month } },
+                    data: { available: { decrement: amount } },
+                });
 
-            totalReversed += amount;
-        }
+                totalReversed += amount;
+            }
+        });
 
         // RTA is now always calculated from account balances - envelope totals
         // Reversing envelope available above is sufficient; RTA auto-adjusts on next fetch
@@ -342,7 +347,7 @@ export async function DELETE(request: NextRequest) {
     } catch (error) {
         console.error('Auto-assign undo error:', error);
         return NextResponse.json(
-            { error: 'Failed to undo auto-assign', details: String(error) },
+            { error: 'Failed to undo auto-assign' },
             { status: 500 }
         );
     }

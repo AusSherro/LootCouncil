@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
+import { toLocalMonthString } from '@/lib/utils';
 
 const YNAB_API_BASE = 'https://api.ynab.com/v1';
 
@@ -49,6 +50,15 @@ interface YNABCategoryGroup {
     categories: YNABCategory[];
 }
 
+interface YNABSubTransaction {
+    id: string;
+    transaction_id: string;
+    amount: number;
+    memo: string | null;
+    category_id: string | null;
+    deleted: boolean;
+}
+
 interface YNABTransaction {
     id: string;
     date: string;
@@ -61,6 +71,7 @@ interface YNABTransaction {
     cleared: string;
     approved: boolean;
     transfer_account_id: string | null;
+    subtransactions?: YNABSubTransaction[];
 }
 
 interface YNABBudgetMonth {
@@ -349,7 +360,9 @@ export async function POST(request: NextRequest) {
                 const accountId = accountMap.get(tx.account_id);
                 if (!accountId) continue;
 
-                const categoryId = tx.category_id ? categoryMap.get(tx.category_id) : null;
+                const activeSubs = (tx.subtransactions || []).filter(sub => !sub.deleted);
+                const isSplit = activeSubs.length > 0;
+                const categoryId = isSplit ? null : (tx.category_id ? categoryMap.get(tx.category_id) : null);
                 
                 // Get payee name - use payee_name if available, otherwise look up from payee map
                 const payeeName = tx.payee_name || (tx.payee_id ? payeeNameMap.get(tx.payee_id) : null) || null;
@@ -366,8 +379,9 @@ export async function POST(request: NextRequest) {
                         },
                     });
 
+                let parentTxId: string;
                 if (!existing) {
-                    await prisma.transaction.create({
+                    const createdTx = await prisma.transaction.create({
                         data: {
                             date: new Date(tx.date),
                             amount: amountCents,
@@ -379,16 +393,40 @@ export async function POST(request: NextRequest) {
                             isReconciled: tx.cleared === 'reconciled',
                             approved: tx.approved,
                             transferId: tx.transfer_account_id,
+                            isSplit,
                             ynabId: tx.id,
                         },
                     });
+                    parentTxId = createdTx.id;
                     transactionCount++;
-                } else if (!existing.ynabId) {
-                    // Backfill ynabId on existing transactions for delta sync
-                    await prisma.transaction.update({
-                        where: { id: existing.id },
-                        data: { ynabId: tx.id },
-                    });
+                } else {
+                    parentTxId = existing.id;
+                    if (!existing.ynabId || existing.isSplit !== isSplit) {
+                        // Backfill ynabId and split status on existing transactions for delta sync
+                        await prisma.transaction.update({
+                            where: { id: existing.id },
+                            data: {
+                                ynabId: tx.id,
+                                isSplit,
+                                ...(isSplit ? { categoryId: null } : {}),
+                            },
+                        });
+                    }
+                }
+
+                if (isSplit) {
+                    await prisma.subTransaction.deleteMany({ where: { transactionId: parentTxId } });
+                    for (const sub of activeSubs) {
+                        const subCategoryId = sub.category_id ? categoryMap.get(sub.category_id) : null;
+                        await prisma.subTransaction.create({
+                            data: {
+                                transactionId: parentTxId,
+                                amount: Math.round(sub.amount / 10),
+                                memo: sub.memo,
+                                categoryId: subCategoryId || null,
+                            },
+                        });
+                    }
                 }
             }
         } else {
@@ -479,7 +517,7 @@ export async function POST(request: NextRequest) {
 
         // 5. Store the "Ready to Assign" from YNAB for current month
         // This is available in the budget settings
-        const currentMonth = new Date().toISOString().slice(0, 7);
+        const currentMonth = toLocalMonthString();
         const currentMonthRes = await fetch(
             `${YNAB_API_BASE}/budgets/${budgetId}/months/${currentMonth}-01`,
             { headers: { Authorization: `Bearer ${token}` } }

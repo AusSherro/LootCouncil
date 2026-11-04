@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Users, Search, Merge, Edit3, AlertCircle, Check, X, Sparkles, Loader2 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
+import { useToast } from '@/components/Toast';
 import ModalDialog from './ModalDialog';
 
 interface Payee {
@@ -18,6 +19,7 @@ interface SimilarGroup {
 }
 
 export default function PayeeManagement() {
+    const { showToast } = useToast();
     const [payees, setPayees] = useState<Payee[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
@@ -119,10 +121,12 @@ export default function PayeeManagement() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ payees: payees.map(p => p.name) }),
             });
+            if (!res.ok) throw new Error('Failed to find similar payees');
             const data = await res.json();
             setSimilarGroups(data.groups || []);
         } catch (err) {
             console.error('Failed to find similar payees:', err);
+            showToast(err instanceof Error ? err.message : 'Failed to find similar payees', 'error');
         } finally {
             setFindingSimilar(false);
         }

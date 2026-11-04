@@ -33,15 +33,21 @@ export default function SplitTransactionModal({ isOpen, onClose, onSuccess, tran
         { categoryId: '', amount: '', memo: '' },
         { categoryId: '', amount: '', memo: '' },
     ]);
+    const [hasExistingSplits, setHasExistingSplits] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [unsplitting, setUnsplitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const { settings } = useSettings();
     const currency = settings?.currency || 'AUD';
 
     useEffect(() => {
         if (isOpen) {
+            setError(null);
             fetch('/api/categories')
-                .then(r => r.json())
+                .then(r => {
+                    if (!r.ok) throw new Error('Failed to load categories');
+                    return r.json();
+                })
                 .then(d => {
                     const allCats: Category[] = [];
                     (d.categoryGroups || []).forEach((g: { name: string; categories: { id: string; name: string }[] }) => {
@@ -50,9 +56,41 @@ export default function SplitTransactionModal({ isOpen, onClose, onSuccess, tran
                         });
                     });
                     setCategories(allCats);
+                })
+                .catch(err => {
+                    console.error('Failed to fetch categories:', err);
+                    setError('Could not load categories. Close and try again.');
                 });
+
+            if (transactionId) {
+                fetch(`/api/splits?transactionId=${encodeURIComponent(transactionId)}`)
+                    .then(r => {
+                        if (!r.ok) throw new Error('Failed to load existing splits');
+                        return r.json();
+                    })
+                    .then(d => {
+                        if (Array.isArray(d.splits) && d.splits.length >= 2) {
+                            setHasExistingSplits(true);
+                            setSplits(d.splits.map((s: { categoryId: string | null; amount: number; memo: string | null }) => ({
+                                categoryId: s.categoryId || '',
+                                amount: (Math.abs(s.amount) / 100).toFixed(2),
+                                memo: s.memo || '',
+                            })));
+                        } else {
+                            setHasExistingSplits(false);
+                            setSplits([
+                                { categoryId: '', amount: '', memo: '' },
+                                { categoryId: '', amount: '', memo: '' },
+                            ]);
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Failed to fetch splits:', err);
+                        setHasExistingSplits(false);
+                    });
+            }
         }
-    }, [isOpen]);
+    }, [isOpen, transactionId]);
 
     const totalSplitAmount = splits.reduce((sum, s) => {
         const val = parseFloat(s.amount) || 0;
@@ -119,6 +157,7 @@ export default function SplitTransactionModal({ isOpen, onClose, onSuccess, tran
 
             onSuccess();
             onClose();
+            setHasExistingSplits(false);
             setSplits([
                 { categoryId: '', amount: '', memo: '' },
                 { categoryId: '', amount: '', memo: '' },
@@ -127,6 +166,27 @@ export default function SplitTransactionModal({ isOpen, onClose, onSuccess, tran
             setError(err instanceof Error ? err.message : 'An error occurred');
         } finally {
             setLoading(false);
+        }
+    }
+
+    async function handleUnsplit() {
+        setUnsplitting(true);
+        setError(null);
+        try {
+            const res = await fetch(`/api/splits?transactionId=${encodeURIComponent(transactionId)}`, {
+                method: 'DELETE',
+            });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data.error || 'Failed to unsplit transaction');
+            }
+            setHasExistingSplits(false);
+            onSuccess();
+            onClose();
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'An error occurred');
+        } finally {
+            setUnsplitting(false);
         }
     }
 
@@ -233,17 +293,31 @@ export default function SplitTransactionModal({ isOpen, onClose, onSuccess, tran
                     </button>
                 </div>
 
-                <div className="flex justify-end gap-3 p-6 border-t border-border">
-                    <button onClick={onClose} className="btn btn-secondary">
-                        Cancel
-                    </button>
-                    <button
-                        onClick={handleSubmit}
-                        disabled={loading || !isValid}
-                        className="btn btn-primary"
-                    >
-                        {loading ? 'Splitting...' : 'Split Transaction'}
-                    </button>
+                <div className="flex items-center justify-between gap-3 p-6 border-t border-border">
+                    <div>
+                        {hasExistingSplits && (
+                            <button
+                                type="button"
+                                onClick={handleUnsplit}
+                                disabled={loading || unsplitting}
+                                className="btn bg-danger/20 text-danger hover:bg-danger/30 border border-danger/30"
+                            >
+                                {unsplitting ? 'Unsplitting...' : 'Unsplit Transaction'}
+                            </button>
+                        )}
+                    </div>
+                    <div className="flex gap-3">
+                        <button onClick={onClose} className="btn btn-secondary">
+                            Cancel
+                        </button>
+                        <button
+                            onClick={handleSubmit}
+                            disabled={loading || unsplitting || !isValid}
+                            className="btn btn-primary"
+                        >
+                            {loading ? 'Saving...' : hasExistingSplits ? 'Update Splits' : 'Split Transaction'}
+                        </button>
+                    </div>
                 </div>
             </ModalDialog>
         </div>

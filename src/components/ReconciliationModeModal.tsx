@@ -17,6 +17,7 @@ interface Transaction {
 
 interface ReconcileStatus {
     clearedBalance: number;
+    reconciledBalance: number;
     unclearedCount: number;
     lastReconciled: string | null;
     accountBalance: number;
@@ -51,6 +52,7 @@ export default function ReconciliationModeModal({ isOpen, onClose, onSuccess, ac
             const data = await res.json();
             setStatus({
                 clearedBalance: data.calculatedClearedBalance ?? data.account?.clearedBalance ?? 0,
+                reconciledBalance: data.calculatedReconciledBalance ?? 0,
                 unclearedCount: data.unreconciledCleared?.length ?? 0,
                 lastReconciled: data.account?.lastReconciled ?? null,
                 accountBalance: data.account?.balance ?? 0,
@@ -111,7 +113,12 @@ export default function ReconciliationModeModal({ isOpen, onClose, onSuccess, ac
         .filter(t => selectedIds.has(t.id))
         .reduce((sum, t) => sum + t.amount, 0);
 
-    const expectedBalance = (status?.clearedBalance || 0) + selectedTotal;
+    const expectedBalance = (status?.reconciledBalance || 0) + selectedTotal;
+    const parsedStatementBalance = Number.parseFloat(statementBalance);
+    const hasValidStatementBalance = statementBalance.trim() !== '' && Number.isFinite(parsedStatementBalance);
+    const statementDifference = hasValidStatementBalance
+        ? Math.round(parsedStatementBalance * 100) - (status?.clearedBalance || 0)
+        : 0;
 
     async function handleMark() {
         setSubmitting(true);
@@ -134,8 +141,7 @@ export default function ReconciliationModeModal({ isOpen, onClose, onSuccess, ac
                     throw new Error('Failed to mark transactions as reconciled');
                 }
 
-                fetchStatus();
-                fetchTransactions();
+                await Promise.all([fetchStatus(), fetchTransactions()]);
             }
 
             setStep('confirm');
@@ -157,7 +163,7 @@ export default function ReconciliationModeModal({ isOpen, onClose, onSuccess, ac
                 body: JSON.stringify({
                     accountId,
                     action: 'complete',
-                    statementBalance: statementBalance ? parseFloat(statementBalance) * 100 : undefined,
+                    statementBalance: Math.round(parsedStatementBalance * 100),
                 }),
             });
 
@@ -217,8 +223,8 @@ export default function ReconciliationModeModal({ isOpen, onClose, onSuccess, ac
                             {/* Summary */}
                             <div className="grid grid-cols-3 gap-4 mb-6">
                                 <div className="p-4 bg-background-tertiary rounded-lg">
-                                    <p className="text-sm text-neutral">Cleared Balance</p>
-                                    <p className="text-lg font-bold text-foreground">{formatCurrency(status?.clearedBalance || 0)}</p>
+                                    <p className="text-sm text-neutral">Reconciled Balance</p>
+                                    <p className="text-lg font-bold text-foreground">{formatCurrency(status?.reconciledBalance || 0)}</p>
                                 </div>
                                 <div className="p-4 bg-background-tertiary rounded-lg">
                                     <p className="text-sm text-neutral">Selected ({selectedIds.size})</p>
@@ -227,7 +233,7 @@ export default function ReconciliationModeModal({ isOpen, onClose, onSuccess, ac
                                     </p>
                                 </div>
                                 <div className="p-4 bg-background-tertiary rounded-lg">
-                                    <p className="text-sm text-neutral">New Balance</p>
+                                    <p className="text-sm text-neutral">After Selection</p>
                                     <p className={`text-lg font-bold ${expectedBalance >= 0 ? 'text-foreground' : 'text-negative'}`}>
                                         {formatCurrency(expectedBalance)}
                                     </p>
@@ -299,12 +305,12 @@ export default function ReconciliationModeModal({ isOpen, onClose, onSuccess, ac
 
                             <div className="max-w-sm mx-auto">
                                 <div className="p-3 bg-background-tertiary rounded-lg mb-4">
-                                    <p className="text-sm text-neutral">Account Balance</p>
-                                    <p className="text-lg font-bold text-foreground">{formatCurrency(status?.accountBalance || 0)}</p>
+                                    <p className="text-sm text-neutral">Cleared Balance</p>
+                                    <p className="text-lg font-bold text-foreground">{formatCurrency(status?.clearedBalance || 0)}</p>
                                 </div>
 
                                 <label className="block text-sm text-neutral mb-2">
-                                    Confirm Statement Balance (optional)
+                                    Statement Balance
                                 </label>
                                 <div className="relative">
                                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral">$</span>
@@ -318,11 +324,8 @@ export default function ReconciliationModeModal({ isOpen, onClose, onSuccess, ac
                                     />
                                 </div>
 
-                                {statementBalance && (() => {
-                                    const stmtCents = Math.round(parseFloat(statementBalance) * 100);
-                                    const acctBalance = status?.accountBalance || 0;
-                                    const diff = stmtCents - acctBalance;
-                                    const isMatch = diff === 0;
+                                {hasValidStatementBalance && (() => {
+                                    const isMatch = statementDifference === 0;
                                     return (
                                         <div className={`mt-3 p-3 rounded-lg border ${
                                             isMatch
@@ -336,9 +339,9 @@ export default function ReconciliationModeModal({ isOpen, onClose, onSuccess, ac
                                                 </p>
                                             ) : (
                                                 <>
-                                                    <p className="text-sm text-neutral mb-1">Difference from account</p>
-                                                    <p className={`text-lg font-bold ${diff > 0 ? 'text-positive' : 'text-negative'}`}>
-                                                        {diff > 0 ? '+' : ''}{formatCurrency(diff)}
+                                                    <p className="text-sm text-neutral mb-1">Difference from cleared balance</p>
+                                                    <p className={`text-lg font-bold ${statementDifference > 0 ? 'text-positive' : 'text-negative'}`}>
+                                                        {statementDifference > 0 ? '+' : ''}{formatCurrency(statementDifference)}
                                                     </p>
                                                     <p className="text-xs text-neutral mt-1">
                                                         An adjustment transaction will be created to match your statement.
@@ -349,9 +352,9 @@ export default function ReconciliationModeModal({ isOpen, onClose, onSuccess, ac
                                     );
                                 })()}
 
-                                {!statementBalance && (
+                                {!hasValidStatementBalance && (
                                     <p className="text-xs text-neutral mt-2">
-                                        Enter your bank statement balance to verify the reconciliation.
+                                        Enter the cleared balance shown by your bank.
                                     </p>
                                 )}
                             </div>
@@ -377,10 +380,14 @@ export default function ReconciliationModeModal({ isOpen, onClose, onSuccess, ac
                     {step === 'confirm' && (
                         <button
                             onClick={handleFinalize}
-                            disabled={submitting}
+                            disabled={submitting || !hasValidStatementBalance}
                             className="btn btn-primary"
                         >
-                            {submitting ? 'Finalizing...' : 'Finalize Reconciliation'}
+                            {submitting
+                                ? 'Finalizing...'
+                                : statementDifference !== 0
+                                    ? `Create ${formatCurrency(Math.abs(statementDifference))} Adjustment`
+                                    : 'Finalize Reconciliation'}
                         </button>
                     )}
                 </div>

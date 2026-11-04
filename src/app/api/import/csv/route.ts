@@ -326,7 +326,14 @@ function parseDate(dateStr: string, format: 'AU' | 'US' | 'ISO'): Date | null {
     
     dateStr = dateStr.trim();
 
-    // Try ISO format first (YYYY-MM-DD)
+    // Every date in this app is stored as UTC midnight, because budget months are
+    // bucketed on UTC boundaries (see getMonthRange in src/lib/budgetHelpers.ts).
+    // Building these with `new Date(y, m, d)` would produce LOCAL midnight, which
+    // in any positive-offset timezone (e.g. Australia/Sydney) shifts the stored
+    // date back a day — putting every transaction dated the 1st into the previous
+    // month's budget.
+
+    // Try ISO format first (YYYY-MM-DD) — date-only ISO strings already parse as UTC
     if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
         return new Date(dateStr);
     }
@@ -335,19 +342,21 @@ function parseDate(dateStr: string, format: 'AU' | 'US' | 'ISO'): Date | null {
     if (format === 'AU' && /^\d{1,2}\/\d{1,2}\/\d{2,4}/.test(dateStr)) {
         const [day, month, year] = dateStr.split('/').map(Number);
         const fullYear = year < 100 ? 2000 + year : year;
-        return new Date(fullYear, month - 1, day);
+        return new Date(Date.UTC(fullYear, month - 1, day));
     }
 
     // US format (MM/DD/YYYY)
     if (format === 'US' && /^\d{1,2}\/\d{1,2}\/\d{2,4}/.test(dateStr)) {
         const [month, day, year] = dateStr.split('/').map(Number);
         const fullYear = year < 100 ? 2000 + year : year;
-        return new Date(fullYear, month - 1, day);
+        return new Date(Date.UTC(fullYear, month - 1, day));
     }
 
-    // Try parsing with Date constructor as fallback
+    // Try parsing with Date constructor as fallback, then normalise to UTC midnight
+    // so an unrecognised format can't drift into an adjacent month either.
     const parsed = new Date(dateStr);
-    return isNaN(parsed.getTime()) ? null : parsed;
+    if (isNaN(parsed.getTime())) return null;
+    return new Date(Date.UTC(parsed.getFullYear(), parsed.getMonth(), parsed.getDate()));
 }
 
 // Parse amount string to number

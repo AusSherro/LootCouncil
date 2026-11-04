@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { optimizeBudget } from '@/lib/openai';
 import { getProfileId } from '@/lib/profile';
+import { getCategoryAvailableMap } from '@/lib/budgetHelpers';
 
 // GET - Get budget optimization suggestions
 export async function GET(request: NextRequest) {
@@ -121,7 +122,7 @@ export async function POST(request: NextRequest) {
 
             if (!category) continue;
 
-            // Update or create monthly budget
+            // Update or create monthly budget and cascade delta forward
             const existing = await prisma.monthlyBudget.findUnique({
                 where: {
                     month_categoryId: {
@@ -131,20 +132,39 @@ export async function POST(request: NextRequest) {
                 },
             });
 
-            if (existing) {
-                await prisma.monthlyBudget.update({
-                    where: { id: existing.id },
-                    data: { assigned: suggestedAmount },
-                });
-            } else {
-                await prisma.monthlyBudget.create({
-                    data: {
+            const existingAssigned = existing?.assigned ?? 0;
+            const assignmentDelta = suggestedAmount - existingAssigned;
+            const currentAvailableMap = await getCategoryAvailableMap([category.id], currentMonth);
+            const newAvailable = (currentAvailableMap.get(category.id) ?? 0) + assignmentDelta;
+
+            await prisma.$transaction(async (tx) => {
+                await tx.monthlyBudget.upsert({
+                    where: {
+                        month_categoryId: {
+                            month: currentMonth,
+                            categoryId: category.id,
+                        },
+                    },
+                    create: {
                         categoryId: category.id,
                         month: currentMonth,
                         assigned: suggestedAmount,
+                        activity: existing?.activity ?? 0,
+                        available: newAvailable,
+                    },
+                    update: {
+                        assigned: suggestedAmount,
+                        available: newAvailable,
                     },
                 });
-            }
+
+                if (assignmentDelta !== 0) {
+                    await tx.monthlyBudget.updateMany({
+                        where: { categoryId: category.id, month: { gt: currentMonth } },
+                        data: { available: { increment: assignmentDelta } },
+                    });
+                }
+            });
             updated++;
         }
 

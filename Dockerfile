@@ -37,6 +37,10 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
+# The Prisma CLI itself, so `prisma migrate deploy|resolve|status` can be run
+# inside the container. Without this, `npx prisma` would try to download the
+# package at runtime — which fails on an offline or read-only container.
+COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 
 # Create data directory for SQLite
 RUN mkdir -p /app/data && chown nextjs:nodejs /app/data

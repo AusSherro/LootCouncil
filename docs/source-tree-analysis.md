@@ -121,7 +121,6 @@ components/
 ├── ForecastModal.tsx              # Budget affordability forecast
 ├── GoldCoinSpinner.tsx            # Themed loading spinner
 ├── ModalDialog.tsx                # Shared accessible dialog shell
-├── StatusPill.tsx                 # Reusable status badge
 ├── Sidebar.tsx                    # Navigation (desktop sidebar, shared nav items)
 ├── MobileNav.tsx                  # Bottom navigation for mobile
 ├── TransactionForm.tsx            # Add/edit transaction modal
@@ -179,7 +178,6 @@ lib/
 ```
 prisma/
 ├── schema.prisma                  # 20 database models
-├── seed-profile.ts                # Profile seeding script
 └── migrations/
     ├── migration_lock.toml
     └── 20260202034301_init/       # Initial migration (Feb 2, 2026)

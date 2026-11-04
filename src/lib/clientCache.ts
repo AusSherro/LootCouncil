@@ -25,12 +25,3 @@ export async function fetchJsonCached<T>(url: string, ttlMs = 30_000): Promise<T
     cache.set(url, { data, expiresAt: now + ttlMs });
     return data;
 }
-
-export function clearCachedJson(url?: string): void {
-    if (!url) {
-        cache.clear();
-        return;
-    }
-
-    cache.delete(url);
-}

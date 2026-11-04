@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
+import { toLocalDateString } from '@/lib/utils';
 
 // GET - Export all data as JSON
 export async function GET(request: NextRequest) {
@@ -12,10 +13,17 @@ export async function GET(request: NextRequest) {
             categoryGroups,
             categories,
             transactions,
+            subTransactions,
             monthlyBudgets,
             payees,
             transfers,
             assets,
+            assetLots,
+            allocationTargets,
+            fireSettings,
+            scheduledTransactions,
+            transactionRules,
+            budgetTemplates,
             exchangeRates,
             settings,
             apiIntegrations,
@@ -27,10 +35,22 @@ export async function GET(request: NextRequest) {
                 where: { account: { profileId } },
                 orderBy: { date: 'desc' },
             }),
+            prisma.subTransaction.findMany({
+                where: { transaction: { account: { profileId } } },
+            }),
             prisma.monthlyBudget.findMany({ where: { category: { group: { profileId } } } }),
             prisma.payee.findMany({ where: { profileId } }),
             prisma.transfer.findMany({ where: { profileId } }),
             prisma.asset.findMany({ where: { profileId } }),
+            prisma.assetLot.findMany({ where: { asset: { profileId } } }),
+            prisma.allocationTarget.findMany({ where: { profileId } }),
+            prisma.fireSettings.findFirst({ where: { profileId } }),
+            prisma.scheduledTransaction.findMany({ where: { profileId } }),
+            prisma.transactionRule.findMany({ where: { profileId } }),
+            prisma.budgetTemplate.findMany({
+                where: { profileId },
+                include: { items: true },
+            }),
             prisma.exchangeRate.findMany(),
             prisma.settings.findFirst({ where: { profileId } }),
             prisma.apiIntegration.findMany({
@@ -48,10 +68,17 @@ export async function GET(request: NextRequest) {
                 categoryGroups,
                 categories,
                 transactions,
+                subTransactions,
                 monthlyBudgets,
                 payees,
                 transfers,
                 assets,
+                assetLots,
+                allocationTargets,
+                fireSettings,
+                scheduledTransactions,
+                transactionRules,
+                budgetTemplates,
                 exchangeRates,
                 settings: settings ? {
                     ...settings,
@@ -73,7 +100,7 @@ export async function GET(request: NextRequest) {
             status: 200,
             headers: {
                 'Content-Type': 'application/json',
-                'Content-Disposition': `attachment; filename="loot-council-backup-${new Date().toISOString().split('T')[0]}.json"`,
+                'Content-Disposition': `attachment; filename="loot-council-backup-${toLocalDateString()}.json"`,
             },
         });
     } catch (error) {

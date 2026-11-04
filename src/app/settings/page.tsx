@@ -8,6 +8,7 @@ import { useToast } from '@/components/Toast';
 import { useConfirmDialog } from '@/components/ConfirmDialog';
 import TransactionRulesSettings from '@/components/TransactionRulesSettings';
 import PayeeManagement from '@/components/PayeeManagement';
+import { toLocalDateString } from '@/lib/utils';
 
 interface YNABBudget {
   id: string;
@@ -879,7 +880,7 @@ export default function SettingsPage() {
                   const url = URL.createObjectURL(blob);
                   const a = document.createElement('a');
                   a.href = url;
-                  a.download = `loot-council-backup-${new Date().toISOString().split('T')[0]}.json`;
+                  a.download = `loot-council-backup-${toLocalDateString()}.json`;
                   document.body.appendChild(a);
                   a.click();
                   document.body.removeChild(a);

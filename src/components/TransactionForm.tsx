@@ -6,21 +6,27 @@ import PayeeAutocomplete from './PayeeAutocomplete';
 import SplitTransactionModal from './SplitTransactionModal';
 import ConfirmDialog from './ConfirmDialog';
 import { useModalA11y } from '@/lib/useModalA11y';
+import { useProfile } from './ProfileProvider';
+import { getLastTransactionAccountKey, resolveTransactionAccountId } from '@/lib/transactionFormPreferences';
+import { toLocalDateString } from '@/lib/utils';
 
 interface Account {
     id: string;
     name: string;
     type: string;
+    closed?: boolean;
 }
 
 interface Category {
     id: string;
     name: string;
+    isHidden?: boolean;
 }
 
 interface CategoryGroup {
     id: string;
     name: string;
+    isHidden?: boolean;
     categories: Category[];
 }
 
@@ -33,6 +39,7 @@ interface Transaction {
     accountId?: string;
     categoryId?: string | null;
     cleared: boolean;
+    isSplit?: boolean;
     account?: { id: string; name: string } | null;
     category?: { id: string; name: string } | null;
 }
@@ -47,6 +54,7 @@ interface TransactionFormProps {
 }
 
 export default function TransactionForm({ isOpen, onClose, onSuccess, defaultAccountId, editTransaction, defaultIsInflow }: TransactionFormProps) {
+    const { activeProfile } = useProfile();
     const formId = useId();
     const dialogTitleId = `${formId}-title`;
     const amountId = `${formId}-amount`;
@@ -58,6 +66,7 @@ export default function TransactionForm({ isOpen, onClose, onSuccess, defaultAcc
     const dialogRef = useModalA11y(isOpen, onClose);
     const [accounts, setAccounts] = useState<Account[]>([]);
     const [categoryGroups, setCategoryGroups] = useState<CategoryGroup[]>([]);
+    const [optionsLoading, setOptionsLoading] = useState(false);
     const [loading, setLoading] = useState(false);
     const [deleting, setDeleting] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -65,7 +74,7 @@ export default function TransactionForm({ isOpen, onClose, onSuccess, defaultAcc
     const [fetchError, setFetchError] = useState<string | null>(null);
 
     // Form state
-    const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+    const [date, setDate] = useState(toLocalDateString());
     const [payee, setPayee] = useState('');
     const [amount, setAmount] = useState('');
     const [isOutflow, setIsOutflow] = useState(true);
@@ -86,67 +95,114 @@ export default function TransactionForm({ isOpen, onClose, onSuccess, defaultAcc
             setAmount(absAmount.toFixed(2));
             setIsOutflow(editTransaction.amount < 0);
             setAccountId(editTransaction.account?.id || editTransaction.accountId || '');
-            setCategoryId(editTransaction.category?.id || editTransaction.categoryId || '');
+            setCategoryId(editTransaction.isSplit ? '' : (editTransaction.category?.id || editTransaction.categoryId || ''));
             setMemo(editTransaction.memo || '');
             setCleared(editTransaction.cleared);
         } else if (!editTransaction && isOpen) {
             // Reset form for new transaction
-            setDate(new Date().toISOString().split('T')[0]);
+            setDate(toLocalDateString());
             setPayee('');
             setAmount('');
             setIsOutflow(defaultIsInflow ? false : true);
-            setAccountId(defaultAccountId || '');
+            setAccountId('');
             setCategoryId('');
             setMemo('');
             setCleared(false);
         }
     }, [editTransaction, isOpen, defaultAccountId, defaultIsInflow]);
 
-    const fetchAccounts = useCallback(async () => {
-        try {
-            const res = await fetch('/api/accounts');
-            if (!res.ok) throw new Error('Failed to load accounts');
-            const data = await res.json();
-            const openAccounts = (data.accounts || []).filter((a: Account & { closed?: boolean }) => !a.closed);
-            setAccounts(openAccounts);
-            if (!accountId && openAccounts.length > 0) {
-                setAccountId(openAccounts[0].id);
-            }
-        } catch (err) {
-            console.error('Failed to fetch accounts:', err);
-            setFetchError('Failed to load accounts and categories. Please try again.');
-        }
-    }, [accountId]);
+    const fetchFormOptions = useCallback(async (signal?: AbortSignal) => {
+        if (!activeProfile) return;
 
-    const fetchCategories = useCallback(async () => {
-        try {
-            const res = await fetch('/api/categories');
-            if (!res.ok) throw new Error('Failed to load categories');
-            const data = await res.json();
-            setCategoryGroups(data.categoryGroups || []);
-        } catch (err) {
-            console.error('Failed to fetch categories:', err);
-            setFetchError('Failed to load accounts and categories. Please try again.');
-        }
-    }, []);
-
-    useEffect(() => {
-        if (!isOpen) return;
+        setOptionsLoading(true);
         setFetchError(null);
+        setAccounts([]);
+        setCategoryGroups([]);
 
-        if (accounts.length === 0) {
-            fetchAccounts();
+        const [accountsResult, categoriesResult] = await Promise.allSettled([
+            fetch('/api/accounts', { cache: 'no-store', signal }).then(async response => {
+                if (!response.ok) throw new Error('Failed to load accounts');
+                return response.json() as Promise<{ accounts?: Account[] }>;
+            }),
+            fetch('/api/categories?showHidden=true', { cache: 'no-store', signal }).then(async response => {
+                if (!response.ok) throw new Error('Failed to load categories');
+                return response.json() as Promise<{ categoryGroups?: CategoryGroup[] }>;
+            }),
+        ]);
+
+        if (signal?.aborted) return;
+
+        const failedOptions: string[] = [];
+        if (accountsResult.status === 'fulfilled') {
+            const editAccountId = editTransaction?.account?.id || editTransaction?.accountId;
+            const selectableAccounts = (accountsResult.value.accounts || []).filter(
+                account => !account.closed || account.id === editAccountId
+            );
+            setAccounts(selectableAccounts);
+
+            let storedAccountId: string | null = null;
+            try {
+                storedAccountId = localStorage.getItem(getLastTransactionAccountKey(activeProfile.id));
+            } catch {
+                // Storage may be unavailable in privacy mode.
+            }
+            setAccountId(resolveTransactionAccountId(
+                selectableAccounts,
+                editAccountId,
+                defaultAccountId,
+                storedAccountId,
+            ));
+        } else {
+            failedOptions.push('accounts');
+            if (!(accountsResult.reason instanceof DOMException && accountsResult.reason.name === 'AbortError')) {
+                console.error('Failed to fetch accounts:', accountsResult.reason);
+            }
         }
-        if (categoryGroups.length === 0) {
-            fetchCategories();
+
+        if (categoriesResult.status === 'fulfilled') {
+            const editCategoryId = editTransaction?.category?.id || editTransaction?.categoryId;
+            const selectableGroups = (categoriesResult.value.categoryGroups || [])
+                .map(group => ({
+                    ...group,
+                    name: group.isHidden ? `${group.name} (hidden)` : group.name,
+                    categories: group.categories
+                        .filter(category => (!group.isHidden && !category.isHidden) || category.id === editCategoryId)
+                        .map(category => ({
+                            ...category,
+                            name: category.isHidden ? `${category.name} (hidden)` : category.name,
+                        })),
+                }))
+                .filter(group => group.categories.length > 0);
+            setCategoryGroups(selectableGroups);
+        } else {
+            failedOptions.push('categories');
+            if (!(categoriesResult.reason instanceof DOMException && categoriesResult.reason.name === 'AbortError')) {
+                console.error('Failed to fetch categories:', categoriesResult.reason);
+            }
         }
-    }, [isOpen, accounts.length, categoryGroups.length, fetchAccounts, fetchCategories]);
+
+        if (failedOptions.length > 0) {
+            setFetchError(`Could not load ${failedOptions.join(' or ')}. Please try again.`);
+        }
+        setOptionsLoading(false);
+    }, [activeProfile, defaultAccountId, editTransaction]);
 
     useEffect(() => {
-        if (defaultAccountId) {
-            setAccountId(defaultAccountId);
+        if (!isOpen || !activeProfile) return;
+        const controller = new AbortController();
+        void fetchFormOptions(controller.signal);
+        return () => controller.abort();
+    }, [isOpen, activeProfile, fetchFormOptions]);
+
+    function handleAccountChange(nextAccountId: string) {
+        setAccountId(nextAccountId);
+        if (isEditing || !activeProfile || !nextAccountId) return;
+        try {
+            localStorage.setItem(getLastTransactionAccountKey(activeProfile.id), nextAccountId);
+        } catch {
+            // Storage may be unavailable in privacy mode.
         }
-    }, [defaultAccountId]);
+    }
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
@@ -180,7 +236,7 @@ export default function TransactionForm({ isOpen, onClose, onSuccess, defaultAcc
                     payee,
                     memo,
                     accountId,
-                    categoryId: categoryId || null,
+                    categoryId: editTransaction?.isSplit ? null : (categoryId || null),
                     cleared,
                 }),
             });
@@ -188,6 +244,14 @@ export default function TransactionForm({ isOpen, onClose, onSuccess, defaultAcc
             if (!res.ok) {
                 const data = await res.json();
                 throw new Error(data.error || `Failed to ${isEditing ? 'update' : 'create'} transaction`);
+            }
+
+            if (!isEditing && activeProfile && accountId) {
+                try {
+                    localStorage.setItem(getLastTransactionAccountKey(activeProfile.id), accountId);
+                } catch {
+                    // Storage may be unavailable in privacy mode.
+                }
             }
 
             // Reset form
@@ -273,9 +337,7 @@ export default function TransactionForm({ isOpen, onClose, onSuccess, defaultAcc
                             <button
                                 type="button"
                                 onClick={() => {
-                                    setFetchError(null);
-                                    fetchAccounts();
-                                    fetchCategories();
+                                    void fetchFormOptions();
                                 }}
                                 className="text-danger hover:text-danger/80 transition-colors flex-shrink-0"
                                 aria-label="Retry loading accounts and categories"
@@ -336,7 +398,10 @@ export default function TransactionForm({ isOpen, onClose, onSuccess, defaultAcc
                             value={payee}
                             onChange={setPayee}
                             onPayeeSelect={(p) => {
-                                if (!isEditing && p?.lastCategoryId && !categoryId) {
+                                const categoryIsSelectable = categoryGroups.some(group =>
+                                    group.categories.some(category => category.id === p?.lastCategoryId)
+                                );
+                                if (!isEditing && p?.lastCategoryId && !categoryId && categoryIsSelectable) {
                                     setCategoryId(p.lastCategoryId);
                                 }
                             }}
@@ -368,11 +433,12 @@ export default function TransactionForm({ isOpen, onClose, onSuccess, defaultAcc
                             <select
                                 id={accountIdField}
                                 value={accountId}
-                                onChange={(e) => setAccountId(e.target.value)}
+                                onChange={(e) => handleAccountChange(e.target.value)}
                                 className="input pl-10"
                                 required
+                                disabled={optionsLoading}
                             >
-                                <option value="">Select account...</option>
+                                <option value="">{optionsLoading ? 'Loading accounts...' : 'Select account...'}</option>
                                 {accounts.map((acct) => (
                                     <option key={acct.id} value={acct.id}>
                                         {acct.name}
@@ -389,12 +455,21 @@ export default function TransactionForm({ isOpen, onClose, onSuccess, defaultAcc
                             <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral" />
                             <select
                                 id={categoryIdField}
-                                value={categoryId}
+                                value={editTransaction?.isSplit ? '' : categoryId}
                                 onChange={(e) => setCategoryId(e.target.value)}
                                 className="input pl-10"
+                                disabled={optionsLoading || Boolean(editTransaction?.isSplit)}
                             >
-                                <option value="">Select category...</option>
-                                {categoryGroups.map((group) => (
+                                <option value="">
+                                    {editTransaction?.isSplit
+                                        ? 'Split across multiple categories'
+                                        : optionsLoading
+                                            ? 'Loading categories...'
+                                            : categoryGroups.length === 0
+                                                ? 'No active categories'
+                                                : 'Uncategorized'}
+                                </option>
+                                {!editTransaction?.isSplit && categoryGroups.map((group) => (
                                     <optgroup key={group.id} label={group.name}>
                                         {group.categories.map((cat) => (
                                             <option key={cat.id} value={cat.id}>
@@ -452,7 +527,7 @@ export default function TransactionForm({ isOpen, onClose, onSuccess, defaultAcc
                                     className="btn btn-secondary"
                                 >
                                     <Split className="w-4 h-4" />
-                                    Split
+                                    {editTransaction.isSplit ? 'Edit Splits' : 'Split'}
                                 </button>
                             </>
                         )}
@@ -465,7 +540,7 @@ export default function TransactionForm({ isOpen, onClose, onSuccess, defaultAcc
                         </button>
                         <button
                             type="submit"
-                            disabled={loading || !accountId || !amount}
+                            disabled={loading || optionsLoading || !accountId || !amount}
                             className="btn btn-primary flex-1"
                         >
                             {loading ? 'Saving...' : isEditing ? 'Update' : 'Add Transaction'}

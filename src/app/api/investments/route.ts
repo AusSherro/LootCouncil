@@ -82,6 +82,7 @@ export async function GET(request: NextRequest) {
             const currentValueAUD = Math.round(currentValue * rate);
             const totalCostBasisAUD = Math.round(totalCostBasis * rate);
             const totalReturnAUD = currentValueAUD - totalCostBasisAUD;
+            const annualDividendIncomeAUD = Math.round(annualDividendIncome * rate);
 
             return {
                 ...asset,
@@ -96,6 +97,7 @@ export async function GET(request: NextRequest) {
                 currentValueAUD,
                 totalCostBasisAUD,
                 totalReturnAUD,
+                annualDividendIncomeAUD,
             };
         });
 
@@ -104,7 +106,7 @@ export async function GET(request: NextRequest) {
         const totalCostBasisAUD = assetsWithCalculations.reduce((sum, a) => sum + a.totalCostBasisAUD, 0);
         const totalReturnAUD = totalValueAUD - totalCostBasisAUD;
         const totalReturnPctAUD = totalCostBasisAUD > 0 ? (totalReturnAUD / totalCostBasisAUD) : 0;
-        const totalDividends = assetsWithCalculations.reduce((sum, a) => sum + a.annualDividendIncome, 0);
+        const totalDividendsAUD = assetsWithCalculations.reduce((sum, a) => sum + a.annualDividendIncomeAUD, 0);
 
         // Also keep native currency totals for reference
         const totalValue = assetsWithCalculations.reduce((sum, a) => sum + a.currentValue, 0);
@@ -115,8 +117,8 @@ export async function GET(request: NextRequest) {
             if (!acc[asset.assetClass]) {
                 acc[asset.assetClass] = { value: 0, costBasis: 0, assets: [] };
             }
-            acc[asset.assetClass].value += asset.currentValue;
-            acc[asset.assetClass].costBasis += asset.totalCostBasis;
+            acc[asset.assetClass].value += asset.currentValueAUD;
+            acc[asset.assetClass].costBasis += asset.totalCostBasisAUD;
             acc[asset.assetClass].assets.push(asset);
             return acc;
         }, {} as Record<string, { value: number; costBasis: number; assets: typeof assetsWithCalculations }>);
@@ -126,7 +128,7 @@ export async function GET(request: NextRequest) {
             assetClass,
             value: data.value,
             costBasis: data.costBasis,
-            currentPct: totalValue > 0 ? data.value / totalValue : 0,
+            currentPct: totalValueAUD > 0 ? data.value / totalValueAUD : 0,
             gain: data.value - data.costBasis,
             gainPct: data.costBasis > 0 ? (data.value - data.costBasis) / data.costBasis : 0,
         }));
@@ -139,7 +141,7 @@ export async function GET(request: NextRequest) {
                 totalCostBasis: totalCostBasisAUD,
                 totalReturn: totalReturnAUD,
                 totalReturnPct: totalReturnPctAUD,
-                totalDividends,
+                totalDividends: totalDividendsAUD,
                 // Native currency totals for reference
                 totalValueNative: totalValue,
                 totalCostBasisNative: totalCostBasis,
@@ -156,6 +158,7 @@ export async function GET(request: NextRequest) {
 // POST create new asset
 export async function POST(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         const body = await request.json();
         const { symbol, name, assetClass, currency, isManual, currentPrice, dividendYield, stakingYield } = body;
 
@@ -176,6 +179,7 @@ export async function POST(request: NextRequest) {
                 quantity: isManual ? 1 : 0,  // Manual assets have 1 "unit" representing the whole value
                 dividendYield: dividendYield || 0,
                 stakingYield: stakingYield || 0,
+                profileId,
             },
         });
 

@@ -117,7 +117,6 @@ src/
 │   ├── Skeleton.tsx            # Loading skeleton component
 │   ├── AnimatedNumber.tsx      # Smooth numeric transitions
 │   ├── ChartTooltip.tsx        # Shared chart tooltip
-│   ├── StatusPill.tsx          # Reusable status badge
 │   ├── ErrorBoundary.tsx       # Error handling wrapper
 │   ├── KeyboardShortcutsProvider.tsx # Global keyboard shortcuts
 │   ├── ProfileProvider.tsx     # Multi-profile context provider

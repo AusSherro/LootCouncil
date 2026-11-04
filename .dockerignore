@@ -9,3 +9,9 @@ tmp-*
 Loot Council.lnk
 start-budget.bat
 docs
+
+# Never bake secrets or the local database into the build context.
+# All runtime configuration is injected via the container environment.
+.env
+.env.*
+data

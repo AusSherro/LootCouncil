@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { withErrorHandler } from '@/lib/apiHandler';
 import { getProfileId } from '@/lib/profile';
-import { getMonthOffset, calculateActivity, isInflowGroup, isHiddenCategoriesGroup, calculateGoalUnderFunded } from '@/lib/budgetHelpers';
+import { getMonthOffset, calculateActivity, isInflowGroup, isHiddenCategoriesGroup, calculateGoalUnderFunded, getCategoryActivityMap, getCategoryAvailableMap, getMonthRange, calculateReadyToAssign } from '@/lib/budgetHelpers';
+import { toLocalMonthString } from '@/lib/utils';
 
 // GET budget for a specific month with proper envelope calculations
 export async function GET(request: NextRequest) {
     const profileId = await getProfileId(request);
     const { searchParams } = new URL(request.url);
-    const month = searchParams.get('month') || new Date().toISOString().slice(0, 7);
+    const month = searchParams.get('month') || toLocalMonthString();
     const showHidden = searchParams.get('showHidden') === 'true';
 
     try {
@@ -32,54 +33,20 @@ export async function GET(request: NextRequest) {
         // Collect all category IDs for batched queries
         const allCategoryIds = categoryGroups.flatMap(g => g.categories.map(c => c.id));
 
-        // Batch: Fetch most-recent-prior-month MonthlyBudget for fallback available values (CRIT-1 Tier 2)
-        const priorMonthlyBudgets = await prisma.monthlyBudget.findMany({
-            where: {
-                categoryId: { in: allCategoryIds },
-                month: { lt: month },
-            },
-            distinct: ['categoryId'],
-            orderBy: { month: 'desc' },
-            select: { categoryId: true, available: true, month: true },
-        });
-        // Build fallback map: keep only the most recent record per categoryId
-        const fallbackAvailableMap = new Map<string, number>();
-        for (const mb of priorMonthlyBudgets) {
-            if (!fallbackAvailableMap.has(mb.categoryId)) {
-                fallbackAvailableMap.set(mb.categoryId, mb.available);
-            }
-        }
-
         // Batch: Calculate current month activity for ALL categories in one query
-        const currentMonthStart = new Date(`${month}-01T00:00:00.000Z`);
-        const currentMonthEnd = new Date(currentMonthStart);
-        currentMonthEnd.setMonth(currentMonthEnd.getMonth() + 1);
+        // (includes split sub-transactions — see getCategoryActivityMap)
+        const { gte: currentMonthStart, lt: currentMonthEnd } = getMonthRange(month);
 
-        const activityAgg = await prisma.transaction.groupBy({
-            by: ['categoryId'],
-            where: {
-                categoryId: { in: allCategoryIds },
-                date: { gte: currentMonthStart, lt: currentMonthEnd },
-            },
-            _sum: { amount: true },
+        const activityMap = await getCategoryActivityMap(allCategoryIds, {
+            gte: currentMonthStart,
+            lt: currentMonthEnd,
         });
-        const activityMap = new Map(activityAgg.map(a => [a.categoryId!, a._sum.amount || 0]));
+
+        const availableMap = await getCategoryAvailableMap(allCategoryIds, month);
 
         // Batch: Calculate previous month activity for ALL categories in one query
         const previousMonth = getMonthOffset(month, -1);
-        const prevMonthStart = new Date(`${previousMonth}-01T00:00:00.000Z`);
-        const prevMonthEnd = new Date(prevMonthStart);
-        prevMonthEnd.setMonth(prevMonthEnd.getMonth() + 1);
-
-        const prevActivityAgg = await prisma.transaction.groupBy({
-            by: ['categoryId'],
-            where: {
-                categoryId: { in: allCategoryIds },
-                date: { gte: prevMonthStart, lt: prevMonthEnd },
-            },
-            _sum: { amount: true },
-        });
-        const prevActivityMap = new Map(prevActivityAgg.map(a => [a.categoryId!, a._sum.amount || 0]));
+        const prevActivityMap = await getCategoryActivityMap(allCategoryIds, getMonthRange(previousMonth));
 
         // Batch: Calculate spending trend (last 6 months) for ALL categories
         const trendMonths: string[] = [];
@@ -87,26 +54,40 @@ export async function GET(request: NextRequest) {
             trendMonths.push(getMonthOffset(month, -i));
         }
         const trendStart = new Date(`${trendMonths[0]}-01T00:00:00.000Z`);
-        const trendTransactions = await prisma.transaction.findMany({
-            where: {
-                categoryId: { in: allCategoryIds },
-                date: { gte: trendStart, lt: currentMonthEnd },
-            },
-            select: { categoryId: true, amount: true, date: true },
-        });
+        const [trendTransactions, trendSubTransactions] = await Promise.all([
+            prisma.transaction.findMany({
+                where: {
+                    categoryId: { in: allCategoryIds },
+                    date: { gte: trendStart, lt: currentMonthEnd },
+                },
+                select: { categoryId: true, amount: true, date: true },
+            }),
+            // Split sub-transactions carry their parent's date
+            prisma.subTransaction.findMany({
+                where: {
+                    categoryId: { in: allCategoryIds },
+                    transaction: { date: { gte: trendStart, lt: currentMonthEnd } },
+                },
+                select: { categoryId: true, amount: true, transaction: { select: { date: true } } },
+            }),
+        ]);
 
         // Build trend map: categoryId -> [month0abs, month1abs, ...]
         const trendMap = new Map<string, number[]>();
         for (const catId of allCategoryIds) {
             trendMap.set(catId, new Array(6).fill(0));
         }
-        for (const t of trendTransactions) {
+        const trendEntries = [
+            ...trendTransactions.map(t => ({ categoryId: t.categoryId, amount: t.amount, date: t.date })),
+            ...trendSubTransactions.map(s => ({ categoryId: s.categoryId, amount: s.amount, date: s.transaction.date })),
+        ];
+        for (const t of trendEntries) {
             if (!t.categoryId) continue;
             const tMonth = t.date.toISOString().slice(0, 7);
             const monthIdx = trendMonths.indexOf(tMonth);
             if (monthIdx >= 0) {
-                const arr = trendMap.get(t.categoryId)!;
-                arr[monthIdx] += Math.abs(t.amount);
+                const arr = trendMap.get(t.categoryId);
+                if (arr) arr[monthIdx] += Math.abs(t.amount);
             }
         }
 
@@ -115,10 +96,7 @@ export async function GET(request: NextRequest) {
         let totalActivity = 0;
         let totalAvailable = 0;
 
-        // Track categories needing Tier 3 (full history) calculation
-        const tier3CategoryIds: string[] = [];
-
-        // Pass 1: Process each group and category synchronously using batched data
+        // Process each group and category synchronously using batched data
         const groups = categoryGroups.map((group) => {
             const isInflow = isInflowGroup(group.name);
             const isHiddenSystemGroup = isHiddenCategoriesGroup(group.name);
@@ -130,19 +108,7 @@ export async function GET(request: NextRequest) {
                 // Use batched activity data
                 const activity = activityMap.get(cat.id) || 0;
 
-                // Batched available calculation (CRIT-1 fix — no per-category DB queries)
-                // Always compute dynamically: rollover + assigned + activity
-                // (stored budget.available is stale if transactions changed since last assign)
-                let available: number;
-                if (budget || fallbackAvailableMap.has(cat.id)) {
-                    // Tier 1/2: rollover from prior month + this month's assigned + activity
-                    const rollover = fallbackAvailableMap.get(cat.id) ?? 0;
-                    available = rollover + assigned + activity;
-                } else {
-                    // Tier 3: No MonthlyBudget history — mark for batch calculation
-                    tier3CategoryIds.push(cat.id);
-                    available = 0; // Placeholder — filled in Pass 2
-                }
+                const available = availableMap.get(cat.id) ?? 0;
 
                 // Use batched trend data
                 const spendingTrend = trendMap.get(cat.id) || [];
@@ -190,103 +156,11 @@ export async function GET(request: NextRequest) {
             };
         });
 
-        // Pass 2: Tier 3 batch calculation for categories with zero MonthlyBudget history
-        if (tier3CategoryIds.length > 0) {
-            const tier3EndDate = new Date(`${month}-01T00:00:00.000Z`);
-            tier3EndDate.setMonth(tier3EndDate.getMonth() + 1);
-
-            // Tier 3 categories have zero MonthlyBudget rows (both Tier 1 and 2 missed),
-            // so available = sum of all transaction activity only (no assigned budgets exist)
-            const tier3Transactions = await prisma.transaction.groupBy({
-                by: ['categoryId'],
-                where: { categoryId: { in: tier3CategoryIds }, date: { lt: tier3EndDate } },
-                _sum: { amount: true },
-            });
-
-            const tier3Map = new Map<string, number>();
-            for (const t of tier3Transactions) {
-                tier3Map.set(t.categoryId!, t._sum.amount || 0);
-            }
-
-            // Patch Tier 3 values into groups and adjust totals
-            for (const group of groups) {
-                for (const cat of group.categories) {
-                    if (tier3Map.has(cat.id)) {
-                        const realAvailable = tier3Map.get(cat.id)!;
-                        cat.available = realAvailable;
-                        // Adjust totals (placeholder was 0, so just add the real value)
-                        if (!cat.isInflow && !group.isHidden) {
-                            totalAvailable += realAvailable;
-                        }
-                    }
-                }
-            }
-        }
-
-        // Write-back: sync stored available with dynamically computed values
-        // so future months get correct rollovers
-        const staleUpdates: { categoryId: string; available: number }[] = [];
-        for (const group of groups) {
-            for (const cat of group.categories) {
-                const budgetRow = categoryGroups
-                    .flatMap(g => g.categories)
-                    .find(c => c.id === cat.id);
-                const stored = budgetRow?.monthlyData[0]?.available ?? null;
-                if (stored !== null && stored !== cat.available) {
-                    staleUpdates.push({ categoryId: cat.id, available: cat.available });
-                }
-            }
-        }
-        if (staleUpdates.length > 0) {
-            await Promise.all(
-                staleUpdates.map(u =>
-                    prisma.monthlyBudget.updateMany({
-                        where: { month, categoryId: u.categoryId },
-                        data: { available: u.available },
-                    })
-                )
-            );
-        }
-
-        // Always calculate RTA from account balances - envelope totals (YNAB-style)
-        // RTA = Account Balance - total money sitting in ALL envelopes
-        // Envelope total = sum of all assignments ever + sum of all categorized activity ever
-        // This is the ground truth — no rollover chain dependency, universal across months
         const accounts = await prisma.account.findMany({
             where: { onBudget: true, closed: false, profileId },
         });
         const totalBalance = accounts.reduce((sum, acc) => sum + acc.balance, 0);
-
-        // Collect ALL categories in budget groups (including individually hidden ones)
-        // Exclude only system groups (inflow, Hidden Categories) and user-hidden groups
-        const envelopeCats = await prisma.category.findMany({
-            where: {
-                group: {
-                    profileId,
-                    isHidden: false,
-                    NOT: {
-                        name: { in: ['Inflow: Ready to Assign', 'Internal Master Category', 'Hidden Categories'] },
-                    },
-                },
-            },
-            select: { id: true },
-        });
-        const envelopeCatIds = envelopeCats.map(c => c.id);
-
-        // Total ever assigned to envelopes
-        const totalEverAssigned = await prisma.monthlyBudget.aggregate({
-            where: { categoryId: { in: envelopeCatIds } },
-            _sum: { assigned: true },
-        });
-
-        // Total categorized activity (transaction amounts)
-        const totalEverActivity = await prisma.transaction.aggregate({
-            where: { categoryId: { in: envelopeCatIds } },
-            _sum: { amount: true },
-        });
-
-        const envelopeTotal = (totalEverAssigned._sum.assigned || 0) + (totalEverActivity._sum.amount || 0);
-        const readyToAssign = totalBalance - envelopeTotal;
+        const readyToAssign = await calculateReadyToAssign(profileId, month);
 
         return NextResponse.json({
             month,
@@ -303,15 +177,6 @@ export async function GET(request: NextRequest) {
         console.error('Error fetching budget:', error);
         return NextResponse.json({ error: 'Failed to fetch budget' }, { status: 500 });
     }
-}
-
-// Calculate previous month's available balance (rollover)
-async function getPreviousMonthAvailable(categoryId: string, month: string): Promise<number> {
-    const prevMonth = getMonthOffset(month, -1);
-    const prevBudget = await prisma.monthlyBudget.findUnique({
-        where: { month_categoryId: { month: prevMonth, categoryId } },
-    });
-    return prevBudget?.available ?? 0;
 }
 
 // POST - Assign money to a category
@@ -339,30 +204,47 @@ export async function POST(request: NextRequest) {
         }
 
         const amountCents = Math.round(amount * 100);
-
-        // Calculate what the available should be:
-        // Rollover from previous month + assigned this month + activity this month
-        const rollover = await getPreviousMonthAvailable(categoryId, month);
         const activity = await calculateActivity(categoryId, month);
-        const available = rollover + amountCents + activity;
+        const [existingBudget, currentAvailableMap] = await Promise.all([
+            prisma.monthlyBudget.findUnique({
+                where: { month_categoryId: { month, categoryId } },
+                select: { assigned: true },
+            }),
+            getCategoryAvailableMap([categoryId], month),
+        ]);
+        const assignmentDelta = amountCents - (existingBudget?.assigned ?? 0);
+        const available = (currentAvailableMap.get(categoryId) ?? 0) + assignmentDelta;
 
-        // Upsert the monthly budget with calculated available
-        const budget = await prisma.monthlyBudget.upsert({
-            where: {
-                month_categoryId: { month, categoryId },
-            },
-            create: {
-                month,
-                categoryId,
-                assigned: amountCents,
-                activity: activity,
-                available: available,
-            },
-            update: {
-                assigned: amountCents,
-                activity: activity,
-                available: available,
-            },
+        // A stored future month uses the preceding snapshot as its rollover anchor.
+        // Carry this edit forward so a stale intermediate row cannot resurrect the
+        // old assignment several months later.
+        const budget = await prisma.$transaction(async (tx) => {
+            const updatedBudget = await tx.monthlyBudget.upsert({
+                where: {
+                    month_categoryId: { month, categoryId },
+                },
+                create: {
+                    month,
+                    categoryId,
+                    assigned: amountCents,
+                    activity,
+                    available,
+                },
+                update: {
+                    assigned: amountCents,
+                    activity,
+                    available,
+                },
+            });
+
+            if (assignmentDelta !== 0) {
+                await tx.monthlyBudget.updateMany({
+                    where: { categoryId, month: { gt: month } },
+                    data: { available: { increment: assignmentDelta } },
+                });
+            }
+
+            return updatedBudget;
         });
 
         // RTA is now always calculated from account balances - envelope totals

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, createContext, useContext, ReactNode } from 'react';
+import { useEffect, useState, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { X } from 'lucide-react';
 import ModalDialog from './ModalDialog';
@@ -42,22 +42,6 @@ const shortcutGroups: ShortcutGroup[] = [
         ],
     },
 ];
-
-interface KeyboardContextType {
-    showHelp: boolean;
-    setShowHelp: (show: boolean) => void;
-    pendingKey: string | null;
-}
-
-const KeyboardContext = createContext<KeyboardContextType>({
-    showHelp: false,
-    setShowHelp: () => {},
-    pendingKey: null,
-});
-
-export function useKeyboardContext() {
-    return useContext(KeyboardContext);
-}
 
 export function KeyboardShortcutsProvider({ children }: { children: ReactNode }) {
     const router = useRouter();
@@ -125,7 +109,7 @@ export function KeyboardShortcutsProvider({ children }: { children: ReactNode })
     }, [router, pendingKey]);
 
     return (
-        <KeyboardContext.Provider value={{ showHelp, setShowHelp, pendingKey }}>
+        <>
             {children}
             
             {/* Pending key indicator */}
@@ -175,6 +159,6 @@ export function KeyboardShortcutsProvider({ children }: { children: ReactNode })
                     </ModalDialog>
                 </div>
             )}
-        </KeyboardContext.Provider>
+        </>
     );
 }

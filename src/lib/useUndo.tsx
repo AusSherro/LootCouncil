@@ -132,7 +132,7 @@ async function performUndo(action: UndoAction): Promise<void> {
         case 'transaction':
             if (action.action === 'create') {
                 // Undo create = delete
-                await checkedFetch(`/api/transactions?id=${action.data.id}`, {
+                await checkedFetch(`/api/transactions?id=${encodeURIComponent(String(action.data.id))}`, {
                     method: 'DELETE',
                 });
             } else if (action.action === 'delete' && action.previousData) {
@@ -144,7 +144,7 @@ async function performUndo(action: UndoAction): Promise<void> {
                 });
             } else if (action.action === 'update' && action.previousData) {
                 // Undo update = restore previous data
-                await checkedFetch(`/api/transactions/${action.data.id}`, {
+                await checkedFetch(`/api/transactions/${encodeURIComponent(String(action.data.id))}`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(action.previousData),
@@ -154,14 +154,17 @@ async function performUndo(action: UndoAction): Promise<void> {
 
         case 'budget':
             if (action.action === 'update' && action.previousData) {
-                // Undo budget update = restore previous assigned amount
+                // Undo budget update = restore previous assigned amount (POST /api/budget expects dollars in `amount`)
+                const prevDollars = typeof action.previousData.amount === 'number'
+                    ? action.previousData.amount
+                    : (typeof action.previousData.assigned === 'number' ? action.previousData.assigned / 100 : 0);
                 await checkedFetch('/api/budget', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         categoryId: action.data.categoryId,
                         month: action.data.month,
-                        assigned: action.previousData.assigned,
+                        amount: prevDollars,
                     }),
                 });
             }
@@ -169,10 +172,8 @@ async function performUndo(action: UndoAction): Promise<void> {
 
         case 'category':
             if (action.action === 'create') {
-                await checkedFetch('/api/categories', {
+                await checkedFetch(`/api/categories?type=category&id=${encodeURIComponent(String(action.data.id))}`, {
                     method: 'DELETE',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ type: 'category', id: action.data.id }),
                 });
             } else if (action.action === 'delete' && action.previousData) {
                 await checkedFetch('/api/categories', {
@@ -185,7 +186,7 @@ async function performUndo(action: UndoAction): Promise<void> {
 
         case 'transfer':
             if (action.action === 'create' && action.data.id) {
-                await checkedFetch(`/api/transfers/${action.data.id}`, {
+                await checkedFetch(`/api/transfers?id=${encodeURIComponent(String(action.data.id))}`, {
                     method: 'DELETE',
                 });
             }
@@ -209,12 +210,12 @@ async function performRedo(action: UndoAction): Promise<void> {
                 });
             } else if (action.action === 'delete') {
                 // Redo delete = delete again
-                await checkedFetch(`/api/transactions?id=${action.data.id}`, {
+                await checkedFetch(`/api/transactions?id=${encodeURIComponent(String(action.data.id))}`, {
                     method: 'DELETE',
                 });
             } else if (action.action === 'update') {
                 // Redo update = apply current data
-                await checkedFetch(`/api/transactions/${action.data.id}`, {
+                await checkedFetch(`/api/transactions/${encodeURIComponent(String(action.data.id))}`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(action.data),
@@ -224,13 +225,16 @@ async function performRedo(action: UndoAction): Promise<void> {
 
         case 'budget':
             if (action.action === 'update') {
+                const nextDollars = typeof action.data.amount === 'number'
+                    ? action.data.amount
+                    : (typeof action.data.assigned === 'number' ? action.data.assigned / 100 : 0);
                 await checkedFetch('/api/budget', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         categoryId: action.data.categoryId,
                         month: action.data.month,
-                        assigned: action.data.assigned,
+                        amount: nextDollars,
                     }),
                 });
             }
@@ -244,10 +248,8 @@ async function performRedo(action: UndoAction): Promise<void> {
                     body: JSON.stringify({ type: 'category', ...action.data }),
                 });
             } else if (action.action === 'delete') {
-                await checkedFetch('/api/categories', {
+                await checkedFetch(`/api/categories?type=category&id=${encodeURIComponent(String(action.data.id))}`, {
                     method: 'DELETE',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ type: 'category', id: action.data.id }),
                 });
             }
             break;

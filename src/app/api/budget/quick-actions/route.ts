@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
+import { findOwnedCategory } from '@/lib/profileOwnership';
+import { getMonthOffset, getMonthRange, getCategoryActivityMap, getCategoryAvailableMap, calculateGoalUnderFunded } from '@/lib/budgetHelpers';
 
 // Quick budget actions: last month, average, underfunded
 export async function POST(request: NextRequest) {
@@ -12,13 +14,17 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
         }
 
-        const [year, monthNum] = month.split('-').map(Number);
+        // This route both reads and WRITES MonthlyBudget for the given category, so
+        // the category must be proven to belong to the active profile first.
+        if (!(await findOwnedCategory(profileId, categoryId))) {
+            return NextResponse.json({ error: 'Category not found' }, { status: 404 });
+        }
+
         let targetAmount = 0;
 
         if (action === 'lastMonth') {
             // Get last month's budget
-            const lastMonth = new Date(year, monthNum - 2, 1);
-            const lastMonthStr = `${lastMonth.getFullYear()}-${String(lastMonth.getMonth() + 1).padStart(2, '0')}`;
+            const lastMonthStr = getMonthOffset(month, -1);
 
             const lastBudget = await prisma.monthlyBudget.findUnique({
                 where: {
@@ -31,117 +37,141 @@ export async function POST(request: NextRequest) {
 
             targetAmount = lastBudget?.assigned ?? 0;
         } else if (action === 'average') {
-            // Get average of last 3 months spending (as positive)
-            const threeMonthsAgo = new Date(year, monthNum - 4, 1);
-            const startOfMonth = new Date(year, monthNum - 1, 1);
+            // Get average of last 3 months spending (as positive), including split sub-transactions
+            const { gte: threeMonthsAgo } = getMonthRange(getMonthOffset(month, -3));
+            const { gte: startOfMonth } = getMonthRange(month);
 
-            const transactions = await prisma.transaction.findMany({
-                where: {
-                    account: { profileId },
-                    categoryId,
-                    date: {
-                        gte: threeMonthsAgo,
-                        lt: startOfMonth,
+            const [transactions, subTransactions] = await Promise.all([
+                prisma.transaction.findMany({
+                    where: {
+                        account: { profileId },
+                        categoryId,
+                        date: {
+                            gte: threeMonthsAgo,
+                            lt: startOfMonth,
+                        },
+                        amount: { lt: 0 }, // Spending only
                     },
-                    amount: { lt: 0 }, // Spending only
-                },
-                select: { amount: true },
-            });
+                    select: { amount: true },
+                }),
+                prisma.subTransaction.findMany({
+                    where: {
+                        categoryId,
+                        amount: { lt: 0 },
+                        transaction: {
+                            account: { profileId },
+                            date: {
+                                gte: threeMonthsAgo,
+                                lt: startOfMonth,
+                            },
+                        },
+                    },
+                    select: { amount: true },
+                }),
+            ]);
 
-            if (transactions.length > 0) {
-                const totalSpent = transactions.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+            const allSpending = [...transactions, ...subTransactions];
+            if (allSpending.length > 0) {
+                const totalSpent = allSpending.reduce((sum, t) => sum + Math.abs(t.amount), 0);
                 targetAmount = Math.round(totalSpent / 3);
             }
         } else if (action === 'underfunded') {
             // Get goal underfunded amount
-            const category = await prisma.category.findUnique({
-                where: { id: categoryId },
+            const category = await prisma.category.findFirst({
+                where: { id: categoryId, group: { profileId } },
                 select: {
                     goalType: true,
                     goalTarget: true,
                     goalDueDate: true,
+                    goalUnderFunded: true,
                 },
             });
 
-            if (!category?.goalType || !category.goalTarget) {
+            if (!category?.goalType || (!category.goalTarget && !category.goalUnderFunded)) {
                 return NextResponse.json({ error: 'No goal set for category' }, { status: 400 });
             }
 
-            // Get current month's budget
-            const currentBudget = await prisma.monthlyBudget.findUnique({
-                where: {
-                    month_categoryId: {
-                        categoryId,
-                        month,
+            const [currentBudget, availableMap] = await Promise.all([
+                prisma.monthlyBudget.findUnique({
+                    where: {
+                        month_categoryId: {
+                            categoryId,
+                            month,
+                        },
                     },
-                },
-            });
+                    select: { assigned: true },
+                }),
+                getCategoryAvailableMap([categoryId], month),
+            ]);
 
             const currentlyAssigned = currentBudget?.assigned ?? 0;
+            const available = availableMap.get(categoryId) ?? 0;
 
-            // Get available (assigned - spent)
-            const startOfCurrentMonth = new Date(year, monthNum - 1, 1);
-            const endOfCurrentMonth = new Date(year, monthNum, 0, 23, 59, 59);
+            // Support both standard YNAB codes ('TB' | 'TBD' | 'MF' | 'NEED' | 'DEBT')
+            // and legacy string aliases ('target' | 'monthly' | 'spending')
+            const normalizedGoalType =
+                category.goalType === 'target' ? (category.goalDueDate ? 'TBD' : 'TB') :
+                category.goalType === 'monthly' ? 'MF' :
+                category.goalType === 'spending' ? 'NEED' :
+                category.goalType;
 
-            const transactions = await prisma.transaction.findMany({
-                where: {
-                    account: { profileId },
-                    categoryId,
-                    date: {
-                        gte: startOfCurrentMonth,
-                        lte: endOfCurrentMonth,
-                    },
-                },
-                select: { amount: true },
-            });
-
-            const activity = transactions.reduce((sum, t) => sum + t.amount, 0);
-            const available = currentlyAssigned + activity;
-
-            if (category.goalType === 'target') {
-                // Target by date - calculate monthly contribution needed
-                if (category.goalDueDate) {
-                    const dueDate = new Date(category.goalDueDate);
-                    const thisMonth = new Date(year, monthNum - 1, 1);
-                    const monthsRemaining = Math.max(1,
-                        (dueDate.getFullYear() - thisMonth.getFullYear()) * 12 +
-                        (dueDate.getMonth() - thisMonth.getMonth()) + 1
-                    );
-                    const needed = Math.max(0, category.goalTarget - available);
-                    targetAmount = Math.ceil(needed / monthsRemaining);
-                } else {
-                    targetAmount = Math.max(0, category.goalTarget - available);
-                }
-            } else if (category.goalType === 'monthly') {
-                // Monthly contribution goal
-                targetAmount = Math.max(0, category.goalTarget - currentlyAssigned);
-            } else if (category.goalType === 'spending') {
-                // Spending goal - fund to goal amount
-                targetAmount = Math.max(0, category.goalTarget - available);
+            let underfunded = calculateGoalUnderFunded(
+                normalizedGoalType,
+                category.goalTarget,
+                category.goalDueDate,
+                available,
+                month,
+                currentlyAssigned,
+            );
+            if (normalizedGoalType === 'DEBT' && underfunded === 0 && category.goalUnderFunded && category.goalUnderFunded > 0) {
+                underfunded = category.goalUnderFunded;
             }
 
             // Add to current assignment, not replace
-            targetAmount = currentlyAssigned + targetAmount;
+            targetAmount = currentlyAssigned + underfunded;
         } else if (action === 'clear') {
             targetAmount = 0;
         } else {
             return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
         }
 
-        // Upsert the monthly budget
-        await prisma.monthlyBudget.upsert({
-            where: {
-                month_categoryId: {
+        // Upsert the monthly budget with properly computed available and propagate deltas forward
+        const [existingBudget, currentAvailableMap] = await Promise.all([
+            prisma.monthlyBudget.findUnique({
+                where: { month_categoryId: { month, categoryId } },
+                select: { assigned: true },
+            }),
+            getCategoryAvailableMap([categoryId], month),
+        ]);
+        const assignmentDelta = targetAmount - (existingBudget?.assigned ?? 0);
+        const available = (currentAvailableMap.get(categoryId) ?? 0) + assignmentDelta;
+        const activityMap = await getCategoryActivityMap([categoryId], getMonthRange(month));
+        const activity = activityMap.get(categoryId) ?? 0;
+
+        await prisma.$transaction(async (tx) => {
+            await tx.monthlyBudget.upsert({
+                where: {
+                    month_categoryId: {
+                        categoryId,
+                        month,
+                    },
+                },
+                update: { assigned: targetAmount, activity, available },
+                create: {
                     categoryId,
                     month,
+                    assigned: targetAmount,
+                    activity,
+                    available,
                 },
-            },
-            update: { assigned: targetAmount },
-            create: {
-                categoryId,
-                month,
-                assigned: targetAmount,
-            },
+            });
+
+            if (assignmentDelta !== 0) {
+                await tx.monthlyBudget.updateMany({
+                    where: { categoryId, month: { gt: month } },
+                    data: { available: { increment: assignmentDelta } },
+                });
+            }
         });
 
         return NextResponse.json({

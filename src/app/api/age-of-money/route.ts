@@ -116,6 +116,14 @@ export async function GET(request: NextRequest) {
                     incomeQueue.shift();
                 }
             }
+
+            // Spending that outlives the recorded income (e.g. history imported
+            // without an opening-balance inflow) has no traceable age. Counting it
+            // at age zero keeps the weighted average honest — dropping it entirely
+            // shrinks the denominator and silently inflates Age of Money.
+            if (shouldTrack && amountToAssign > 0) {
+                totalSpent += amountToAssign;
+            }
         }
 
         const ageOfMoney = totalSpent > 0 ? Math.round(totalAge / totalSpent) : 0;

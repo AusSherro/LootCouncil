@@ -54,13 +54,20 @@ function AccountCard({ account, onReconcile, onClose, onReopen, onDeposit, onTra
                     {account.closed && (
                         <span className="text-xs bg-neutral/20 text-neutral px-2 py-1 rounded-full">Closed</span>
                     )}
-                    {account.onBudget && !account.closed && (
-                        <span className="text-xs bg-gold/20 text-gold px-2 py-1 rounded-full">On Budget</span>
+                    {!account.closed && (
+                        account.onBudget ? (
+                            <span className="text-xs bg-gold/20 text-gold px-2 py-1 rounded-full">On Budget</span>
+                        ) : (
+                            <span className="text-xs bg-neutral/20 text-neutral px-2 py-1 rounded-full">Tracking</span>
+                        )
                     )}
                     {account.lastReconciled && !account.closed && (
-                        <span className="text-xs bg-success/20 text-success px-2 py-1 rounded-full flex items-center gap-1">
+                        <span 
+                            className="text-xs bg-success/20 text-success px-2 py-1 rounded-full flex items-center gap-1"
+                            title={`Last reconciled: ${new Date(account.lastReconciled).toLocaleString('en-AU', { dateStyle: 'medium', timeStyle: 'short' })}`}
+                        >
                             <Lock className="w-3 h-3" />
-                            Reconciled
+                            Reconciled {new Date(account.lastReconciled).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}
                         </span>
                     )}
                     <div className="relative">
@@ -225,10 +232,11 @@ export default function AccountsPage() {
     }
 
     const activeAccounts = accounts.filter(a => !a.closed);
+    const budgetAccounts = activeAccounts.filter(a => a.onBudget);
+    const trackingAccounts = activeAccounts.filter(a => !a.onBudget);
     const closedAccounts = accounts.filter(a => a.closed);
-    const totalOnBudget = activeAccounts
-        .filter(a => a.onBudget)
-        .reduce((sum, a) => sum + a.balance, 0);
+    const totalOnBudget = budgetAccounts.reduce((sum, a) => sum + a.balance, 0);
+    const totalTracking = trackingAccounts.reduce((sum, a) => sum + a.balance, 0);
 
     const totalAssets = activeAccounts
         .filter(a => a.balance > 0)
@@ -318,23 +326,49 @@ export default function AccountsPage() {
                 </div>
             ) : (
                 <>
-                    <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-lg font-semibold text-foreground">Budget Accounts</h2>
-                        <span className="text-gold font-medium">{formatCurrency(totalOnBudget)}</span>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {activeAccounts.filter(a => a.onBudget).map((account) => (
-                            <AccountCard 
-                                key={account.id} 
-                                account={account} 
-                                onReconcile={setReconcileAccount}
-                                onClose={handleCloseAccount}
-                                onReopen={handleReopenAccount}
-                                onDeposit={(a) => { setDepositAccountId(a.id); setShowDepositModal(true); }}
-                                onTransfer={(a) => { setTransferSourceAccount(a.id); setShowTransferModal(true); }}
-                            />
-                        ))}
-                    </div>
+                    {budgetAccounts.length > 0 && (
+                        <>
+                            <div className="flex items-center justify-between mb-4">
+                                <h2 className="text-lg font-semibold text-foreground">Budget Accounts</h2>
+                                <span className="text-gold font-medium">{formatCurrency(totalOnBudget)}</span>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {budgetAccounts.map((account) => (
+                                    <AccountCard 
+                                        key={account.id} 
+                                        account={account} 
+                                        onReconcile={setReconcileAccount}
+                                        onClose={handleCloseAccount}
+                                        onReopen={handleReopenAccount}
+                                        onDeposit={(a) => { setDepositAccountId(a.id); setShowDepositModal(true); }}
+                                        onTransfer={(a) => { setTransferSourceAccount(a.id); setShowTransferModal(true); }}
+                                    />
+                                ))}
+                            </div>
+                        </>
+                    )}
+
+                    {trackingAccounts.length > 0 && (
+                        <>
+                            <div className={`flex items-center justify-between mb-4 ${budgetAccounts.length > 0 ? 'mt-8' : ''}`}>
+                                <h2 className="text-lg font-semibold text-foreground">Tracking / Off-Budget Accounts</h2>
+                                <span className="text-neutral font-medium">{formatCurrency(totalTracking)}</span>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {trackingAccounts.map((account) => (
+                                    <AccountCard 
+                                        key={account.id} 
+                                        account={account} 
+                                        onReconcile={setReconcileAccount}
+                                        onClose={handleCloseAccount}
+                                        onReopen={handleReopenAccount}
+                                        onDeposit={(a) => { setDepositAccountId(a.id); setShowDepositModal(true); }}
+                                        onTransfer={(a) => { setTransferSourceAccount(a.id); setShowTransferModal(true); }}
+                                    />
+                                ))}
+                            </div>
+                        </>
+                    )}
 
                     {/* Closed Accounts */}
                     {closedAccounts.length > 0 && (() => {

@@ -217,7 +217,6 @@ start-budget.bat    # Opens browser + starts server
 
 ### Production Notes
 - SQLite database file (`loot-council.db`) lives in `data/` with the current `DATABASE_URL`
-- `better-sqlite3` is externalized from webpack bundling (see `next.config.ts`)
 - Server binds to `localhost:3000` (127.0.0.1 only) by default
 - `Dockerfile` builds a standalone app image. The Raspberry Pi reverse-proxy files under `deploy/` do not yet define the application service; see [CRIT-7](../ISSUES.md) before using them as a deployment workflow.
 

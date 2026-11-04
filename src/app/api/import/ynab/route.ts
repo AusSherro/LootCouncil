@@ -47,13 +47,17 @@ function getAccountName(row: YNABRow): string | undefined {
 
 function parseExcelDate(value: string | number | undefined): Date | null {
     if (value === undefined || value === '') return null;
-    
+
+    // Dates are stored as UTC midnight throughout the app because budget months
+    // are bucketed on UTC boundaries. Anchoring on a LOCAL-midnight epoch would
+    // shift every imported date back a day in positive-offset timezones such as
+    // Australia/Sydney, moving transactions into the previous budget month.
+
     // If it's a number, it's an Excel serial date
     if (typeof value === 'number') {
         // Excel serial date: days since 1899-12-30 (accounting for Excel's leap year bug)
-        const excelEpoch = new Date(1899, 11, 30);
-        const date = new Date(excelEpoch.getTime() + value * 24 * 60 * 60 * 1000);
-        return date;
+        const excelEpochUtc = Date.UTC(1899, 11, 30);
+        return new Date(excelEpochUtc + value * 24 * 60 * 60 * 1000);
     }
     
     // Try parsing as string
@@ -410,7 +414,7 @@ export async function POST(request: NextRequest) {
     } catch (error) {
         console.error('YNAB import error:', error);
         return NextResponse.json(
-            { error: 'Failed to import YNAB data', details: String(error) },
+            { error: 'Failed to import YNAB data' },
             { status: 500 }
         );
     }

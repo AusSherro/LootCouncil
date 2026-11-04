@@ -51,4 +51,21 @@ export function formatCurrency(
     return formatted;
 }
 
+/**
+ * A date as `YYYY-MM-DD` in the machine's local time zone.
+ *
+ * Use this for "today" (form defaults, filenames, filter presets). Do not use
+ * `new Date().toISOString().slice(0, 10)` for that: it is the UTC date, which in
+ * Australia is still yesterday until 10–11am.
+ */
+export function toLocalDateString(date: Date = new Date()): string {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+}
 
+/** The current (or given) month as `YYYY-MM` in the machine's local time zone. */
+export function toLocalMonthString(date: Date = new Date()): string {
+    return toLocalDateString(date).slice(0, 7);
+}

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
+import { toLocalMonthString } from '@/lib/utils';
+import { getMonthOffset } from '@/lib/budgetUtils';
 
 const YNAB_API_BASE = 'https://api.ynab.com/v1';
 
@@ -526,11 +528,9 @@ export async function POST(request: NextRequest) {
     // ==========================================
     // 5. Refresh current month's budget data
     // ==========================================
-    const currentMonth = new Date().toISOString().slice(0, 7);
+    const currentMonth = toLocalMonthString();
     // Also refresh previous month (in case of late edits)
-    const prevDate = new Date();
-    prevDate.setMonth(prevDate.getMonth() - 1);
-    const prevMonth = prevDate.toISOString().slice(0, 7);
+    const prevMonth = getMonthOffset(currentMonth, -1);
 
     for (const monthStr of [prevMonth, currentMonth]) {
       try {

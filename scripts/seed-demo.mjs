@@ -16,7 +16,6 @@ function mulberry32(seed) {
     };
 }
 const rand = mulberry32(20260719);
-const jitter = (base, pct = 0.08) => Math.round(base * (1 + (rand() * 2 - 1) * pct));
 const day = (n) => String(n).padStart(2, '0');
 const dateISO = (y, m, d) => new Date(`${y}-${day(m)}-${day(d)}T09:30:00.000Z`);
 

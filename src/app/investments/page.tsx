@@ -7,8 +7,9 @@ import {
     Trash2, X, AlertCircle, ArrowUpRight, ArrowDownRight, Edit,
     Calculator, Info
 } from 'lucide-react';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, toLocalDateString } from '@/lib/utils';
 import { useSettings } from '@/components/SettingsProvider';
+import { useToast } from '@/components/Toast';
 import GoldCoinSpinner from '@/components/GoldCoinSpinner';
 import {
     ResponsiveContainer,
@@ -127,6 +128,7 @@ function getAssetClassColor(assetClass: string): string {
 
 export default function InvestmentsPage() {
     const { settings } = useSettings();
+    const { showToast } = useToast();
     const currency = settings?.currency || 'AUD';
     const fmt = useCallback((cents: number) => formatCurrencyShort(cents, currency), [currency]);
     const [data, setData] = useState<InvestmentData | null>(null);
@@ -157,7 +159,11 @@ export default function InvestmentsPage() {
                 fetch('/api/investments/allocations'),
                 fetch(`/api/networth?months=12${excludeSuperFromNetWorth ? '&excludeAssetClass=super' : ''}`),
             ]);
-            
+
+            if (!investRes.ok || !allocRes.ok || !netWorthRes.ok) {
+                throw new Error('Failed to load investment data');
+            }
+
             const investData = await investRes.json();
             const allocData = await allocRes.json();
             const nwData = await netWorthRes.json();
@@ -167,10 +173,11 @@ export default function InvestmentsPage() {
             setNetWorthData(nwData);
         } catch (err) {
             console.error('Failed to fetch investments:', err);
+            showToast('Could not load investment data', 'error');
         } finally {
             setLoading(false);
         }
-    }, [excludeSuperFromNetWorth]);
+    }, [excludeSuperFromNetWorth, showToast]);
 
     useEffect(() => {
         fetchData();
@@ -1603,7 +1610,7 @@ function AddAssetModal({ onClose, onAdded }: { onClose: () => void; onAdded: () 
     const [fetchedCurrency, setFetchedCurrency] = useState<string>('AUD');
 
     // Purchase form
-    const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split('T')[0]);
+    const [purchaseDate, setPurchaseDate] = useState(() => toLocalDateString());
     const [units, setUnits] = useState('');
     const [unitPrice, setUnitPrice] = useState('');
     const [brokerage, setBrokerage] = useState('');
@@ -1906,7 +1913,7 @@ function AddAssetModal({ onClose, onAdded }: { onClose: () => void; onAdded: () 
 }
 
 function AddLotModal({ asset, onClose, onAdded }: { asset: Asset; onClose: () => void; onAdded: () => void }) {
-    const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split('T')[0]);
+    const [purchaseDate, setPurchaseDate] = useState(() => toLocalDateString());
     const [units, setUnits] = useState('');
     const [unitPrice, setUnitPrice] = useState('');
     const [brokerage, setBrokerage] = useState('');

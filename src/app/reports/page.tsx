@@ -2,16 +2,22 @@
 
 import { BarChart3, Eye, EyeOff } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
+import dynamic from 'next/dynamic';
 import { useSettings } from '@/components/SettingsProvider';
 import { useProfile } from '@/components/ProfileProvider';
-import SavingsRateTab from './_tabs/SavingsRateTab';
-import TopMoversTab from './_tabs/TopMoversTab';
-import SpendingBreakdownTab from './_tabs/SpendingBreakdownTab';
-import IncomeExpenseTab from './_tabs/IncomeExpenseTab';
-import BudgetVsActualTab from './_tabs/BudgetVsActualTab';
-import NetWorthTab from './_tabs/NetWorthTab';
-import ByPayeeTab from './_tabs/ByPayeeTab';
-import CategoryTrendsTab from './_tabs/CategoryTrendsTab';
+import { SkeletonCard } from '@/components/Skeleton';
+
+// Each tab pulls in recharts. Loading them on demand keeps the initial
+// /reports compile and bundle to just the active tab.
+// next/dynamic requires the options object to be an inline literal.
+const SavingsRateTab = dynamic(() => import('./_tabs/SavingsRateTab'), { loading: () => <SkeletonCard />, ssr: false });
+const TopMoversTab = dynamic(() => import('./_tabs/TopMoversTab'), { loading: () => <SkeletonCard />, ssr: false });
+const SpendingBreakdownTab = dynamic(() => import('./_tabs/SpendingBreakdownTab'), { loading: () => <SkeletonCard />, ssr: false });
+const IncomeExpenseTab = dynamic(() => import('./_tabs/IncomeExpenseTab'), { loading: () => <SkeletonCard />, ssr: false });
+const BudgetVsActualTab = dynamic(() => import('./_tabs/BudgetVsActualTab'), { loading: () => <SkeletonCard />, ssr: false });
+const NetWorthTab = dynamic(() => import('./_tabs/NetWorthTab'), { loading: () => <SkeletonCard />, ssr: false });
+const ByPayeeTab = dynamic(() => import('./_tabs/ByPayeeTab'), { loading: () => <SkeletonCard />, ssr: false });
+const CategoryTrendsTab = dynamic(() => import('./_tabs/CategoryTrendsTab'), { loading: () => <SkeletonCard />, ssr: false });
 
 const reportTabs = [
     { id: 'spending', name: 'Spending Breakdown' },

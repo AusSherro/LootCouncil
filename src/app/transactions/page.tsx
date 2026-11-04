@@ -10,7 +10,7 @@ import { useConfirmDialog } from '@/components/ConfirmDialog';
 import { useKeyboardShortcuts } from '@/lib/useKeyboardShortcuts';
 import { SkeletonTransactionList } from '@/components/Skeleton';
 import { InlineCategorySelect } from '@/components/InlineEdit';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, toLocalDateString } from '@/lib/utils';
 import { useSettings } from '@/components/SettingsProvider';
 import { useProfile } from '@/components/ProfileProvider';
 import { fetchJsonCached } from '@/lib/clientCache';
@@ -48,6 +48,16 @@ interface Filters {
     maxAmount: string;
     cleared: 'all' | 'cleared' | 'uncleared';
 }
+
+const DEFAULT_FILTERS: Filters = {
+    accountId: '',
+    categoryId: '',
+    startDate: '',
+    endDate: '',
+    minAmount: '',
+    maxAmount: '',
+    cleared: 'all',
+};
 
 function formatDate(dateStr: string): string {
     const date = new Date(dateStr);
@@ -100,8 +110,10 @@ function TransactionRow({
                         <span className="ml-2 text-xs bg-secondary/30 text-secondary px-1.5 py-0.5 rounded">split</span>
                     )}
                 </div>
-                <div className="text-neutral min-w-0 truncate" onClick={(e) => e.stopPropagation()}>
-                    {categories && onCategoryChange ? (
+                <div className="text-neutral min-w-0 truncate" onClick={(e) => { if (!transaction.isSplit) e.stopPropagation(); }}>
+                    {transaction.isSplit ? (
+                        <span className="text-xs text-secondary font-medium">Split</span>
+                    ) : categories && onCategoryChange ? (
                         <InlineCategorySelect
                             currentCategory={transaction.category}
                             categories={categories}
@@ -165,7 +177,7 @@ function TransactionRow({
                     </div>
                     <div className="flex items-center justify-between gap-2 mt-0.5">
                         <span className="text-xs text-neutral truncate">
-                            {formatDate(transaction.date)} · {transaction.category?.name || 'Uncategorized'}
+                            {formatDate(transaction.date)} · {transaction.isSplit ? 'Split' : (transaction.category?.name || 'Uncategorized')}
                         </span>
                         {transaction.memo && (
                             <span className="text-xs text-neutral truncate max-w-[120px]">{transaction.memo}</span>
@@ -200,39 +212,85 @@ export default function TransactionsPage() {
     const [bulkCategory, setBulkCategory] = useState('');
     const [bulkCleared, setBulkCleared] = useState<'' | 'true' | 'false'>('');
     const [keyboardIndex, setKeyboardIndex] = useState(-1);
-    const [filters, setFilters] = useState<Filters>({
-        accountId: '',
-        categoryId: '',
-        startDate: '',
-        endDate: '',
-        minAmount: '',
-        maxAmount: '',
-        cleared: 'all',
-    });
+    const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
     const [hideReconciliationAdjustments, setHideReconciliationAdjustments] = useState(true);
     const filtersHydrated = useRef(false);
+    const isUrlDrillDown = useRef(false);
+    const initialUrlFilters = useRef<Partial<Filters>>({});
+
+    // Parse URL query parameters first on mount before localStorage filter hydration runs.
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const params = new URLSearchParams(window.location.search);
+        let shouldCleanUrl = false;
+
+        const tab = params.get('tab');
+        if (tab === 'scheduled' || tab === 'all') {
+            setActiveTab(tab);
+            shouldCleanUrl = true;
+        }
+
+        if (params.get('new') === '1') {
+            setShowForm(true);
+            window.history.replaceState({}, '', '/transactions');
+            return;
+        }
+
+        // Drill-down support: when navigated from Reports with filter params,
+        // apply only the drill-down filters cleanly without merging stale localStorage filters.
+        const next: Partial<Filters> = {};
+        const accountId = params.get('accountId');
+        const categoryId = params.get('categoryId');
+        const startDate = params.get('startDate');
+        const endDate = params.get('endDate');
+        const minAmount = params.get('minAmount');
+        const maxAmount = params.get('maxAmount');
+        const q = params.get('q');
+        if (accountId) next.accountId = accountId;
+        if (categoryId) next.categoryId = categoryId;
+        if (startDate) next.startDate = startDate;
+        if (endDate) next.endDate = endDate;
+        if (minAmount) next.minAmount = minAmount;
+        if (maxAmount) next.maxAmount = maxAmount;
+        if (Object.keys(next).length > 0) {
+            isUrlDrillDown.current = true;
+            initialUrlFilters.current = next;
+            setFilters({ ...DEFAULT_FILTERS, ...next });
+            setShowFilters(true);
+            shouldCleanUrl = true;
+        }
+        if (q) {
+            setSearchQuery(q);
+            shouldCleanUrl = true;
+        }
+        if (shouldCleanUrl) {
+            window.history.replaceState({}, '', '/transactions');
+        }
+    }, []);
 
     // Per-profile localStorage key for persisting filters across reloads.
     const filterStorageKey = activeProfile ? `loot-council-tx-filters-${activeProfile.id}` : null;
 
-    // Load saved filters when profile changes.
+    // Load saved filters when profile changes (unless navigated via URL drill-down).
     useEffect(() => {
         if (typeof window === 'undefined' || !filterStorageKey) return;
         try {
             const raw = localStorage.getItem(filterStorageKey);
             if (raw) {
                 const parsed = JSON.parse(raw) as Partial<Filters> & { hideReconciliationAdjustments?: boolean };
-                setFilters(prev => ({
-                    accountId: parsed.accountId ?? prev.accountId,
-                    categoryId: parsed.categoryId ?? prev.categoryId,
-                    startDate: parsed.startDate ?? prev.startDate,
-                    endDate: parsed.endDate ?? prev.endDate,
-                    minAmount: parsed.minAmount ?? prev.minAmount,
-                    maxAmount: parsed.maxAmount ?? prev.maxAmount,
-                    cleared: parsed.cleared ?? prev.cleared,
-                }));
                 if (typeof parsed.hideReconciliationAdjustments === 'boolean') {
                     setHideReconciliationAdjustments(parsed.hideReconciliationAdjustments);
+                }
+                if (!isUrlDrillDown.current) {
+                    setFilters({
+                        accountId: parsed.accountId ?? '',
+                        categoryId: parsed.categoryId ?? '',
+                        startDate: parsed.startDate ?? '',
+                        endDate: parsed.endDate ?? '',
+                        minAmount: parsed.minAmount ?? '',
+                        maxAmount: parsed.maxAmount ?? '',
+                        cleared: parsed.cleared ?? 'all',
+                    });
                 }
             }
         } catch {
@@ -241,9 +299,18 @@ export default function TransactionsPage() {
         filtersHydrated.current = true;
     }, [filterStorageKey]);
 
-    // Persist filters whenever they change (after the initial hydration).
+    // Persist filters whenever they change (after the initial hydration, skipping one-off URL drill-downs until user modifies filters).
     useEffect(() => {
         if (typeof window === 'undefined' || !filterStorageKey || !filtersHydrated.current) return;
+        if (isUrlDrillDown.current) {
+            // Once the initial URL drill-down render settles, subsequent user edits should persist normally
+            const urlFilters = initialUrlFilters.current;
+            const stillMatchesDrillDown = (Object.keys(DEFAULT_FILTERS) as Array<keyof Filters>).every(
+                k => filters[k] === (urlFilters[k] ?? DEFAULT_FILTERS[k])
+            );
+            if (stillMatchesDrillDown) return;
+            isUrlDrillDown.current = false;
+        }
         try {
             localStorage.setItem(
                 filterStorageKey,
@@ -255,7 +322,7 @@ export default function TransactionsPage() {
     }, [filters, hideReconciliationAdjustments, filterStorageKey]);
 
     // Date-range preset helpers (FEAT-4 ergonomics)
-    const fmtDate = (d: Date) => d.toISOString().slice(0, 10);
+    const fmtDate = toLocalDateString;
     function applyDatePreset(preset: 'thisMonth' | 'lastMonth' | 'last30' | 'last90' | 'thisYear' | 'allTime') {
         const now = new Date();
         let start = '';
@@ -306,42 +373,6 @@ export default function TransactionsPage() {
         searchTimerRef.current = setTimeout(() => setDebouncedSearch(searchQuery), 300);
         return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
     }, [searchQuery]);
-
-    useEffect(() => {
-        if (typeof window === 'undefined') return;
-        const params = new URLSearchParams(window.location.search);
-        if (params.get('new') === '1') {
-            setShowForm(true);
-            window.history.replaceState({}, '', '/transactions');
-            return;
-        }
-
-        // Drill-down support: when navigated from Reports with filter params,
-        // pre-apply the filters and open the panel so the user sees the active state.
-        const next: Partial<Filters> = {};
-        const accountId = params.get('accountId');
-        const categoryId = params.get('categoryId');
-        const startDate = params.get('startDate');
-        const endDate = params.get('endDate');
-        const minAmount = params.get('minAmount');
-        const maxAmount = params.get('maxAmount');
-        const q = params.get('q');
-        if (accountId) next.accountId = accountId;
-        if (categoryId) next.categoryId = categoryId;
-        if (startDate) next.startDate = startDate;
-        if (endDate) next.endDate = endDate;
-        if (minAmount) next.minAmount = minAmount;
-        if (maxAmount) next.maxAmount = maxAmount;
-        if (Object.keys(next).length > 0) {
-            setFilters(prev => ({ ...prev, ...next }));
-            setShowFilters(true);
-            window.history.replaceState({}, '', '/transactions');
-        }
-        if (q) {
-            setSearchQuery(q);
-            window.history.replaceState({}, '', '/transactions');
-        }
-    }, []);
 
     function toggleSelect(id: string) {
         const newSet = new Set(selectedIds);
@@ -450,12 +481,16 @@ export default function TransactionsPage() {
     // Inline category change handler
     const handleInlineCategoryChange = useCallback(async (transactionId: string, categoryId: string) => {
         try {
-            await fetch(`/api/transactions/${transactionId}`, {
+            const res = await fetch(`/api/transactions/${transactionId}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ categoryId }),
             });
-            // Optimistic update
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                showToast(errData.error || 'Failed to update category', 'error');
+                return;
+            }
             setTransactions(prev => prev.map(t => 
                 t.id === transactionId 
                     ? { ...t, category: categories.find(c => c.id === categoryId) || null }
@@ -463,8 +498,9 @@ export default function TransactionsPage() {
             ));
         } catch (err) {
             console.error('Failed to update category:', err);
+            showToast('Failed to update category', 'error');
         }
-    }, [categories]);
+    }, [categories, showToast]);
 
     useEffect(() => {
         const controller = new AbortController();
@@ -584,15 +620,8 @@ export default function TransactionsPage() {
     }
 
     function clearFilters() {
-        setFilters({
-            accountId: '',
-            categoryId: '',
-            startDate: '',
-            endDate: '',
-            minAmount: '',
-            maxAmount: '',
-            cleared: 'all',
-        });
+        isUrlDrillDown.current = false;
+        setFilters(DEFAULT_FILTERS);
         setOffset(0);
     }
 
@@ -636,7 +665,7 @@ export default function TransactionsPage() {
                 new Date(t.date).toISOString().slice(0, 10),
                 t.account?.name ?? '',
                 t.payee ?? '',
-                t.category?.name ?? '',
+                t.isSplit ? 'Split' : (t.category?.name ?? ''),
                 t.memo ?? '',
                 (t.amount / 100).toFixed(2),
                 t.cleared ? 'true' : 'false',
@@ -647,7 +676,7 @@ export default function TransactionsPage() {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `loot-council-transactions-${new Date().toISOString().slice(0, 10)}.csv`;
+            a.download = `loot-council-transactions-${toLocalDateString()}.csv`;
             document.body.appendChild(a);
             a.click();
             a.remove();
@@ -1087,6 +1116,7 @@ export default function TransactionsPage() {
                 onClose={handleCloseForm}
                 onSuccess={fetchTransactions}
                 editTransaction={editTransaction}
+                defaultAccountId={filters.accountId || undefined}
             />
 
             {/* CSV Import Modal */}

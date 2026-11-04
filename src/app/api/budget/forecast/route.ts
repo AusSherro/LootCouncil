@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
-import { getMonthOffset, isInflowGroup, isHiddenCategoriesGroup } from '@/lib/budgetHelpers';
+import { getMonthOffset, isInflowGroup, isHiddenCategoriesGroup, getCategoryActivityMap, getMonthRange } from '@/lib/budgetHelpers';
+import { toLocalMonthString } from '@/lib/utils';
 
 interface MonthProjection {
     month: string;
@@ -32,7 +33,7 @@ export async function GET(request: NextRequest) {
     try {
         const profileId = await getProfileId(request);
         const { searchParams } = new URL(request.url);
-        const currentMonth = searchParams.get('currentMonth') || new Date().toISOString().slice(0, 7);
+        const currentMonth = searchParams.get('currentMonth') || toLocalMonthString();
         const targetMonth = searchParams.get('targetMonth');
         const additionalAmount = parseInt(searchParams.get('additionalAmount') || '0'); // cents
         const additionalDescription = searchParams.get('additionalDescription') || '';
@@ -93,23 +94,16 @@ export async function GET(request: NextRequest) {
         }
 
         if (monthlyIncome === 0) {
-            // Try actual inflow transaction activity this month
-            const monthStart = new Date(`${currentMonth}-01T00:00:00.000Z`);
-            const monthEnd = new Date(monthStart);
-            monthEnd.setMonth(monthEnd.getMonth() + 1);
+            // Try actual inflow transaction activity this month (one batched query,
+            // including split sub-transactions)
+            const inflowCategoryIds = categoryGroups
+                .filter(group => isInflowGroup(group.name))
+                .flatMap(group => group.categories.map(cat => cat.id));
 
-            for (const group of categoryGroups) {
-                if (isInflowGroup(group.name)) {
-                    for (const cat of group.categories) {
-                        const activityResult = await prisma.transaction.aggregate({
-                            where: {
-                                categoryId: cat.id,
-                                date: { gte: monthStart, lt: monthEnd },
-                            },
-                            _sum: { amount: true },
-                        });
-                        monthlyIncome += Math.abs(activityResult._sum.amount || 0);
-                    }
+            if (inflowCategoryIds.length > 0) {
+                const inflowActivity = await getCategoryActivityMap(inflowCategoryIds, getMonthRange(currentMonth));
+                for (const amount of inflowActivity.values()) {
+                    monthlyIncome += Math.abs(amount);
                 }
             }
         }

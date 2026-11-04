@@ -2,14 +2,17 @@
 
 import { PiggyBank, ChevronRight, ChevronLeft, ChevronDown, Plus, Eye, EyeOff, MoreHorizontal, Edit3, X, GripVertical, Target, FileCheck2, Copy, AlertTriangle, Clock, Calculator, Zap, Search, LayoutGrid, List, DollarSign, ArrowDownUp, TrendingUp } from 'lucide-react';
 import { useState, useEffect, useCallback } from 'react';
+import dynamic from 'next/dynamic';
 import GoalProgress from '@/components/GoalProgress';
 import GoalEditorModal from '@/components/GoalEditorModal';
 import BudgetTemplatesModal from '@/components/BudgetTemplatesModal';
 import BudgetFlowBar from '@/components/BudgetFlowBar';
 import BudgetTransferModal from '@/components/BudgetTransferModal';
-import ForecastModal from '@/components/ForecastModal';
+
+// Pulls in recharts — only loaded once the user opens the forecast.
+const ForecastModal = dynamic(() => import('@/components/ForecastModal'), { ssr: false });
 import { useToast } from '@/components/Toast';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, toLocalMonthString } from '@/lib/utils';
 import GoldCoinSpinner from '@/components/GoldCoinSpinner';
 import ModalDialog from '@/components/ModalDialog';
 import {
@@ -679,10 +682,7 @@ function CreateModal({ isOpen, onClose, groups, onCreated }: CreateModalProps) {
 
 export default function BudgetPage() {
     const { showToast } = useToast();
-    const [currentMonth, setCurrentMonth] = useState(() => {
-        const now = new Date();
-        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    });
+    const [currentMonth, setCurrentMonth] = useState(() => toLocalMonthString());
     const [budgetData, setBudgetData] = useState<BudgetData | null>(null);
     const [loading, setLoading] = useState(true);
     const [showHidden, setShowHidden] = useState(false);
@@ -1335,20 +1335,22 @@ export default function BudgetPage() {
             />
 
             {/* Forecast Modal */}
-            <ForecastModal
-                isOpen={showForecastModal}
-                onClose={() => setShowForecastModal(false)}
-                currentMonth={currentMonth}
-                categories={budgetData?.groups.filter(g => !g.isInflow).flatMap(g =>
-                    g.categories.map(c => ({
-                        id: c.id,
-                        name: c.name,
-                        groupName: g.name,
-                        goalType: c.goalType,
-                        goalAmount: c.goalAmount,
-                    }))
-                ) || []}
-            />
+            {showForecastModal && (
+                <ForecastModal
+                    isOpen={true}
+                    onClose={() => setShowForecastModal(false)}
+                    currentMonth={currentMonth}
+                    categories={budgetData?.groups.filter(g => !g.isInflow).flatMap(g =>
+                        g.categories.map(c => ({
+                            id: c.id,
+                            name: c.name,
+                            groupName: g.name,
+                            goalType: c.goalType,
+                            goalAmount: c.goalAmount,
+                        }))
+                    ) || []}
+                />
+            )}
 
             {/* Add Category FAB */}
             <button

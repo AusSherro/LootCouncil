@@ -41,22 +41,3 @@ export function useKeyboardShortcuts(shortcuts: KeyboardShortcut[], enabled = tr
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [handleKeyDown]);
 }
-
-// Shortcuts help component
-export function ShortcutsHelp({ shortcuts }: { shortcuts: KeyboardShortcut[] }) {
-    return (
-        <div className="text-xs text-neutral space-y-1">
-            {shortcuts.map((s, i) => (
-                <div key={i} className="flex items-center gap-2">
-                    <kbd className="px-1.5 py-0.5 bg-background-tertiary rounded text-[10px] font-mono">
-                        {s.ctrl && 'Ctrl+'}
-                        {s.shift && 'Shift+'}
-                        {s.alt && 'Alt+'}
-                        {s.key}
-                    </kbd>
-                    <span>{s.description}</span>
-                </div>
-            ))}
-        </div>
-    );
-}

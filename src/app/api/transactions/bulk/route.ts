@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
+import { applyCategoryActivityDelta } from '@/lib/budgetHelpers';
 import { findOwnedCategory } from '@/lib/profileOwnership';
 
 // POST - Bulk edit transactions
@@ -19,6 +20,19 @@ export async function POST(request: NextRequest) {
         if (updates.categoryId !== undefined) {
             if (updates.categoryId && !(await findOwnedCategory(profileId, updates.categoryId))) {
                 return NextResponse.json({ error: 'Category not found' }, { status: 404 });
+            }
+            // Split parents must keep `categoryId = null` — see the same guard in
+            // transactions/[id] PATCH. Categorising one double-counts its amount.
+            if (updates.categoryId) {
+                const splitCount = await prisma.transaction.count({
+                    where: { id: { in: transactionIds }, account: { profileId }, isSplit: true },
+                });
+                if (splitCount > 0) {
+                    return NextResponse.json(
+                        { error: 'Selection contains split transactions, which cannot be categorised.' },
+                        { status: 400 }
+                    );
+                }
             }
             updateData.categoryId = updates.categoryId || null;
         }
@@ -44,6 +58,13 @@ export async function POST(request: NextRequest) {
         }
 
         const result = await prisma.$transaction(async (tx) => {
+            const categoryTransactions = updates.categoryId !== undefined
+                ? await tx.transaction.findMany({
+                    where: { id: { in: transactionIds }, account: { profileId } },
+                    select: { categoryId: true, amount: true, date: true },
+                })
+                : [];
+
             // If cleared status is being changed, calculate balance adjustments per account
             if (updates.cleared !== undefined) {
                 const transactions = await tx.transaction.findMany({
@@ -79,6 +100,28 @@ export async function POST(request: NextRequest) {
                 data: updateData,
             });
 
+            if (updates.categoryId !== undefined) {
+                for (const transaction of categoryTransactions) {
+                    const month = transaction.date.toISOString().slice(0, 7);
+                    if (transaction.categoryId) {
+                        await applyCategoryActivityDelta(
+                            tx,
+                            transaction.categoryId,
+                            month,
+                            -transaction.amount,
+                        );
+                    }
+                    if (updates.categoryId) {
+                        await applyCategoryActivityDelta(
+                            tx,
+                            updates.categoryId,
+                            month,
+                            transaction.amount,
+                        );
+                    }
+                }
+            }
+
             return updated;
         });
 
@@ -104,11 +147,51 @@ export async function DELETE(request: NextRequest) {
         }
 
         const result = await prisma.$transaction(async (tx) => {
-            // Get transactions to reverse their balances
-            const transactions = await tx.transaction.findMany({
+            // Get selected transactions
+            const selectedTransactions = await tx.transaction.findMany({
                 where: { id: { in: transactionIds }, account: { profileId } },
-                select: { id: true, amount: true, cleared: true, accountId: true },
+                select: {
+                    id: true,
+                    amount: true,
+                    cleared: true,
+                    accountId: true,
+                    categoryId: true,
+                    date: true,
+                    transferId: true,
+                    subTransactions: { select: { categoryId: true, amount: true } },
+                },
             });
+
+            // Expand to include any sibling transfer legs so transfers are deleted whole
+            const transferIds = [
+                ...new Set(
+                    selectedTransactions
+                        .map(t => t.transferId)
+                        .filter((id): id is string => Boolean(id))
+                ),
+            ];
+            const siblingLegs = transferIds.length > 0
+                ? await tx.transaction.findMany({
+                    where: {
+                        transferId: { in: transferIds },
+                        id: { notIn: selectedTransactions.map(t => t.id) },
+                        account: { profileId },
+                    },
+                    select: {
+                        id: true,
+                        amount: true,
+                        cleared: true,
+                        accountId: true,
+                        categoryId: true,
+                        date: true,
+                        transferId: true,
+                        subTransactions: { select: { categoryId: true, amount: true } },
+                    },
+                })
+                : [];
+
+            const transactions = [...selectedTransactions, ...siblingLegs];
+            const allIdsToDelete = transactions.map(t => t.id);
 
             // Group balance reversals by account
             const accountAdjustments = new Map<string, { balance: number; clearedBalance: number }>();
@@ -132,9 +215,32 @@ export async function DELETE(request: NextRequest) {
                 });
             }
 
+            if (transferIds.length > 0) {
+                await tx.transfer.deleteMany({
+                    where: { id: { in: transferIds }, profileId },
+                });
+            }
+
             const deleted = await tx.transaction.deleteMany({
-                where: { id: { in: transactionIds }, account: { profileId } },
+                where: { id: { in: allIdsToDelete }, account: { profileId } },
             });
+
+            for (const transaction of transactions) {
+                const month = transaction.date.toISOString().slice(0, 7);
+                if (transaction.categoryId) {
+                    await applyCategoryActivityDelta(
+                        tx,
+                        transaction.categoryId,
+                        month,
+                        -transaction.amount,
+                    );
+                }
+                for (const split of transaction.subTransactions) {
+                    if (split.categoryId) {
+                        await applyCategoryActivityDelta(tx, split.categoryId, month, -split.amount);
+                    }
+                }
+            }
 
             return deleted;
         });

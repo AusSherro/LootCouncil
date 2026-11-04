@@ -14,6 +14,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { formatCurrency } from '@/lib/utils';
 import ChartTooltip from '@/components/ChartTooltip';
+import { RECONCILIATION_ADJUSTMENT_PAYEE } from '@/lib/budgetUtils';
 
 interface SpendingData {
     name: string;
@@ -74,7 +75,7 @@ export default function SpendingBreakdownTab({ currency, excludeCategoryNames }:
                 // Transfers between your own accounts are plumbing, not spending.
                 if (t.transferId) continue;
                 // Reconciliation adjustments are bookkeeping plugs, not spending.
-                if (typeof t.payee === 'string' && t.payee.includes('Reconciliation Adjustment')) continue;
+                if (typeof t.payee === 'string' && t.payee.includes(RECONCILIATION_ADJUSTMENT_PAYEE)) continue;
                 if (t.amount < 0) {
                     const category = t.category?.name || 'Uncategorized';
                     const key = t.category?.id || `__uncat__${category}`;

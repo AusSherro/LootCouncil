@@ -6,6 +6,8 @@ import {
     findOwnedCategory,
     findOwnedScheduledTransaction,
 } from '@/lib/profileOwnership';
+import { applyCategoryActivityDelta } from '@/lib/budgetHelpers';
+import { calculateNextDueDate } from '@/lib/scheduleDates';
 
 const VALID_FREQUENCIES = new Set(['daily', 'weekly', 'biweekly', 'monthly', 'yearly']);
 
@@ -203,16 +205,10 @@ export async function PUT(request: NextRequest) {
 
                 if (category) {
                     const monthKey = current.nextDueDate.toISOString().slice(0, 7);
-                    await tx.monthlyBudget.upsert({
+                    await applyCategoryActivityDelta(tx, category.id, monthKey, current.amount);
+                    await tx.monthlyBudget.update({
                         where: { month_categoryId: { month: monthKey, categoryId: category.id } },
-                        create: {
-                            month: monthKey,
-                            categoryId: category.id,
-                            activity: current.amount,
-                        },
-                        update: {
-                            activity: { increment: current.amount },
-                        },
+                        data: { activity: { increment: current.amount } },
                     });
                 }
 
@@ -350,39 +346,6 @@ export async function DELETE(request: NextRequest) {
 }
 
 // Helper: Calculate the next due date based on frequency
-function calculateNextDueDate(scheduled: {
-    frequency: string;
-    nextDueDate: Date;
-    dayOfMonth?: number | null;
-    dayOfWeek?: number | null;
-}): Date {
-    const current = new Date(scheduled.nextDueDate);
-    const next = new Date(current);
+// Implementation lives in src/lib/scheduleDates.ts so the month-end and
+// daylight-saving edge cases can be unit tested directly.
 
-    switch (scheduled.frequency) {
-        case 'daily':
-            next.setDate(next.getDate() + 1);
-            break;
-        case 'weekly':
-            next.setDate(next.getDate() + 7);
-            break;
-        case 'biweekly':
-            next.setDate(next.getDate() + 14);
-            break;
-        case 'monthly':
-            next.setMonth(next.getMonth() + 1);
-            // Handle day of month
-            if (scheduled.dayOfMonth) {
-                const lastDay = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
-                next.setDate(Math.min(scheduled.dayOfMonth, lastDay));
-            }
-            break;
-        case 'yearly':
-            next.setFullYear(next.getFullYear() + 1);
-            break;
-        default:
-            next.setMonth(next.getMonth() + 1); // Default to monthly
-    }
-
-    return next;
-}

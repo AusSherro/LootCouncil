@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
+import { RECONCILIATION_ADJUSTMENT_PAYEE } from '@/lib/budgetUtils';
 
 // GET - Get reconciliation status for an account
 export async function GET(request: NextRequest) {
@@ -42,11 +43,18 @@ export async function GET(request: NextRequest) {
 
         // Calculate balances - sum all cleared transactions directly
         // to avoid double-counting issues with imported data
-        const allCleared = await prisma.transaction.aggregate({
-            where: { accountId, cleared: true },
-            _sum: { amount: true },
-        });
+        const [allCleared, reconciled] = await Promise.all([
+            prisma.transaction.aggregate({
+                where: { accountId, cleared: true },
+                _sum: { amount: true },
+            }),
+            prisma.transaction.aggregate({
+                where: { accountId, isReconciled: true },
+                _sum: { amount: true },
+            }),
+        ]);
         const clearedBalance = allCleared._sum.amount || 0;
+        const reconciledBalance = reconciled._sum.amount || 0;
         const pendingBalance = pending.reduce((sum, t) => sum + t.amount, 0);
 
         return NextResponse.json({
@@ -60,6 +68,7 @@ export async function GET(request: NextRequest) {
             unreconciledCleared,
             pending,
             calculatedClearedBalance: clearedBalance,
+            calculatedReconciledBalance: reconciledBalance,
             pendingAmount: pendingBalance,
         });
     } catch (error) {
@@ -116,56 +125,60 @@ export async function POST(request: NextRequest) {
         // Complete reconciliation with statement balance
         if (action === 'complete' && statementBalance !== undefined) {
 
-            // Calculate what cleared transactions actually sum to.
-            // This avoids the old bug where oldClearedBalance + unreconciled
-            // could double-count imported transactions.
-            const clearedSum = await prisma.transaction.aggregate({
-                where: { accountId, cleared: true },
-                _sum: { amount: true },
-            });
-            const actualCleared = clearedSum._sum.amount || 0;
-            const difference = statementBalance - actualCleared;
+            const result = await prisma.$transaction(async (tx) => {
+                // Calculate what cleared transactions actually sum to.
+                // This avoids the old bug where oldClearedBalance + unreconciled
+                // could double-count imported transactions.
+                const clearedSum = await tx.transaction.aggregate({
+                    where: { accountId, cleared: true },
+                    _sum: { amount: true },
+                });
+                const actualCleared = clearedSum._sum.amount || 0;
+                const difference = statementBalance - actualCleared;
 
-            if (difference !== 0) {
-                // Create adjustment transaction to bridge bank vs computed gap
-                await prisma.transaction.create({
+                if (difference !== 0) {
+                    // Create adjustment transaction to bridge bank vs computed gap
+                    await tx.transaction.create({
+                        data: {
+                            date: new Date(),
+                            amount: difference,
+                            payee: RECONCILIATION_ADJUSTMENT_PAYEE,
+                            memo: `Adjustment to match statement balance`,
+                            accountId,
+                            cleared: true,
+                            isReconciled: true,
+                            approved: true,
+                        },
+                    });
+
+                    // Update account balance
+                    await tx.account.update({
+                        where: { id: accountId },
+                        data: { balance: { increment: difference } },
+                    });
+                }
+
+                // Mark all cleared but not reconciled as reconciled
+                await tx.transaction.updateMany({
+                    where: { accountId, cleared: true, isReconciled: false },
+                    data: { isReconciled: true },
+                });
+
+                // Update account's cleared balance and last reconciled
+                await tx.account.update({
+                    where: { id: accountId },
                     data: {
-                        date: new Date(),
-                        amount: difference,
-                        payee: 'Reconciliation Adjustment',
-                        memo: `Adjustment to match statement balance`,
-                        accountId,
-                        cleared: true,
-                        isReconciled: true,
-                        approved: true,
+                        clearedBalance: statementBalance,
+                        lastReconciled: new Date(),
                     },
                 });
 
-                // Update account balance
-                await prisma.account.update({
-                    where: { id: accountId },
-                    data: { balance: { increment: difference } },
-                });
-            }
-
-            // Mark all cleared but not reconciled as reconciled
-            await prisma.transaction.updateMany({
-                where: { accountId, cleared: true, isReconciled: false },
-                data: { isReconciled: true },
-            });
-
-            // Update account's cleared balance and last reconciled
-            await prisma.account.update({
-                where: { id: accountId },
-                data: {
-                    clearedBalance: statementBalance,
-                    lastReconciled: new Date(),
-                },
+                return difference;
             });
 
             return NextResponse.json({
                 success: true,
-                adjustment: difference,
+                adjustment: result,
             });
         }
 

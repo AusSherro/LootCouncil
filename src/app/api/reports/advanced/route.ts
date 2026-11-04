@@ -1,6 +1,87 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
+import { RECONCILIATION_ADJUSTMENT_PAYEE } from '@/lib/budgetUtils';
+
+/** A single categorised expense row, sourced from either a plain transaction or a split line. */
+interface SpendingRow {
+    date: Date;
+    amount: number;
+    categoryId: string | null;
+    categoryName: string | null;
+}
+
+/**
+ * Fetch categorised expense rows for a profile, unioning plain transactions with
+ * split sub-transactions.
+ *
+ * Split parents carry `categoryId: null` and hold the money in `SubTransaction`
+ * rows, so category reports must exclude the parent (`isSplit: false`) and read
+ * the split lines instead — otherwise split spending is either lost entirely or
+ * double-counted under "Uncategorized".
+ */
+async function fetchCategorisedSpending(
+    profileId: string,
+    dateFilter: { gte: Date; lte: Date } | undefined,
+    options: { categoryId?: string | null; requireCategory?: boolean } = {},
+): Promise<SpendingRow[]> {
+    const { categoryId, requireCategory = false } = options;
+
+    const [transactions, subTransactions] = await Promise.all([
+        prisma.transaction.findMany({
+            where: {
+                account: { profileId },
+                ...(dateFilter && { date: dateFilter }),
+                amount: { lt: 0 },
+                transferId: null,
+                isSplit: false,
+                ...(requireCategory && { categoryId: { not: null } }),
+                ...(categoryId && { categoryId }),
+                NOT: { payee: { contains: RECONCILIATION_ADJUSTMENT_PAYEE } },
+            },
+            select: {
+                date: true,
+                amount: true,
+                categoryId: true,
+                category: { select: { name: true } },
+            },
+        }),
+        prisma.subTransaction.findMany({
+            where: {
+                amount: { lt: 0 },
+                ...(requireCategory && { categoryId: { not: null } }),
+                ...(categoryId && { categoryId }),
+                transaction: {
+                    account: { profileId },
+                    ...(dateFilter && { date: dateFilter }),
+                    transferId: null,
+                    NOT: { payee: { contains: RECONCILIATION_ADJUSTMENT_PAYEE } },
+                },
+            },
+            select: {
+                amount: true,
+                categoryId: true,
+                category: { select: { name: true } },
+                transaction: { select: { date: true } },
+            },
+        }),
+    ]);
+
+    return [
+        ...transactions.map(t => ({
+            date: t.date,
+            amount: t.amount,
+            categoryId: t.categoryId,
+            categoryName: t.category?.name ?? null,
+        })),
+        ...subTransactions.map(s => ({
+            date: s.transaction.date,
+            amount: s.amount,
+            categoryId: s.categoryId,
+            categoryName: s.category?.name ?? null,
+        })),
+    ];
+}
 
 export async function GET(request: NextRequest) {
     try {
@@ -41,25 +122,48 @@ export async function GET(request: NextRequest) {
             // Monthly income vs expense trends.
             // Excludes transfer transactions and reconciliation adjustments —
             // neither is real income or spending.
-            const transactions = await prisma.transaction.findMany({
-                where: {
-                    account: { profileId },
-                    ...(dateFilter && { date: dateFilter }),
-                    transferId: null,
-                    NOT: { payee: { contains: 'Reconciliation Adjustment' } },
-                },
-                select: {
-                    date: true,
-                    amount: true,
-                    category: { select: { name: true } },
-                },
-                orderBy: { date: 'asc' },
-            });
+            const [transactions, subTransactions] = await Promise.all([
+                prisma.transaction.findMany({
+                    where: {
+                        account: { profileId },
+                        ...(dateFilter && { date: dateFilter }),
+                        transferId: null,
+                        isSplit: false,
+                        NOT: { payee: { contains: RECONCILIATION_ADJUSTMENT_PAYEE } },
+                    },
+                    select: {
+                        date: true,
+                        amount: true,
+                        category: { select: { name: true } },
+                    },
+                    orderBy: { date: 'asc' },
+                }),
+                prisma.subTransaction.findMany({
+                    where: {
+                        transaction: {
+                            account: { profileId },
+                            ...(dateFilter && { date: dateFilter }),
+                            transferId: null,
+                            NOT: { payee: { contains: RECONCILIATION_ADJUSTMENT_PAYEE } },
+                        },
+                    },
+                    select: {
+                        amount: true,
+                        category: { select: { name: true } },
+                        transaction: { select: { date: true } },
+                    },
+                }),
+            ]);
+
+            const rows = [
+                ...transactions.map(t => ({ date: t.date, amount: t.amount, categoryName: t.category?.name })),
+                ...subTransactions.map(s => ({ date: s.transaction.date, amount: s.amount, categoryName: s.category?.name })),
+            ].sort((a, b) => a.date.getTime() - b.date.getTime());
 
             // Group by month
             const monthlyData = new Map<string, { income: number; expense: number }>();
 
-            for (const t of transactions) {
+            for (const t of rows) {
                 const month = `${t.date.getFullYear()}-${String(t.date.getMonth() + 1).padStart(2, '0')}`;
                 const existing = monthlyData.get(month) || { income: 0, expense: 0 };
 
@@ -69,7 +173,7 @@ export async function GET(request: NextRequest) {
                     existing.income += t.amount;
                 } else {
                     // Apply category exclusion to expenses only.
-                    if (isExcluded(t.category?.name)) continue;
+                    if (isExcluded(t.categoryName)) continue;
                     existing.expense += Math.abs(t.amount);
                 }
 
@@ -89,20 +193,39 @@ export async function GET(request: NextRequest) {
         if (reportType === 'spending-by-payee') {
             // Spending grouped by payee. Skip transfers and reconciliation
             // adjustments — they'd otherwise dominate the chart.
-            const transactions = await prisma.transaction.findMany({
-                where: {
-                    account: { profileId },
-                    ...(dateFilter && { date: dateFilter }),
-                    amount: { lt: 0 },
-                    transferId: null,
-                    NOT: { payee: { contains: 'Reconciliation Adjustment' } },
-                },
-                select: {
-                    payee: true,
-                    amount: true,
-                    category: { select: { name: true } },
-                },
-            });
+            const [transactions, subTransactions] = await Promise.all([
+                prisma.transaction.findMany({
+                    where: {
+                        account: { profileId },
+                        ...(dateFilter && { date: dateFilter }),
+                        amount: { lt: 0 },
+                        transferId: null,
+                        isSplit: false,
+                        NOT: { payee: { contains: RECONCILIATION_ADJUSTMENT_PAYEE } },
+                    },
+                    select: {
+                        payee: true,
+                        amount: true,
+                        category: { select: { name: true } },
+                    },
+                }),
+                prisma.subTransaction.findMany({
+                    where: {
+                        amount: { lt: 0 },
+                        transaction: {
+                            account: { profileId },
+                            ...(dateFilter && { date: dateFilter }),
+                            transferId: null,
+                            NOT: { payee: { contains: RECONCILIATION_ADJUSTMENT_PAYEE } },
+                        },
+                    },
+                    select: {
+                        amount: true,
+                        category: { select: { name: true } },
+                        transaction: { select: { id: true, payee: true } },
+                    },
+                }),
+            ]);
 
             const payeeData = new Map<string, { total: number; count: number }>();
 
@@ -113,6 +236,20 @@ export async function GET(request: NextRequest) {
                 const existing = payeeData.get(payeeName) || { total: 0, count: 0 };
                 existing.total += Math.abs(t.amount) / 100; // Convert cents to dollars
                 existing.count += 1;
+                payeeData.set(payeeName, existing);
+            }
+
+            // Count each included split parent once per payee while summing its non-excluded sub-transactions
+            const countedSplitParents = new Set<string>();
+            for (const s of subTransactions) {
+                if (isExcluded(s.category?.name)) continue;
+                const payeeName = s.transaction.payee?.trim() || 'Unknown';
+                const existing = payeeData.get(payeeName) || { total: 0, count: 0 };
+                existing.total += Math.abs(s.amount) / 100;
+                if (!countedSplitParents.has(s.transaction.id)) {
+                    countedSplitParents.add(s.transaction.id);
+                    existing.count += 1;
+                }
                 payeeData.set(payeeName, existing);
             }
 
@@ -128,29 +265,15 @@ export async function GET(request: NextRequest) {
             // Category spending over time
             const categoryId = searchParams.get('categoryId');
 
-            const transactions = await prisma.transaction.findMany({
-                where: {
-                    account: { profileId },
-                    ...(dateFilter && { date: dateFilter }),
-                    amount: { lt: 0 }, // Only expenses
-                    transferId: null,
-                    NOT: { payee: { contains: 'Reconciliation Adjustment' } },
-                    ...(categoryId && { categoryId }),
-                },
-                select: {
-                    date: true,
-                    amount: true,
-                    category: { select: { id: true, name: true } },
-                },
-                orderBy: { date: 'asc' },
-            });
+            const transactions = (await fetchCategorisedSpending(profileId, dateFilter, { categoryId }))
+                .sort((a, b) => a.date.getTime() - b.date.getTime());
 
             // Group by month and category
             const monthCategoryData = new Map<string, Map<string, number>>();
             const allCategories = new Set<string>();
 
             for (const t of transactions) {
-                const catName = t.category?.name || 'Uncategorized';
+                const catName = t.categoryName || 'Uncategorized';
                 if (excludeCategorySet.has(catName)) continue;
                 const month = t.date.toLocaleDateString('en-AU', { month: 'short', year: '2-digit' });
                 allCategories.add(catName);
@@ -202,51 +325,49 @@ export async function GET(request: NextRequest) {
                 checkDate.setMonth(checkDate.getMonth() + 1);
             }
 
-            // Get all monthly budgets for the active profile
-            const monthlyBudgets = await prisma.monthlyBudget.findMany({
-                where: {
-                    month: { in: monthsToCheck },
-                    category: { group: { profileId } },
-                    ...(excludeCategorySet.size > 0 && {
-                        category: { group: { profileId }, name: { notIn: Array.from(excludeCategorySet) } },
-                    }),
-                },
-                include: {
-                    category: {
-                        select: { id: true, name: true, group: { select: { name: true } } },
+            // Get all categories and monthly budgets for the active profile
+            const [allCategories, monthlyBudgets] = await Promise.all([
+                prisma.category.findMany({
+                    where: {
+                        group: { profileId },
+                        ...(excludeCategorySet.size > 0 && {
+                            name: { notIn: Array.from(excludeCategorySet) },
+                        }),
                     },
-                },
-            });
+                    select: { id: true, name: true, group: { select: { name: true } } },
+                }),
+                prisma.monthlyBudget.findMany({
+                    where: {
+                        month: { in: monthsToCheck },
+                        category: { group: { profileId } },
+                        ...(excludeCategorySet.size > 0 && {
+                            category: { group: { profileId }, name: { notIn: Array.from(excludeCategorySet) } },
+                        }),
+                    },
+                    include: {
+                        category: {
+                            select: { id: true, name: true, group: { select: { name: true } } },
+                        },
+                    },
+                }),
+            ]);
+            const categoryMetaMap = new Map(
+                allCategories.map(c => [c.id, { name: c.name, groupName: c.group?.name || 'Uncategorized' }])
+            );
 
             // Get actual spending per category per month (skipping transfers —
             // they have categoryId=null already, but keep the filter explicit —
-            // and reconciliation adjustments).
-            const transactions = await prisma.transaction.findMany({
-                where: {
-                    account: { profileId },
-                    ...(dateFilter && { date: dateFilter }),
-                    amount: { lt: 0 },
-                    categoryId: { not: null },
-                    transferId: null,
-                    NOT: { payee: { contains: 'Reconciliation Adjustment' } },
-                    ...(excludeCategorySet.size > 0 && {
-                        category: { name: { notIn: Array.from(excludeCategorySet) } },
-                    }),
-                },
-                select: {
-                    date: true,
-                    amount: true,
-                    categoryId: true,
-                    category: { select: { name: true } },
-                },
-            });
+            // and reconciliation adjustments). Includes split sub-transactions.
+            const transactions = (await fetchCategorisedSpending(profileId, dateFilter, { requireCategory: true }))
+                .filter(t => !excludeCategorySet.has(t.categoryName || 'Uncategorized'));
 
             // Build monthly actual spending by category
             const actualSpending = new Map<string, Map<string, number>>();
             for (const t of transactions) {
                 const month = `${t.date.getFullYear()}-${String(t.date.getMonth() + 1).padStart(2, '0')}`;
-                const catId = t.categoryId!;
-                
+                const catId = t.categoryId;
+                if (!catId) continue;
+
                 if (!actualSpending.has(month)) {
                     actualSpending.set(month, new Map());
                 }
@@ -254,7 +375,7 @@ export async function GET(request: NextRequest) {
                 monthData.set(catId, (monthData.get(catId) || 0) + Math.abs(t.amount));
             }
 
-            // Aggregate by category across all months
+            // Aggregate by category across all months (including categories with spending but no MonthlyBudget row)
             const categoryData = new Map<string, { 
                 categoryId: string;
                 categoryName: string;
@@ -263,11 +384,13 @@ export async function GET(request: NextRequest) {
                 totalActual: number;
                 months: { month: string; budgeted: number; actual: number }[];
             }>();
+            const seenCategoryMonths = new Set<string>();
 
             for (const budget of monthlyBudgets) {
                 if (!budget.category) continue;
                 
                 const catId = budget.category.id;
+                seenCategoryMonths.add(`${budget.month}|${catId}`);
                 const actual = actualSpending.get(budget.month)?.get(catId) || 0;
                 
                 if (!categoryData.has(catId)) {
@@ -289,6 +412,33 @@ export async function GET(request: NextRequest) {
                     budgeted: budget.assigned / 100,
                     actual: actual / 100,
                 });
+            }
+
+            for (const [month, monthMap] of actualSpending.entries()) {
+                if (!monthsToCheck.includes(month)) continue;
+                for (const [catId, actual] of monthMap.entries()) {
+                    if (seenCategoryMonths.has(`${month}|${catId}`)) continue;
+                    const meta = categoryMetaMap.get(catId);
+                    if (!meta) continue;
+
+                    if (!categoryData.has(catId)) {
+                        categoryData.set(catId, {
+                            categoryId: catId,
+                            categoryName: meta.name,
+                            groupName: meta.groupName,
+                            totalBudgeted: 0,
+                            totalActual: 0,
+                            months: [],
+                        });
+                    }
+                    const cat = categoryData.get(catId)!;
+                    cat.totalActual += actual;
+                    cat.months.push({
+                        month,
+                        budgeted: 0,
+                        actual: actual / 100,
+                    });
+                }
             }
 
             // Convert to sorted array with variance
@@ -351,10 +501,11 @@ export async function GET(request: NextRequest) {
                 select: { id: true, name: true, type: true, balance: true },
             });
 
-            // For "all time", get oldest transaction date
+            // For "all time", get oldest transaction date for this profile
             let effectiveStart = start;
             if (!effectiveStart) {
                 const oldest = await prisma.transaction.findFirst({
+                    where: { account: { profileId } },
                     orderBy: { date: 'asc' },
                     select: { date: true },
                 });
@@ -439,45 +590,19 @@ export async function GET(request: NextRequest) {
             // Fetch both periods in parallel (excluding transfers and
             // reconciliation adjustments — neither is real spending).
             const [currentTxns, previousTxns] = await Promise.all([
-                prisma.transaction.findMany({
-                    where: {
-                        account: { profileId },
-                        date: { gte: currentStart, lte: currentEnd },
-                        amount: { lt: 0 },
-                        transferId: null,
-                        NOT: { payee: { contains: 'Reconciliation Adjustment' } },
-                    },
-                    select: {
-                        amount: true,
-                        categoryId: true,
-                        category: { select: { id: true, name: true } },
-                    },
-                }),
-                prisma.transaction.findMany({
-                    where: {
-                        account: { profileId },
-                        date: { gte: previousStart, lte: previousEnd },
-                        amount: { lt: 0 },
-                        transferId: null,
-                        NOT: { payee: { contains: 'Reconciliation Adjustment' } },
-                    },
-                    select: {
-                        amount: true,
-                        categoryId: true,
-                        category: { select: { id: true, name: true } },
-                    },
-                }),
+                fetchCategorisedSpending(profileId, { gte: currentStart, lte: currentEnd }),
+                fetchCategorisedSpending(profileId, { gte: previousStart, lte: previousEnd }),
             ]);
 
             // Group both by category, applying the global exclude filter.
-            const groupByCategory = (txns: typeof currentTxns) => {
+            const groupByCategory = (txns: SpendingRow[]) => {
                 const map = new Map<string, { categoryId: string | null; categoryName: string; total: number }>();
                 for (const t of txns) {
-                    const name = t.category?.name || 'Uncategorized';
+                    const name = t.categoryName || 'Uncategorized';
                     if (excludeCategorySet.has(name)) continue;
-                    const key = t.category?.id || `__uncat__`;
+                    const key = t.categoryId || `__uncat__`;
                     const existing = map.get(key) || {
-                        categoryId: t.category?.id || null,
+                        categoryId: t.categoryId,
                         categoryName: name,
                         total: 0,
                     };

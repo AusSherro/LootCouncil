@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
 import { findOwnedTemplate, ownsAllCategories } from '@/lib/profileOwnership';
+import { getCategoryAvailableMap, getCategoryActivityMap, getMonthRange } from '@/lib/budgetHelpers';
 
 // GET - List all budget templates
 export async function GET(request: NextRequest) {
@@ -69,22 +70,50 @@ export async function POST(request: NextRequest) {
                 return NextResponse.json({ error: 'Template contains unavailable categories' }, { status: 400 });
             }
 
-            await prisma.$transaction(template.items.map(item =>
-                prisma.monthlyBudget.upsert({
-                    where: { month_categoryId: { month, categoryId: item.categoryId } },
-                    create: {
-                        month,
-                        categoryId: item.categoryId,
-                        assigned: item.amount,
-                        activity: 0,
-                        available: item.amount,
-                    },
-                    update: {
-                        assigned: item.amount,
-                        // Recalculate available based on previous balance
-                    },
-                })
-            ));
+            // `available` must be recomputed as currentAvailable + assignmentDelta,
+            // and changes must cascade forward to subsequent months.
+            const templateCategoryIds = template.items.map(item => item.categoryId);
+            const [existingBudgets, activityMap, currentAvailableMap] = await Promise.all([
+                prisma.monthlyBudget.findMany({
+                    where: { month, categoryId: { in: templateCategoryIds } },
+                    select: { categoryId: true, assigned: true },
+                }),
+                getCategoryActivityMap(templateCategoryIds, getMonthRange(month)),
+                getCategoryAvailableMap(templateCategoryIds, month),
+            ]);
+            const existingMap = new Map(existingBudgets.map(b => [b.categoryId, b.assigned]));
+
+            await prisma.$transaction(async (tx) => {
+                for (const item of template.items) {
+                    const activity = activityMap.get(item.categoryId) ?? 0;
+                    const existingAssigned = existingMap.get(item.categoryId) ?? 0;
+                    const assignmentDelta = item.amount - existingAssigned;
+                    const available = (currentAvailableMap.get(item.categoryId) ?? 0) + assignmentDelta;
+
+                    await tx.monthlyBudget.upsert({
+                        where: { month_categoryId: { month, categoryId: item.categoryId } },
+                        create: {
+                            month,
+                            categoryId: item.categoryId,
+                            assigned: item.amount,
+                            activity,
+                            available,
+                        },
+                        update: {
+                            assigned: item.amount,
+                            activity,
+                            available,
+                        },
+                    });
+
+                    if (assignmentDelta !== 0) {
+                        await tx.monthlyBudget.updateMany({
+                            where: { categoryId: item.categoryId, month: { gt: month } },
+                            data: { available: { increment: assignmentDelta } },
+                        });
+                    }
+                }
+            });
 
             return NextResponse.json({ success: true, applied: template.items.length });
         }

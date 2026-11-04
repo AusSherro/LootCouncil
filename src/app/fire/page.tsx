@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import { useSettings } from '@/components/SettingsProvider';
+import { useToast } from '@/components/Toast';
 import GoldCoinSpinner from '@/components/GoldCoinSpinner';
 
 interface FIREData {
@@ -47,12 +48,14 @@ function formatFireCurrency(cents: number, currency = 'AUD'): string {
 
 export default function FIREPage() {
     const { settings } = useSettings();
+    const { showToast } = useToast();
     const currency = settings?.currency || 'AUD';
     const fmt = useCallback((cents: number) => formatFireCurrency(cents, currency), [currency]);
     const [data, setData] = useState<FIREData | null>(null);
     const [loading, setLoading] = useState(true);
     const [editing, setEditing] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [loadError, setLoadError] = useState<string | null>(null);
 
     // Form state
     const [currentAge, setCurrentAge] = useState(30);
@@ -64,8 +67,10 @@ export default function FIREPage() {
     const fetchData = useCallback(async () => {
         try {
             const res = await fetch('/api/fire');
+            if (!res.ok) throw new Error('Failed to load FIRE data');
             const fireData = await res.json();
             setData(fireData);
+            setLoadError(null);
 
             // Populate form with current settings
             if (fireData.settings) {
@@ -80,6 +85,7 @@ export default function FIREPage() {
             }
         } catch (err) {
             console.error('Failed to fetch FIRE data:', err);
+            setLoadError(err instanceof Error ? err.message : 'Failed to load FIRE data');
         } finally {
             setLoading(false);
         }
@@ -95,7 +101,7 @@ export default function FIREPage() {
             // Calculate year of birth from current age
             const yearOfBirth = new Date().getFullYear() - currentAge;
             
-            await fetch('/api/fire', {
+            const res = await fetch('/api/fire', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -106,10 +112,13 @@ export default function FIREPage() {
                     inflationRate: inflationRate / 100, // Convert percentage to decimal
                 }),
             });
+            if (!res.ok) throw new Error('Failed to save FIRE settings');
             setEditing(false);
+            showToast('FIRE settings saved', 'success');
             await fetchData();
         } catch (err) {
             console.error('Failed to save FIRE settings:', err);
+            showToast(err instanceof Error ? err.message : 'Failed to save FIRE settings', 'error');
         } finally {
             setSaving(false);
         }
@@ -119,6 +128,27 @@ export default function FIREPage() {
         return (
             <div className="p-6 flex items-center justify-center min-h-screen">
                 <GoldCoinSpinner size="lg" />
+            </div>
+        );
+    }
+
+    if (loadError) {
+        return (
+            <div className="p-6 lg:p-8 flex items-center justify-center min-h-screen">
+                <div className="card p-8 max-w-md text-center">
+                    <div className="w-11 h-11 rounded-xl bg-danger/10 flex items-center justify-center mx-auto mb-4">
+                        <Flame className="w-6 h-6 text-danger" />
+                    </div>
+                    <h2 className="text-lg font-semibold text-foreground mb-2">Couldn&apos;t load FIRE data</h2>
+                    <p className="text-neutral mb-6">{loadError}</p>
+                    <button
+                        onClick={() => { setLoading(true); fetchData(); }}
+                        className="btn btn-secondary inline-flex items-center gap-2"
+                    >
+                        <RefreshCw className="w-4 h-4" />
+                        Try again
+                    </button>
+                </div>
             </div>
         );
     }

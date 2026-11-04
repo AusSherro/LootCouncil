@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
+import { applyCategoryActivityDelta } from '@/lib/budgetHelpers';
 import { ownsAllCategories } from '@/lib/profileOwnership';
 
 // POST - Create splits for a transaction
@@ -42,10 +43,28 @@ export async function POST(request: NextRequest) {
             }, { status: 400 });
         }
 
-        const month = `${transaction.date.getFullYear()}-${String(transaction.date.getMonth() + 1).padStart(2, '0')}`;
+        const month = transaction.date.toISOString().slice(0, 7);
 
         // Use transaction for atomicity
         const result = await prisma.$transaction(async (tx) => {
+            // Reverse the budget activity of any existing splits before replacing them,
+            // otherwise re-splitting permanently double-counts activity.
+            const existingSplits = await tx.subTransaction.findMany({
+                where: { transactionId },
+                select: { categoryId: true, amount: true },
+            });
+            for (const split of existingSplits) {
+                if (!split.categoryId) continue;
+                await applyCategoryActivityDelta(tx, split.categoryId, month, -split.amount);
+                await tx.monthlyBudget.update({
+                    where: { month_categoryId: { month, categoryId: split.categoryId } },
+                    data: { activity: { decrement: split.amount } },
+                });
+            }
+            if (transaction.categoryId) {
+                await applyCategoryActivityDelta(tx, transaction.categoryId, month, -transaction.amount);
+            }
+
             // Delete existing splits if any
             await tx.subTransaction.deleteMany({ where: { transactionId } });
 
@@ -71,16 +90,10 @@ export async function POST(request: NextRequest) {
             // Update category monthly budgets for each split
             for (const split of splits) {
                 if (split.categoryId) {
-                    await tx.monthlyBudget.upsert({
+                    await applyCategoryActivityDelta(tx, split.categoryId, month, split.amount);
+                    await tx.monthlyBudget.update({
                         where: { month_categoryId: { month, categoryId: split.categoryId } },
-                        create: {
-                            month,
-                            categoryId: split.categoryId,
-                            activity: split.amount,
-                        },
-                        update: {
-                            activity: { increment: split.amount },
-                        },
+                        data: { activity: { increment: split.amount } },
                     });
                 }
             }
@@ -160,17 +173,18 @@ export async function DELETE(request: NextRequest) {
             return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
         }
 
-        const month = `${transaction.date.getFullYear()}-${String(transaction.date.getMonth() + 1).padStart(2, '0')}`;
+        const month = transaction.date.toISOString().slice(0, 7);
 
         // Use transaction for atomicity
         await prisma.$transaction(async (tx) => {
             // Reverse the budget activity for each split
             for (const split of transaction.subTransactions) {
                 if (split.categoryId) {
+                    await applyCategoryActivityDelta(tx, split.categoryId, month, -split.amount);
                     await tx.monthlyBudget.update({
                         where: { month_categoryId: { month, categoryId: split.categoryId } },
                         data: { activity: { decrement: split.amount } },
-                    }).catch(() => {}); // Ignore if doesn't exist
+                    });
                 }
             }
 

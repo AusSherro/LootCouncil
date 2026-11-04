@@ -83,7 +83,7 @@ export async function GET(request: NextRequest) {
     } catch (error) {
         console.error('Quote fetch error:', error);
         return NextResponse.json(
-            { error: 'Failed to fetch quote', details: String(error) },
+            { error: 'Failed to fetch quote' },
             { status: 500 }
         );
     }
@@ -167,7 +167,7 @@ export async function POST(request: NextRequest) {
     } catch (error) {
         console.error('Bulk quote fetch error:', error);
         return NextResponse.json(
-            { error: 'Failed to fetch quotes', details: String(error) },
+            { error: 'Failed to fetch quotes' },
             { status: 500 }
         );
     }

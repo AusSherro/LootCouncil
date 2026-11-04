@@ -4,6 +4,8 @@ import prisma from '@/lib/prisma';
 import { withErrorHandler } from '@/lib/apiHandler';
 import { getProfileId } from '@/lib/profile';
 import { matchesRule } from '@/lib/ruleEngine';
+import { RECONCILIATION_ADJUSTMENT_PAYEE } from '@/lib/budgetUtils';
+import { applyCategoryActivityDelta } from '@/lib/budgetHelpers';
 import { findOwnedAccount, findOwnedCategory, findOwnedTransaction } from '@/lib/profileOwnership';
 
 function parseBoundedInteger(value: string | null, fallback: number, min: number, max: number): number {
@@ -81,8 +83,8 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
         if (hideReconciliationAdjustments) {
             andFilters.push({
                 NOT: {
-                    // Matches the actual payee created by /api/reconcile ("Reconciliation Adjustment").
-                    payee: { contains: 'Reconciliation Adjustment' },
+                    // Matches the actual payee created by /api/reconcile.
+                    payee: { contains: RECONCILIATION_ADJUSTMENT_PAYEE },
                 },
             });
         }
@@ -264,6 +266,15 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
             },
         });
 
+        if (created.categoryId) {
+            await applyCategoryActivityDelta(
+                tx,
+                created.categoryId,
+                created.date.toISOString().slice(0, 7),
+                created.amount,
+            );
+        }
+
         return created;
     });
 
@@ -293,25 +304,54 @@ export const PUT = withErrorHandler(async (request: NextRequest) => {
     if (!accountId || !(await findOwnedAccount(profileId, accountId))) {
         return NextResponse.json({ error: 'Account not found' }, { status: 404 });
     }
+    if (categoryId && existing.isSplit) {
+        return NextResponse.json(
+            { error: 'Cannot categorise a split transaction. Remove the split first.' },
+            { status: 400 }
+        );
+    }
     if (categoryId && !(await findOwnedCategory(profileId, categoryId))) {
         return NextResponse.json({ error: 'Category not found' }, { status: 404 });
     }
 
-    const newAmountCents = Math.round(amount * 100);
+    let newAmountCents = existing.amount;
+    if (amount !== undefined) {
+        const parsedAmount = Math.round(Number(amount) * 100);
+        if (!Number.isFinite(parsedAmount) || Math.abs(Number(amount)) > 999999999) {
+            return NextResponse.json({ error: 'Invalid amount' }, { status: 400 });
+        }
+        newAmountCents = parsedAmount;
+    }
+
+    let parsedDate: Date | undefined;
+    if (date !== undefined) {
+        parsedDate = new Date(date);
+        if (Number.isNaN(parsedDate.getTime())) {
+            return NextResponse.json({ error: 'Invalid date' }, { status: 400 });
+        }
+    }
+
     const amountDiff = newAmountCents - existing.amount;
+    if (existing.isSplit && amountDiff !== 0) {
+        return NextResponse.json(
+            { error: 'Cannot change the total amount of a split transaction without updating its splits.' },
+            { status: 400 }
+        );
+    }
 
     // Use a transaction to ensure atomicity of balance updates
     const transaction = await prisma.$transaction(async (tx) => {
+        const nowCleared = cleared ?? existing.cleared;
         const updated = await tx.transaction.update({
             where: { id },
             data: {
-                date: date ? new Date(date) : undefined,
+                date: parsedDate,
                 amount: newAmountCents,
-                payee: payee || null,
-                memo: memo || null,
+                payee: payee !== undefined ? (payee || null) : existing.payee,
+                memo: memo !== undefined ? (memo || null) : existing.memo,
                 accountId,
-                categoryId: categoryId || null,
-                cleared: cleared ?? existing.cleared,
+                categoryId: categoryId !== undefined ? (categoryId || null) : existing.categoryId,
+                cleared: nowCleared,
             },
             include: {
                 account: { select: { id: true, name: true } },
@@ -319,10 +359,42 @@ export const PUT = withErrorHandler(async (request: NextRequest) => {
             },
         });
 
+        const oldMonth = existing.date.toISOString().slice(0, 7);
+        const newMonth = updated.date.toISOString().slice(0, 7);
+
+        if (existing.isSplit && oldMonth !== newMonth) {
+            const splits = await tx.subTransaction.findMany({
+                where: { transactionId: id },
+                select: { categoryId: true, amount: true },
+            });
+            for (const split of splits) {
+                if (split.categoryId) {
+                    await applyCategoryActivityDelta(tx, split.categoryId, oldMonth, -split.amount);
+                    await applyCategoryActivityDelta(tx, split.categoryId, newMonth, split.amount);
+                }
+            }
+        }
+
+        if (existing.categoryId) {
+            await applyCategoryActivityDelta(
+                tx,
+                existing.categoryId,
+                oldMonth,
+                -existing.amount,
+            );
+        }
+        if (updated.categoryId) {
+            await applyCategoryActivityDelta(
+                tx,
+                updated.categoryId,
+                newMonth,
+                updated.amount,
+            );
+        }
+
         if (accountId === existing.accountId) {
             // Calculate cleared balance adjustment based on old and new cleared state
             const wasCleared = existing.cleared;
-            const nowCleared = cleared ?? existing.cleared;
             let clearedDelta = 0;
             if (wasCleared && nowCleared) {
                 // Was cleared, still cleared — adjust by amount difference
@@ -355,7 +427,7 @@ export const PUT = withErrorHandler(async (request: NextRequest) => {
                 where: { id: accountId },
                 data: {
                     balance: { increment: newAmountCents },
-                    clearedBalance: cleared ? { increment: newAmountCents } : undefined,
+                    clearedBalance: nowCleared ? { increment: newAmountCents } : undefined,
                 },
             });
         }
@@ -383,11 +455,61 @@ export const DELETE = withErrorHandler(async (request: NextRequest) => {
         return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
     }
 
+    const subTransactions = existing.isSplit
+        ? await prisma.subTransaction.findMany({
+            where: { transactionId: id },
+            select: { categoryId: true, amount: true },
+        })
+        : [];
+
     // Use a transaction to ensure atomicity of balance updates
     await prisma.$transaction(async (tx) => {
+        // If this transaction is part of a transfer, also delete the sibling leg and Transfer row
+        if (existing.transferId) {
+            const siblingLegs = await tx.transaction.findMany({
+                where: {
+                    transferId: existing.transferId,
+                    id: { not: id },
+                    account: { profileId },
+                },
+            });
+            for (const sibling of siblingLegs) {
+                await tx.transaction.delete({ where: { id: sibling.id } });
+                await tx.account.update({
+                    where: { id: sibling.accountId },
+                    data: {
+                        balance: { decrement: sibling.amount },
+                        clearedBalance: sibling.cleared ? { decrement: sibling.amount } : undefined,
+                    },
+                });
+            }
+            await tx.transfer.deleteMany({
+                where: { id: existing.transferId, profileId },
+            });
+        }
+
         await tx.transaction.delete({
             where: { id },
         });
+
+        if (existing.categoryId) {
+            await applyCategoryActivityDelta(
+                tx,
+                existing.categoryId,
+                existing.date.toISOString().slice(0, 7),
+                -existing.amount,
+            );
+        }
+        for (const split of subTransactions) {
+            if (split.categoryId) {
+                await applyCategoryActivityDelta(
+                    tx,
+                    split.categoryId,
+                    existing.date.toISOString().slice(0, 7),
+                    -split.amount,
+                );
+            }
+        }
 
         await tx.account.update({
             where: { id: existing.accountId },

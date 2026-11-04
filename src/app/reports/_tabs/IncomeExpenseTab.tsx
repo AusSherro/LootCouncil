@@ -14,6 +14,7 @@ import {
 } from 'recharts';
 import { useRouter } from 'next/navigation';
 import ChartTooltip from '@/components/ChartTooltip';
+import { RECONCILIATION_ADJUSTMENT_PAYEE } from '@/lib/budgetUtils';
 
 interface IncomeExpenseData {
     month: string;
@@ -100,7 +101,7 @@ export default function IncomeExpenseTab({ currency, excludeCategoryNames }: Pro
                     if (t.transferId) continue;
                     // Reconciliation adjustments aren't real money flow either — they're
                     // bookkeeping plugs created when matching the bank statement.
-                    if (typeof t.payee === 'string' && t.payee.includes('Reconciliation Adjustment')) continue;
+                    if (typeof t.payee === 'string' && t.payee.includes(RECONCILIATION_ADJUSTMENT_PAYEE)) continue;
                     if (t.amount > 0) {
                         // Income always counts — even if uncategorized — otherwise
                         // paychecks the user hasn't categorised get hidden.

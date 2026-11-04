@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
+import { getExchangeRate } from '@/lib/exchangeRate';
+import { RECONCILIATION_ADJUSTMENT_PAYEE } from '@/lib/budgetUtils';
+
+const HOME_CURRENCY = 'AUD';
 
 // GET FIRE calculations and settings
 export async function GET(request: NextRequest) {
@@ -23,12 +27,24 @@ export async function GET(request: NextRequest) {
             include: { lots: true },
         });
 
+        // Convert foreign-currency holdings to AUD before totalling
+        const currencies = [...new Set(assets.map(a => a.currency || 'USD'))];
+        const rates: Record<string, number> = { [HOME_CURRENCY]: 1 };
+        for (const currency of currencies) {
+            if (currency !== HOME_CURRENCY) {
+                rates[currency] = await getExchangeRate(currency, HOME_CURRENCY);
+            }
+        }
+
         let totalInvestments = 0;
         let superBalance = 0;
 
         for (const asset of assets) {
-            const totalUnits = asset.lots.reduce((sum, lot) => sum + (lot.units - lot.soldUnits), 0);
-            const value = asset.isManual ? asset.currentPrice : Math.round(totalUnits * asset.currentPrice);
+            const lotsUnits = asset.lots.reduce((sum, lot) => sum + (lot.units - lot.soldUnits), 0);
+            const totalUnits = lotsUnits > 0 ? lotsUnits : asset.quantity;
+            const nativeValue = asset.isManual ? asset.currentPrice : Math.round(totalUnits * (asset.currentPrice || 0));
+            const rate = rates[asset.currency || 'USD'] || 1;
+            const value = Math.round(nativeValue * rate);
             
             if (asset.assetClass === 'super') {
                 superBalance += value;
@@ -56,7 +72,7 @@ export async function GET(request: NextRequest) {
 
         // Calculate FIRE number based on expenses and withdrawal rate
         // FIRE Number = Annual Expenses / Withdrawal Rate
-        const annualExpenses = settings.annualExpenses || await calculateAnnualExpenses();
+        const annualExpenses = settings.annualExpenses || await calculateAnnualExpenses(profileId);
         const fireNumber = settings.withdrawalRate > 0 
             ? Math.round(annualExpenses / settings.withdrawalRate)
             : 0;
@@ -146,25 +162,27 @@ export async function POST(request: NextRequest) {
             where: { profileId },
         });
 
+        const safeData = {
+            ...(body.yearOfBirth !== undefined && { yearOfBirth: body.yearOfBirth }),
+            ...(body.retirementAge !== undefined && { retirementAge: body.retirementAge }),
+            ...(body.preservationAge !== undefined && { preservationAge: body.preservationAge }),
+            ...(body.annualExpenses !== undefined && { annualExpenses: body.annualExpenses }),
+            ...(body.withdrawalRate !== undefined && { withdrawalRate: body.withdrawalRate }),
+            ...(body.inflationRate !== undefined && { inflationRate: body.inflationRate }),
+            ...(body.expectedReturn !== undefined && { expectedReturn: body.expectedReturn }),
+            ...(body.annualSuperContrib !== undefined && { annualSuperContrib: body.annualSuperContrib }),
+            ...(body.employerContribRate !== undefined && { employerContribRate: body.employerContribRate }),
+        };
+
         let settings;
         if (existing) {
             settings = await prisma.fireSettings.update({
                 where: { id: existing.id },
-                data: {
-                    ...(body.yearOfBirth !== undefined && { yearOfBirth: body.yearOfBirth }),
-                    ...(body.retirementAge !== undefined && { retirementAge: body.retirementAge }),
-                    ...(body.preservationAge !== undefined && { preservationAge: body.preservationAge }),
-                    ...(body.annualExpenses !== undefined && { annualExpenses: body.annualExpenses }),
-                    ...(body.withdrawalRate !== undefined && { withdrawalRate: body.withdrawalRate }),
-                    ...(body.inflationRate !== undefined && { inflationRate: body.inflationRate }),
-                    ...(body.expectedReturn !== undefined && { expectedReturn: body.expectedReturn }),
-                    ...(body.annualSuperContrib !== undefined && { annualSuperContrib: body.annualSuperContrib }),
-                    ...(body.employerContribRate !== undefined && { employerContribRate: body.employerContribRate }),
-                },
+                data: safeData,
             });
         } else {
             settings = await prisma.fireSettings.create({
-                data: { profileId, ...body },
+                data: { profileId, ...safeData },
             });
         }
 
@@ -176,14 +194,17 @@ export async function POST(request: NextRequest) {
 }
 
 // Helper to estimate annual expenses from transaction history
-async function calculateAnnualExpenses(): Promise<number> {
+async function calculateAnnualExpenses(profileId: string): Promise<number> {
     const oneYearAgo = new Date();
     oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
 
     const transactions = await prisma.transaction.findMany({
         where: {
+            account: { profileId },
             date: { gte: oneYearAgo },
             amount: { lt: 0 }, // Expenses only
+            transferId: null,
+            NOT: { payee: { contains: RECONCILIATION_ADJUSTMENT_PAYEE } },
         },
         select: { amount: true },
     });

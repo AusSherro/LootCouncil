@@ -3,14 +3,14 @@
 import type { ReactNode } from 'react';
 
 // Base skeleton component with premium shimmer animation
-export function Skeleton({ className = '' }: { className?: string }) {
+function Skeleton({ className = '' }: { className?: string }) {
     return (
         <div className={`skeleton-shimmer ${className}`} />
     );
 }
 
 // Text line skeleton
-export function SkeletonText({ width = 'w-full', height = 'h-4' }: { width?: string; height?: string }) {
+function SkeletonText({ width = 'w-full', height = 'h-4' }: { width?: string; height?: string }) {
     return <Skeleton className={`${width} ${height}`} />;
 }
 
@@ -24,7 +24,7 @@ export function SkeletonCard({ children, className = '' }: { children?: ReactNod
 }
 
 // Stat card skeleton
-export function SkeletonStatCard() {
+function SkeletonStatCard() {
     return (
         <SkeletonCard className="space-y-3">
             <div className="flex items-center gap-2">
@@ -38,7 +38,7 @@ export function SkeletonStatCard() {
 }
 
 // Transaction row skeleton
-export function SkeletonTransactionRow() {
+function SkeletonTransactionRow() {
     return (
         <>
             {/* Desktop skeleton */}

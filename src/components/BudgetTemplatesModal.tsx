@@ -56,10 +56,13 @@ export default function BudgetTemplatesModal({ isOpen, onClose, onApply, current
         setLoading(true);
         try {
             const res = await fetch('/api/templates');
+            if (!res.ok) throw new Error('Failed to load templates');
             const data = await res.json();
             setTemplates(data.templates || []);
+            setError(null);
         } catch (err) {
             console.error('Failed to fetch templates:', err);
+            setError(err instanceof Error ? err.message : 'Failed to load templates');
         } finally {
             setLoading(false);
         }

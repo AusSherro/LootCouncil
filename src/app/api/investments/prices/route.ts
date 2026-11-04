@@ -63,11 +63,12 @@ export async function POST(request: NextRequest) {
                     await prisma.asset.update({
                         where: { id: asset.id },
                         data: {
-                            currentPrice: Math.round(price * 100), // Convert to cents
+                            currentPrice: Math.round(price * 100), // Convert to cents (AUD from CoinGecko)
+                            currency: 'AUD',
                             lastUpdated: new Date(),
                         },
                     });
-                    updated.push({ symbol: asset.symbol, price, currency: asset.currency });
+                    updated.push({ symbol: asset.symbol, price, currency: 'AUD' });
                 }
             }
         }

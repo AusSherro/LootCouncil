@@ -1,15 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
-import { getMonthOffset, calculateActivity } from '@/lib/budgetHelpers';
-
-async function getPreviousMonthAvailable(categoryId: string, month: string): Promise<number> {
-    const prevMonth = getMonthOffset(month, -1);
-    const prevBudget = await prisma.monthlyBudget.findUnique({
-        where: { month_categoryId: { month: prevMonth, categoryId } },
-    });
-    return prevBudget?.available ?? 0;
-}
+import { calculateActivity, getCategoryAvailableMap } from '@/lib/budgetHelpers';
 
 // POST - Transfer funds between budget categories (or to/from Ready to Assign)
 export async function POST(request: NextRequest) {
@@ -58,20 +50,29 @@ export async function POST(request: NextRequest) {
                 return NextResponse.json({ error: 'Category not found' }, { status: 404 });
             }
 
-            const budget = await prisma.monthlyBudget.findUnique({
-                where: { month_categoryId: { month, categoryId: fromCategoryId } },
-            });
+            const [budget, activity, currentAvailableMap] = await Promise.all([
+                prisma.monthlyBudget.findUnique({
+                    where: { month_categoryId: { month, categoryId: fromCategoryId } },
+                }),
+                calculateActivity(fromCategoryId, month),
+                getCategoryAvailableMap([fromCategoryId], month),
+            ]);
 
             const oldAssigned = budget?.assigned ?? 0;
             const newAssigned = oldAssigned - amountCents;
-            const activity = await calculateActivity(fromCategoryId, month);
-            const rollover = await getPreviousMonthAvailable(fromCategoryId, month);
-            const available = rollover + newAssigned + activity;
+            const available = (currentAvailableMap.get(fromCategoryId) ?? 0) - amountCents;
 
-            await prisma.monthlyBudget.upsert({
-                where: { month_categoryId: { month, categoryId: fromCategoryId } },
-                create: { month, categoryId: fromCategoryId, assigned: newAssigned, activity, available },
-                update: { assigned: newAssigned, activity, available },
+            await prisma.$transaction(async (tx) => {
+                await tx.monthlyBudget.upsert({
+                    where: { month_categoryId: { month, categoryId: fromCategoryId } },
+                    create: { month, categoryId: fromCategoryId, assigned: newAssigned, activity, available },
+                    update: { assigned: newAssigned, activity, available },
+                });
+
+                await tx.monthlyBudget.updateMany({
+                    where: { categoryId: fromCategoryId, month: { gt: month } },
+                    data: { available: { decrement: amountCents } },
+                });
             });
 
             // RTA auto-adjusts since it's calculated from account balances - envelope totals
@@ -95,20 +96,29 @@ export async function POST(request: NextRequest) {
                 return NextResponse.json({ error: 'Category not found' }, { status: 404 });
             }
 
-            const budget = await prisma.monthlyBudget.findUnique({
-                where: { month_categoryId: { month, categoryId: toCategoryId } },
-            });
+            const [budget, activity, currentAvailableMap] = await Promise.all([
+                prisma.monthlyBudget.findUnique({
+                    where: { month_categoryId: { month, categoryId: toCategoryId } },
+                }),
+                calculateActivity(toCategoryId, month),
+                getCategoryAvailableMap([toCategoryId], month),
+            ]);
 
             const oldAssigned = budget?.assigned ?? 0;
             const newAssigned = oldAssigned + amountCents;
-            const activity = await calculateActivity(toCategoryId, month);
-            const rollover = await getPreviousMonthAvailable(toCategoryId, month);
-            const available = rollover + newAssigned + activity;
+            const available = (currentAvailableMap.get(toCategoryId) ?? 0) + amountCents;
 
-            await prisma.monthlyBudget.upsert({
-                where: { month_categoryId: { month, categoryId: toCategoryId } },
-                create: { month, categoryId: toCategoryId, assigned: newAssigned, activity, available },
-                update: { assigned: newAssigned, activity, available },
+            await prisma.$transaction(async (tx) => {
+                await tx.monthlyBudget.upsert({
+                    where: { month_categoryId: { month, categoryId: toCategoryId } },
+                    create: { month, categoryId: toCategoryId, assigned: newAssigned, activity, available },
+                    update: { assigned: newAssigned, activity, available },
+                });
+
+                await tx.monthlyBudget.updateMany({
+                    where: { categoryId: toCategoryId, month: { gt: month } },
+                    data: { available: { increment: amountCents } },
+                });
             });
 
             // RTA auto-adjusts since it's calculated from account balances - envelope totals
@@ -141,14 +151,17 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Get current assignments
-        const [fromBudget, toBudget] = await Promise.all([
+        // Get current assignments, activities, and availables
+        const [fromBudget, toBudget, fromActivity, toActivity, availableMap] = await Promise.all([
             prisma.monthlyBudget.findUnique({
                 where: { month_categoryId: { month, categoryId: fromCategoryId } },
             }),
             prisma.monthlyBudget.findUnique({
                 where: { month_categoryId: { month, categoryId: toCategoryId } },
             }),
+            calculateActivity(fromCategoryId, month),
+            calculateActivity(toCategoryId, month),
+            getCategoryAvailableMap([fromCategoryId, toCategoryId], month),
         ]);
 
         const fromAssigned = fromBudget?.assigned ?? 0;
@@ -157,20 +170,12 @@ export async function POST(request: NextRequest) {
         const newFromAssigned = fromAssigned - amountCents;
         const newToAssigned = toAssigned + amountCents;
 
-        // Calculate activity and rollover for both categories
-        const [fromActivity, toActivity, fromRollover, toRollover] = await Promise.all([
-            calculateActivity(fromCategoryId, month),
-            calculateActivity(toCategoryId, month),
-            getPreviousMonthAvailable(fromCategoryId, month),
-            getPreviousMonthAvailable(toCategoryId, month),
-        ]);
+        const fromAvailable = (availableMap.get(fromCategoryId) ?? 0) - amountCents;
+        const toAvailable = (availableMap.get(toCategoryId) ?? 0) + amountCents;
 
-        const fromAvailable = fromRollover + newFromAssigned + fromActivity;
-        const toAvailable = toRollover + newToAssigned + toActivity;
-
-        // Atomically update both categories in a transaction
-        await prisma.$transaction([
-            prisma.monthlyBudget.upsert({
+        // Atomically update both categories in a transaction and cascade to future months
+        await prisma.$transaction(async (tx) => {
+            await tx.monthlyBudget.upsert({
                 where: { month_categoryId: { month, categoryId: fromCategoryId } },
                 create: {
                     month,
@@ -184,8 +189,8 @@ export async function POST(request: NextRequest) {
                     activity: fromActivity,
                     available: fromAvailable,
                 },
-            }),
-            prisma.monthlyBudget.upsert({
+            });
+            await tx.monthlyBudget.upsert({
                 where: { month_categoryId: { month, categoryId: toCategoryId } },
                 create: {
                     month,
@@ -199,8 +204,17 @@ export async function POST(request: NextRequest) {
                     activity: toActivity,
                     available: toAvailable,
                 },
-            }),
-        ]);
+            });
+
+            await tx.monthlyBudget.updateMany({
+                where: { categoryId: fromCategoryId, month: { gt: month } },
+                data: { available: { decrement: amountCents } },
+            });
+            await tx.monthlyBudget.updateMany({
+                where: { categoryId: toCategoryId, month: { gt: month } },
+                data: { available: { increment: amountCents } },
+            });
+        });
 
         return NextResponse.json({
             success: true,

@@ -43,7 +43,20 @@ function setCookie(name: string, value: string) {
 
 export function ProfileProvider({ children }: { children: React.ReactNode }) {
     const [profiles, setProfiles] = useState<Profile[]>([]);
-    const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
+    const [activeProfileId, setActiveProfileId] = useState<string | null>(() => {
+        if (typeof window !== 'undefined') {
+            try {
+                const stored = localStorage.getItem(PROFILE_LS_KEY);
+                if (stored) {
+                    setCookie(PROFILE_COOKIE, stored);
+                    return stored;
+                }
+            } catch {
+                // Ignore storage errors
+            }
+        }
+        return null;
+    });
     const [loading, setLoading] = useState(true);
 
     const activeProfile = profiles.find(p => p.id === activeProfileId) ?? null;
@@ -65,10 +78,20 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     // Load profiles on mount
     useEffect(() => {
         async function init() {
+            // Sync cookie from localStorage before any async requests so concurrent mount fetches use the right profile
+            let stored: string | null = null;
+            try {
+                stored = localStorage.getItem(PROFILE_LS_KEY);
+                if (stored) {
+                    setCookie(PROFILE_COOKIE, stored);
+                }
+            } catch {
+                // Ignore storage errors
+            }
+
             const loaded = await refreshProfiles();
             
             // Restore active profile from localStorage
-            const stored = localStorage.getItem(PROFILE_LS_KEY);
             if (stored && loaded.some((p: Profile) => p.id === stored)) {
                 setActiveProfileId(stored);
                 setCookie(PROFILE_COOKIE, stored);
@@ -76,7 +99,11 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
                 // Default to first profile
                 setActiveProfileId(loaded[0].id);
                 setCookie(PROFILE_COOKIE, loaded[0].id);
-                localStorage.setItem(PROFILE_LS_KEY, loaded[0].id);
+                try {
+                    localStorage.setItem(PROFILE_LS_KEY, loaded[0].id);
+                } catch {
+                    // Ignore storage errors
+                }
             }
             
             setLoading(false);

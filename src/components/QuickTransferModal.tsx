@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { X, ArrowRight, DollarSign } from 'lucide-react';
 import ModalDialog from './ModalDialog';
+import { toLocalDateString } from '@/lib/utils';
 
 interface Account {
     id: string;
@@ -33,7 +34,7 @@ export default function QuickTransferModal({
     const [destinationAccountId, setDestinationAccountId] = useState('');
     const [amount, setAmount] = useState('');
     const [memo, setMemo] = useState('');
-    const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+    const [date, setDate] = useState(toLocalDateString());
 
     useEffect(() => {
         if (isOpen) {

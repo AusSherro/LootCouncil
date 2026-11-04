@@ -132,7 +132,7 @@ export async function POST(request: NextRequest) {
             });
 
             // Update the transfer with transaction IDs
-            await tx.transfer.update({
+            const updatedTransfer = await tx.transfer.update({
                 where: { id: transfer.id },
                 data: {
                     sourceTransactionId: outflowTx.id,
@@ -157,7 +157,7 @@ export async function POST(request: NextRequest) {
                 },
             });
 
-            return transfer;
+            return updatedTransfer;
         });
 
         return NextResponse.json({
@@ -195,30 +195,33 @@ export async function DELETE(request: NextRequest) {
 
         // Use transaction for atomicity
         await prisma.$transaction(async (tx) => {
-            // Delete the linked transactions
+            // Delete the linked transactions if they still exist and reverse their balances
             if (transfer.sourceTransactionId) {
-                await tx.transaction.delete({ where: { id: transfer.sourceTransactionId } });
+                const sourceTx = await tx.transaction.findUnique({ where: { id: transfer.sourceTransactionId } });
+                if (sourceTx) {
+                    await tx.transaction.delete({ where: { id: sourceTx.id } });
+                    await tx.account.update({
+                        where: { id: sourceTx.accountId },
+                        data: {
+                            balance: { decrement: sourceTx.amount },
+                            clearedBalance: sourceTx.cleared ? { decrement: sourceTx.amount } : undefined,
+                        },
+                    });
+                }
             }
             if (transfer.destTransactionId) {
-                await tx.transaction.delete({ where: { id: transfer.destTransactionId } });
+                const destTx = await tx.transaction.findUnique({ where: { id: transfer.destTransactionId } });
+                if (destTx) {
+                    await tx.transaction.delete({ where: { id: destTx.id } });
+                    await tx.account.update({
+                        where: { id: destTx.accountId },
+                        data: {
+                            balance: { decrement: destTx.amount },
+                            clearedBalance: destTx.cleared ? { decrement: destTx.amount } : undefined,
+                        },
+                    });
+                }
             }
-
-            // Reverse the balance changes
-            await tx.account.update({
-                where: { id: transfer.sourceAccountId },
-                data: {
-                    balance: { increment: transfer.amount },
-                    clearedBalance: { increment: transfer.amount },
-                },
-            });
-
-            await tx.account.update({
-                where: { id: transfer.destinationAccountId },
-                data: {
-                    balance: { decrement: transfer.amount },
-                    clearedBalance: { decrement: transfer.amount },
-                },
-            });
 
             // Delete the transfer
             await tx.transfer.delete({ where: { id } });

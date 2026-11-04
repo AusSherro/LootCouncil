@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
+import { getExchangeRate } from '@/lib/exchangeRate';
+
+const HOME_CURRENCY = 'AUD';
 
 // GET allocation targets with current allocations
 export async function GET(request: NextRequest) {
@@ -11,6 +14,17 @@ export async function GET(request: NextRequest) {
             where: { profileId },
             include: { lots: true },
         });
+
+        // Convert every asset to the home currency before comparing them. Summing
+        // raw native-currency values would make USD holdings look smaller than they
+        // are, skewing both the allocation percentages and the rebalancing deltas.
+        const currencies = [...new Set(assets.map(a => a.currency || 'USD'))];
+        const rates: Record<string, number> = { [HOME_CURRENCY]: 1 };
+        for (const currency of currencies) {
+            if (currency !== HOME_CURRENCY) {
+                rates[currency] = await getExchangeRate(currency, HOME_CURRENCY);
+            }
+        }
 
         // Calculate current value by asset class, excluding Super
         const currentByClass: Record<string, number> = {};
@@ -23,7 +37,9 @@ export async function GET(request: NextRequest) {
             // Use lots if available, otherwise use asset.quantity (for Binance/external syncs)
             const lotsUnits = asset.lots.reduce((sum, lot) => sum + (lot.units - lot.soldUnits), 0);
             const totalUnits = lotsUnits > 0 ? lotsUnits : asset.quantity;
-            const value = asset.isManual ? asset.currentPrice : Math.round(totalUnits * asset.currentPrice);
+            const nativeValue = asset.isManual ? asset.currentPrice : Math.round(totalUnits * asset.currentPrice);
+            const rate = rates[asset.currency || 'USD'] || 1;
+            const value = Math.round(nativeValue * rate);
             
             if (!currentByClass[asset.assetClass]) {
                 currentByClass[asset.assetClass] = 0;
@@ -88,6 +104,7 @@ export async function GET(request: NextRequest) {
 // POST/PUT update allocation targets
 export async function POST(request: NextRequest) {
     try {
+        const profileId = await getProfileId(request);
         const body = await request.json();
         const { targets } = body;
 
@@ -103,23 +120,50 @@ export async function POST(request: NextRequest) {
             }, { status: 400 });
         }
 
-        // Upsert each target
-        for (const target of targets) {
-            if (!target.assetClass) continue;
+        // Upsert each target scoped to the active profile
+        await prisma.$transaction(async (tx) => {
+            for (const target of targets) {
+                if (!target.assetClass) continue;
 
-            await prisma.allocationTarget.upsert({
-                where: { assetClass: target.assetClass },
-                create: {
-                    assetClass: target.assetClass,
-                    targetPct: target.targetPct || 0,
-                    priority: target.priority || 0,
-                },
-                update: {
-                    targetPct: target.targetPct || 0,
-                    priority: target.priority || 0,
-                },
-            });
-        }
+                const existing = await tx.allocationTarget.findFirst({
+                    where: { profileId, assetClass: target.assetClass },
+                });
+
+                if (existing) {
+                    await tx.allocationTarget.update({
+                        where: { id: existing.id },
+                        data: {
+                            targetPct: target.targetPct || 0,
+                            priority: target.priority || 0,
+                        },
+                    });
+                } else {
+                    // Also check if an orphaned profileId: null row exists for this assetClass
+                    const orphaned = await tx.allocationTarget.findFirst({
+                        where: { profileId: null, assetClass: target.assetClass },
+                    });
+                    if (orphaned) {
+                        await tx.allocationTarget.update({
+                            where: { id: orphaned.id },
+                            data: {
+                                profileId,
+                                targetPct: target.targetPct || 0,
+                                priority: target.priority || 0,
+                            },
+                        });
+                    } else {
+                        await tx.allocationTarget.create({
+                            data: {
+                                assetClass: target.assetClass,
+                                targetPct: target.targetPct || 0,
+                                priority: target.priority || 0,
+                                profileId,
+                            },
+                        });
+                    }
+                }
+            }
+        });
 
         return NextResponse.json({ success: true });
     } catch (error) {

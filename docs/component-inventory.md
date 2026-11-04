@@ -43,7 +43,6 @@ The application has **32 React components** in `src/components/`. Components fol
 | GoalProgress | `GoalProgress.tsx` | Goal progress bar with percentage and remaining |
 | BudgetFlowBar | `BudgetFlowBar.tsx` | Budget flow visualization (income → assigned → available) |
 | AnimatedNumber | `AnimatedNumber.tsx` | Smooth animated number transitions |
-| StatusPill | `StatusPill.tsx` | Reusable status badge component |
 | GoldCoinSpinner | `GoldCoinSpinner.tsx` | Themed loading spinner |
 | ChartTooltip | `ChartTooltip.tsx` | Reusable Recharts tooltip with currency formatting |
 | Skeleton | `Skeleton.tsx` | Stable loading placeholders for pages and panels |

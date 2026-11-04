@@ -5,7 +5,7 @@ import {
     Calendar, Plus, RefreshCw, Trash2, Edit3, Clock, 
     AlertTriangle, CheckCircle, X, Repeat, ChevronRight 
 } from 'lucide-react';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, toLocalDateString } from '@/lib/utils';
 import { useToast } from '@/components/Toast';
 import { useConfirmDialog } from '@/components/ConfirmDialog';
 import ModalDialog from './ModalDialog';
@@ -92,15 +92,33 @@ export default function ScheduledTransactions({ compact, limit, onViewAll }: Sch
     useEffect(() => {
         fetchScheduled();
         // Fetch accounts and categories for the form
-        fetch('/api/accounts').then(r => r.json()).then(d => setAccounts(d.accounts || []));
-        fetch('/api/categories').then(r => r.json()).then(d => {
-            const allCats: Category[] = [];
-            (d.categoryGroups || []).forEach((g: { categories: Category[] }) => {
-                allCats.push(...g.categories);
+        fetch('/api/accounts')
+            .then(r => {
+                if (!r.ok) throw new Error('Failed to load accounts');
+                return r.json();
+            })
+            .then(d => setAccounts(d.accounts || []))
+            .catch(err => {
+                console.error('Failed to fetch accounts:', err);
+                showToast('Could not load accounts', 'error');
             });
-            setCategories(allCats);
-        });
-    }, [fetchScheduled]);
+        fetch('/api/categories')
+            .then(r => {
+                if (!r.ok) throw new Error('Failed to load categories');
+                return r.json();
+            })
+            .then(d => {
+                const allCats: Category[] = [];
+                (d.categoryGroups || []).forEach((g: { categories: Category[] }) => {
+                    allCats.push(...g.categories);
+                });
+                setCategories(allCats);
+            })
+            .catch(err => {
+                console.error('Failed to fetch categories:', err);
+                showToast('Could not load categories', 'error');
+            });
+    }, [fetchScheduled, showToast]);
 
     async function handleDelete(id: string) {
         confirm({
@@ -372,7 +390,7 @@ function ScheduledTransactionModal({ isOpen, onClose, onSave, accounts, categori
         accountId: editItem?.accountId || '',
         categoryId: editItem?.categoryId || '',
         frequency: editItem?.frequency || 'monthly',
-        nextDueDate: editItem?.nextDueDate ? new Date(editItem.nextDueDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+        nextDueDate: editItem?.nextDueDate ? new Date(editItem.nextDueDate).toISOString().split('T')[0] : toLocalDateString(),
         dayOfMonth: editItem?.dayOfMonth || '',
         autoCreate: editItem?.autoCreate ?? false,
         reminderDays: editItem?.reminderDays ?? 3,
