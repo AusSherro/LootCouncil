@@ -1,18 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { idString, monthKey, parseBody } from '@/lib/validation';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
 import { findOwnedCategory } from '@/lib/profileOwnership';
 import { getMonthOffset, getMonthRange, getCategoryActivityMap, getCategoryAvailableMap, calculateGoalUnderFunded } from '@/lib/budgetHelpers';
 
 // Quick budget actions: last month, average, underfunded
+const quickActionSchema = z.object({
+    action: z.enum(['lastMonth', 'average', 'underfunded', 'clear']),
+    categoryId: idString,
+    month: monthKey,
+});
+
 export async function POST(request: NextRequest) {
     try {
         const profileId = await getProfileId(request);
-        const { action, categoryId, month } = await request.json();
-
-        if (!action || !categoryId || !month) {
-            return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
-        }
+        const parsed = await parseBody(request, quickActionSchema);
+        if (!parsed.success) return parsed.response;
+        const { action, categoryId, month } = parsed.data;
 
         // This route both reads and WRITES MonthlyBudget for the given category, so
         // the category must be proven to belong to the active profile first.

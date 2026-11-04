@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { boundedText, parseBody, requiredText } from '@/lib/validation';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
 
@@ -26,16 +28,20 @@ export async function GET(request: NextRequest) {
     }
 }
 
+const integrationSchema = z.object({
+    provider: requiredText(50),
+    apiKey: boundedText(500).nullish(),
+    apiSecret: boundedText(500).nullish(),
+    enabled: z.boolean().optional(),
+});
+
 // POST create or update an integration
 export async function POST(request: NextRequest) {
     try {
         const profileId = await getProfileId(request);
-        const body = await request.json();
-        const { provider, apiKey, apiSecret, enabled } = body;
-        
-        if (!provider) {
-            return NextResponse.json({ error: 'Provider is required' }, { status: 400 });
-        }
+        const parsed = await parseBody(request, integrationSchema);
+        if (!parsed.success) return parsed.response;
+        const { provider, apiKey, apiSecret, enabled } = parsed.data;
         
         // Find existing for this provider + profile
         const existing = await prisma.apiIntegration.findFirst({

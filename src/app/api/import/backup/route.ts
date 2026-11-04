@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { requiredText, parseBody } from '@/lib/validation';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
 
@@ -27,19 +29,42 @@ interface BackupData {
     };
 }
 
+// Checks the envelope and that each section is a list of records before any
+// existing data is deleted. Individual records are mapped field by field below.
+const backupRecords = z.array(z.looseObject({}), { error: 'must be a list of records' }).optional();
+
+const backupSchema = z.object({
+    exportVersion: requiredText(20),
+    exportedAt: z.string().default(''),
+    app: z.string().default(''),
+    data: z.object({
+        accounts: backupRecords,
+        categoryGroups: backupRecords,
+        categories: backupRecords,
+        transactions: backupRecords,
+        subTransactions: backupRecords,
+        monthlyBudgets: backupRecords,
+        payees: backupRecords,
+        transfers: backupRecords,
+        assets: backupRecords,
+        assetLots: backupRecords,
+        allocationTargets: backupRecords,
+        fireSettings: z.unknown().optional(),
+        scheduledTransactions: backupRecords,
+        transactionRules: backupRecords,
+        budgetTemplates: backupRecords,
+        exchangeRates: backupRecords,
+        settings: z.unknown().optional(),
+    }),
+}, { error: 'Invalid backup file format' });
+
 // POST - Restore from backup JSON
 export async function POST(request: NextRequest) {
     try {
         const profileId = await getProfileId(request);
-        const backup: BackupData = await request.json();
-
-        // Validate backup structure
-        if (!backup.exportVersion || !backup.data) {
-            return NextResponse.json(
-                { error: 'Invalid backup file format' },
-                { status: 400 }
-            );
-        }
+        const parsed = await parseBody(request, backupSchema);
+        if (!parsed.success) return parsed.response;
+        const backup: BackupData = parsed.data;
 
         if (backup.app !== 'Loot Council') {
             return NextResponse.json(

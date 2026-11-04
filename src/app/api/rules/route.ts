@@ -3,6 +3,57 @@ import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
 import { findMatchingRule } from '@/lib/ruleEngine';
 import { findOwnedCategory, findOwnedRule } from '@/lib/profileOwnership';
+import { z } from 'zod';
+import {
+    actionOf,
+    boundedText,
+    idString,
+    moneyAmount,
+    nullableId,
+    parseBody,
+    parseWith,
+    readJsonBody,
+    requiredText,
+} from '@/lib/validation';
+
+const matchField = z.enum(['payee', 'memo', 'amount']);
+// 'exact' is what the rules settings form sends for "Exact Match"; the rule
+// engine only knows 'equals'. Both are accepted here so existing forms keep working.
+const matchType = z.enum(['contains', 'equals', 'exact', 'startsWith', 'endsWith', 'regex']);
+// Not trimmed: leading/trailing spaces are meaningful in a "contains" match.
+const matchValue = z.string().min(1, 'is required').max(200, 'must be at most 200 characters');
+const priority = z.number().int().min(-1000).max(1000);
+
+const createRuleSchema = z.object({
+    name: requiredText(100),
+    matchField,
+    matchType,
+    matchValue,
+    categoryId: nullableId.optional(),
+    payeeRename: boundedText(200).nullish(),
+    memoTemplate: boundedText(500).nullish(),
+    priority: priority.nullish(),
+});
+
+const applyRulesSchema = z.object({
+    action: z.literal('apply'),
+    payee: boundedText(200).nullish(),
+    memo: boundedText(500).nullish(),
+    amount: moneyAmount,
+});
+
+const updateRuleSchema = z.object({
+    id: idString,
+    name: requiredText(100).optional(),
+    matchField: matchField.optional(),
+    matchType: matchType.optional(),
+    matchValue: matchValue.optional(),
+    categoryId: nullableId.optional(),
+    payeeRename: boundedText(200).nullish(),
+    memoTemplate: boundedText(500).nullish(),
+    priority: priority.optional(),
+    isActive: z.boolean().optional(),
+});
 
 // GET - List all transaction rules
 export async function GET(request: NextRequest) {
@@ -23,21 +74,23 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
     try {
         const profileId = await getProfileId(request);
-        const body = await request.json();
-        
+        const raw = await readJsonBody(request);
+        if (!raw.success) return raw.response;
+        const body = raw.data;
+
         // If applying rules to a transaction
-        if (body.action === 'apply') {
-            const { payee, memo, amount } = body;
-            const result = await applyRules(profileId, payee, memo, amount);
+        if (actionOf(body) === 'apply') {
+            const applyParsed = parseWith(applyRulesSchema, body);
+            if (!applyParsed.success) return applyParsed.response;
+            const { payee, memo, amount } = applyParsed.data;
+            const result = await applyRules(profileId, payee ?? null, memo ?? null, amount);
             return NextResponse.json(result);
         }
 
         // Create a new rule
-        const { name, matchField, matchType, matchValue, categoryId, payeeRename, memoTemplate, priority } = body;
-
-        if (!name || !matchField || !matchType || !matchValue) {
-            return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
-        }
+        const parsed = parseWith(createRuleSchema, body);
+        if (!parsed.success) return parsed.response;
+        const { name, matchField, matchType, matchValue, categoryId, payeeRename, memoTemplate, priority } = parsed.data;
 
         if (categoryId && !(await findOwnedCategory(profileId, categoryId))) {
             return NextResponse.json({ error: 'Category not found' }, { status: 404 });
@@ -51,7 +104,7 @@ export async function POST(request: NextRequest) {
                 categoryId: categoryId || null,
                 payeeRename: payeeRename || null,
                 memoTemplate: memoTemplate || null,
-                priority: priority || 0,
+                priority: priority ?? 0,
                 profileId,
             },
         });
@@ -67,12 +120,9 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
     try {
         const profileId = await getProfileId(request);
-        const body = await request.json();
-        const { id, name, matchField, matchType, matchValue, categoryId, payeeRename, memoTemplate, priority, isActive } = body;
-
-        if (!id) {
-            return NextResponse.json({ error: 'Missing rule ID' }, { status: 400 });
-        }
+        const parsed = await parseBody(request, updateRuleSchema);
+        if (!parsed.success) return parsed.response;
+        const { id, name, matchField, matchType, matchValue, categoryId, payeeRename, memoTemplate, priority, isActive } = parsed.data;
         if (!(await findOwnedRule(profileId, id))) {
             return NextResponse.json({ error: 'Rule not found' }, { status: 404 });
         }
@@ -86,7 +136,7 @@ export async function PATCH(request: NextRequest) {
         if (matchField !== undefined) safeUpdates.matchField = matchField;
         if (matchType !== undefined) safeUpdates.matchType = matchType;
         if (matchValue !== undefined) safeUpdates.matchValue = matchValue;
-        if (categoryId !== undefined) safeUpdates.categoryId = categoryId || null;
+        if (categoryId !== undefined) safeUpdates.categoryId = categoryId;
         if (payeeRename !== undefined) safeUpdates.payeeRename = payeeRename || null;
         if (memoTemplate !== undefined) safeUpdates.memoTemplate = memoTemplate || null;
         if (priority !== undefined) safeUpdates.priority = priority;

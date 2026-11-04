@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
+import { z } from 'zod';
 import prisma from '@/lib/prisma';
 import { withErrorHandler } from '@/lib/apiHandler';
 import { getProfileId } from '@/lib/profile';
@@ -7,6 +8,28 @@ import { findMatchingRule } from '@/lib/ruleEngine';
 import { RECONCILIATION_ADJUSTMENT_PAYEE } from '@/lib/budgetUtils';
 import { applyCategoryActivityDelta } from '@/lib/budgetHelpers';
 import { findOwnedAccount, findOwnedCategory, findOwnedTransaction } from '@/lib/profileOwnership';
+import { boundedText, idString, isoDate, moneyAmount, nullableId, parseBody, toCents } from '@/lib/validation';
+
+const createTransactionSchema = z.object({
+    date: isoDate,
+    amount: moneyAmount,
+    accountId: idString,
+    payee: boundedText(200).nullish(),
+    memo: boundedText(500).nullish(),
+    categoryId: nullableId.optional(),
+    cleared: z.boolean().optional(),
+    applyRules: z.boolean().optional(),
+});
+
+const updateTransactionSchema = z.object({
+    date: isoDate.optional(),
+    amount: moneyAmount.optional(),
+    accountId: idString,
+    payee: boundedText(200).nullish(),
+    memo: boundedText(500).nullish(),
+    categoryId: nullableId.optional(),
+    cleared: z.boolean().optional(),
+});
 
 function parseBoundedInteger(value: string | null, fallback: number, min: number, max: number): number {
     const parsed = Number.parseInt(value ?? '', 10);
@@ -175,33 +198,10 @@ export const GET = withErrorHandler(async (request: NextRequest) => {
 // POST create new transaction
 export const POST = withErrorHandler(async (request: NextRequest) => {
     const profileId = await getProfileId(request);
-    const body = await request.json();
-    const { date, amount, accountId, cleared, applyRules } = body;
-    let { payee, memo, categoryId } = body;
-
-    // Validate required fields
-    if (!date || amount === undefined || !accountId) {
-        return NextResponse.json(
-            { error: 'Missing required fields: date, amount, accountId' },
-            { status: 400 }
-        );
-    }
-
-    const parsedDate = parseDate(typeof date === 'string' ? date : null);
-    if (!parsedDate) {
-        return NextResponse.json({ error: 'Invalid date' }, { status: 400 });
-    }
-
-    // Validate input lengths and types
-    if (typeof amount !== 'number' || !isFinite(amount) || Math.abs(amount) > 999999999) {
-        return NextResponse.json({ error: 'Invalid amount' }, { status: 400 });
-    }
-    if (payee && (typeof payee !== 'string' || payee.length > 200)) {
-        return NextResponse.json({ error: 'Payee too long (max 200 characters)' }, { status: 400 });
-    }
-    if (memo && (typeof memo !== 'string' || memo.length > 500)) {
-        return NextResponse.json({ error: 'Memo too long (max 500 characters)' }, { status: 400 });
-    }
+    const parsed = await parseBody(request, createTransactionSchema);
+    if (!parsed.success) return parsed.response;
+    const { date: parsedDate, amount, accountId, cleared, applyRules } = parsed.data;
+    let { payee, memo, categoryId } = parsed.data;
 
     const account = await findOwnedAccount(profileId, accountId);
     if (!account) {
@@ -227,7 +227,7 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
         return NextResponse.json({ error: 'Category not found' }, { status: 404 });
     }
 
-    const amountCents = Math.round(amount * 100);
+    const amountCents = toCents(amount);
 
     // Use a transaction to ensure atomicity of balance updates
     const transaction = await prisma.$transaction(async (tx) => {
@@ -281,8 +281,9 @@ export const PUT = withErrorHandler(async (request: NextRequest) => {
         return NextResponse.json({ error: 'Transaction ID required' }, { status: 400 });
     }
 
-    const body = await request.json();
-    const { date, amount, payee, memo, accountId, categoryId, cleared } = body;
+    const parsed = await parseBody(request, updateTransactionSchema);
+    if (!parsed.success) return parsed.response;
+    const { date: parsedDate, amount, payee, memo, accountId, categoryId, cleared } = parsed.data;
 
     // Get existing transaction to calculate balance difference
     const existing = await findOwnedTransaction(profileId, id);
@@ -291,7 +292,7 @@ export const PUT = withErrorHandler(async (request: NextRequest) => {
         return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
     }
 
-    if (!accountId || !(await findOwnedAccount(profileId, accountId))) {
+    if (!(await findOwnedAccount(profileId, accountId))) {
         return NextResponse.json({ error: 'Account not found' }, { status: 404 });
     }
     if (categoryId && existing.isSplit) {
@@ -304,22 +305,7 @@ export const PUT = withErrorHandler(async (request: NextRequest) => {
         return NextResponse.json({ error: 'Category not found' }, { status: 404 });
     }
 
-    let newAmountCents = existing.amount;
-    if (amount !== undefined) {
-        const parsedAmount = Math.round(Number(amount) * 100);
-        if (!Number.isFinite(parsedAmount) || Math.abs(Number(amount)) > 999999999) {
-            return NextResponse.json({ error: 'Invalid amount' }, { status: 400 });
-        }
-        newAmountCents = parsedAmount;
-    }
-
-    let parsedDate: Date | undefined;
-    if (date !== undefined) {
-        parsedDate = new Date(date);
-        if (Number.isNaN(parsedDate.getTime())) {
-            return NextResponse.json({ error: 'Invalid date' }, { status: 400 });
-        }
-    }
+    const newAmountCents = amount !== undefined ? toCents(amount) : existing.amount;
 
     const amountDiff = newAmountCents - existing.amount;
     if (existing.isSplit && amountDiff !== 0) {

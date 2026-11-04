@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { idString, parseBody, requiredText } from '@/lib/validation';
 import prisma from '@/lib/prisma';
 import { withErrorHandler } from '@/lib/apiHandler';
 
@@ -10,20 +12,18 @@ export const GET = withErrorHandler(async () => {
     return NextResponse.json({ profiles });
 }, 'Fetch profiles');
 
+const profileName = requiredText(100);
+const createProfileSchema = z.object({ name: profileName });
+const renameProfileSchema = z.object({ id: idString, name: profileName });
+
 // POST create new profile
 export const POST = withErrorHandler(async (request: NextRequest) => {
-    const body = await request.json();
-    const { name } = body;
-
-    if (!name || typeof name !== 'string' || name.trim().length === 0) {
-        return NextResponse.json(
-            { error: 'Profile name is required' },
-            { status: 400 }
-        );
-    }
+    const parsed = await parseBody(request, createProfileSchema);
+    if (!parsed.success) return parsed.response;
+    const { name } = parsed.data;
 
     const profile = await prisma.profile.create({
-        data: { name: name.trim() },
+        data: { name },
     });
 
     // Create default settings for the new profile
@@ -99,19 +99,13 @@ export const DELETE = withErrorHandler(async (request: NextRequest) => {
 
 // PATCH rename a profile
 export const PATCH = withErrorHandler(async (request: NextRequest) => {
-    const body = await request.json();
-    const { id, name } = body;
-
-    if (!id || !name || typeof name !== 'string' || name.trim().length === 0) {
-        return NextResponse.json(
-            { error: 'Profile ID and name are required' },
-            { status: 400 }
-        );
-    }
+    const parsed = await parseBody(request, renameProfileSchema);
+    if (!parsed.success) return parsed.response;
+    const { id, name } = parsed.data;
 
     const profile = await prisma.profile.update({
         where: { id },
-        data: { name: name.trim() },
+        data: { name },
     });
 
     return NextResponse.json(profile);

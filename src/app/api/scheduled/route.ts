@@ -8,12 +8,59 @@ import {
 } from '@/lib/profileOwnership';
 import { applyCategoryActivityDelta } from '@/lib/budgetHelpers';
 import { calculateNextDueDate } from '@/lib/scheduleDates';
+import { z } from 'zod';
+import {
+    boundedText,
+    idString,
+    isoDate,
+    moneyAmount,
+    nullableId,
+    parseBody,
+    requiredText,
+    toCents,
+} from '@/lib/validation';
 
-const VALID_FREQUENCIES = new Set(['daily', 'weekly', 'biweekly', 'monthly', 'yearly']);
+const frequency = z.enum(['daily', 'weekly', 'biweekly', 'monthly', 'yearly'], {
+    error: 'must be one of daily, weekly, biweekly, monthly, yearly',
+});
+const dayOfMonth = z.number().int().min(1).max(31);
+const dayOfWeek = z.number().int().min(0).max(6);
+const reminderDays = z.number().int().min(0).max(365);
+const clearableDate = z.preprocess(value => (value === '' ? null : value), isoDate.nullable());
 
-function isValidDate(value: unknown): value is string {
-    return typeof value === 'string' && value.length > 0 && !Number.isNaN(new Date(value).getTime());
-}
+const createScheduledSchema = z.object({
+    name: requiredText(100),
+    amount: moneyAmount,
+    payee: boundedText(200).nullish(),
+    memo: boundedText(500).nullish(),
+    accountId: idString,
+    categoryId: nullableId.optional(),
+    frequency,
+    nextDueDate: isoDate,
+    dayOfMonth: dayOfMonth.nullish(),
+    dayOfWeek: dayOfWeek.nullish(),
+    endDate: clearableDate.optional(),
+    autoCreate: z.boolean().optional(),
+    reminderDays: reminderDays.nullish(),
+});
+
+const updateScheduledSchema = z.object({
+    id: idString,
+    name: requiredText(100).optional(),
+    amount: moneyAmount.optional(),
+    payee: boundedText(200).nullish(),
+    memo: boundedText(500).nullish(),
+    accountId: idString.optional(),
+    categoryId: nullableId.optional(),
+    frequency: frequency.optional(),
+    nextDueDate: isoDate.optional(),
+    dayOfMonth: dayOfMonth.nullish(),
+    dayOfWeek: dayOfWeek.nullish(),
+    endDate: clearableDate.optional(),
+    autoCreate: z.boolean().optional(),
+    isActive: z.boolean().optional(),
+    reminderDays: reminderDays.nullish(),
+});
 
 // GET - List all scheduled transactions + upcoming bills
 export async function GET(request: NextRequest) {
@@ -76,7 +123,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
     try {
         const profileId = await getProfileId(request);
-        const body = await request.json();
+        const parsed = await parseBody(request, createScheduledSchema);
+        if (!parsed.success) return parsed.response;
         const {
             name,
             amount,
@@ -91,24 +139,8 @@ export async function POST(request: NextRequest) {
             endDate,
             autoCreate,
             reminderDays,
-        } = body;
+        } = parsed.data;
 
-        if (!name || amount === undefined || !accountId || !frequency || !nextDueDate) {
-            return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
-        }
-
-        if (typeof name !== 'string' || name.trim().length > 100) {
-            return NextResponse.json({ error: 'Name must be between 1 and 100 characters' }, { status: 400 });
-        }
-        if (typeof amount !== 'number' || !Number.isFinite(amount) || Math.abs(amount) > 999999999) {
-            return NextResponse.json({ error: 'Invalid amount' }, { status: 400 });
-        }
-        if (!VALID_FREQUENCIES.has(frequency)) {
-            return NextResponse.json({ error: 'Invalid frequency' }, { status: 400 });
-        }
-        if (!isValidDate(nextDueDate) || (endDate && !isValidDate(endDate))) {
-            return NextResponse.json({ error: 'Invalid scheduled date' }, { status: 400 });
-        }
         if (!(await findOwnedAccount(profileId, accountId))) {
             return NextResponse.json({ error: 'Account not found' }, { status: 404 });
         }
@@ -118,17 +150,17 @@ export async function POST(request: NextRequest) {
 
         const scheduled = await prisma.scheduledTransaction.create({
             data: {
-                name: name.trim(),
-                amount: Math.round(amount * 100), // Convert to cents
+                name,
+                amount: toCents(amount),
                 payee: payee || null,
                 memo: memo || null,
                 accountId,
                 categoryId: categoryId || null,
                 frequency,
-                nextDueDate: new Date(nextDueDate),
-                dayOfMonth: dayOfMonth || null,
-                dayOfWeek: dayOfWeek !== undefined ? dayOfWeek : null,
-                endDate: endDate ? new Date(endDate) : null,
+                nextDueDate,
+                dayOfMonth: dayOfMonth ?? null,
+                dayOfWeek: dayOfWeek ?? null,
+                endDate: endDate ?? null,
                 autoCreate: autoCreate || false,
                 reminderDays: reminderDays ?? 3,
                 profileId,
@@ -239,56 +271,23 @@ export async function PUT(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
     try {
         const profileId = await getProfileId(request);
-        const body = await request.json();
+        const parsed = await parseBody(request, updateScheduledSchema);
+        if (!parsed.success) return parsed.response;
+        const body = parsed.data;
         const { id } = body;
 
-        if (!id) {
-            return NextResponse.json({ error: 'Missing scheduled transaction ID' }, { status: 400 });
-        }
         if (!(await findOwnedScheduledTransaction(profileId, id))) {
             return NextResponse.json({ error: 'Scheduled transaction not found' }, { status: 404 });
         }
 
         const updates: Record<string, unknown> = {};
-        const stringFields = ['name', 'payee', 'memo'] as const;
-        for (const field of stringFields) {
-            if (body[field] !== undefined) updates[field] = body[field] || null;
-        }
-
-        if (body.name !== undefined) {
-            if (typeof body.name !== 'string' || body.name.trim().length === 0 || body.name.trim().length > 100) {
-                return NextResponse.json({ error: 'Name must be between 1 and 100 characters' }, { status: 400 });
-            }
-            updates.name = body.name.trim();
-        }
-
-        // Convert amount to cents if provided
-        if (body.amount !== undefined) {
-            if (typeof body.amount !== 'number' || !Number.isFinite(body.amount) || Math.abs(body.amount) > 999999999) {
-                return NextResponse.json({ error: 'Invalid amount' }, { status: 400 });
-            }
-            updates.amount = Math.round(body.amount * 100);
-        }
-
-        if (body.nextDueDate !== undefined) {
-            if (!isValidDate(body.nextDueDate)) {
-                return NextResponse.json({ error: 'Invalid next due date' }, { status: 400 });
-            }
-            updates.nextDueDate = new Date(body.nextDueDate);
-        }
-        if (body.endDate !== undefined) {
-            if (body.endDate && !isValidDate(body.endDate)) {
-                return NextResponse.json({ error: 'Invalid end date' }, { status: 400 });
-            }
-            updates.endDate = body.endDate ? new Date(body.endDate) : null;
-        }
-
-        if (body.frequency !== undefined) {
-            if (!VALID_FREQUENCIES.has(body.frequency)) {
-                return NextResponse.json({ error: 'Invalid frequency' }, { status: 400 });
-            }
-            updates.frequency = body.frequency;
-        }
+        if (body.name !== undefined) updates.name = body.name;
+        if (body.payee !== undefined) updates.payee = body.payee || null;
+        if (body.memo !== undefined) updates.memo = body.memo || null;
+        if (body.amount !== undefined) updates.amount = toCents(body.amount);
+        if (body.nextDueDate !== undefined) updates.nextDueDate = body.nextDueDate;
+        if (body.endDate !== undefined) updates.endDate = body.endDate;
+        if (body.frequency !== undefined) updates.frequency = body.frequency;
 
         if (body.accountId !== undefined) {
             if (!(await findOwnedAccount(profileId, body.accountId))) {
@@ -301,14 +300,14 @@ export async function PATCH(request: NextRequest) {
             if (body.categoryId && !(await findOwnedCategory(profileId, body.categoryId))) {
                 return NextResponse.json({ error: 'Category not found' }, { status: 404 });
             }
-            updates.categoryId = body.categoryId || null;
+            updates.categoryId = body.categoryId;
         }
 
         for (const field of ['dayOfMonth', 'dayOfWeek', 'reminderDays'] as const) {
             if (body[field] !== undefined) updates[field] = body[field] ?? null;
         }
         for (const field of ['autoCreate', 'isActive'] as const) {
-            if (body[field] !== undefined) updates[field] = Boolean(body[field]);
+            if (body[field] !== undefined) updates[field] = body[field];
         }
 
         const scheduled = await prisma.scheduledTransaction.update({

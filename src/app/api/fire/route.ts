@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { MAX_AMOUNT_CENTS, parseBody } from '@/lib/validation';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
 import { getExchangeRate } from '@/lib/exchangeRate';
@@ -151,11 +153,31 @@ export async function GET(request: NextRequest) {
     }
 }
 
+const year = z.number().int().min(1900).max(2200);
+const age = z.number().int().min(0).max(120);
+const rate = z.number().finite().min(-1).max(1);
+// Cents; the page multiplies a dollar input by 100, so round.
+const annualCents = z.number().finite().min(0).max(MAX_AMOUNT_CENTS).transform(Math.round);
+
+const fireSettingsSchema = z.object({
+    yearOfBirth: year.optional(),
+    retirementAge: age.optional(),
+    preservationAge: age.optional(),
+    annualExpenses: annualCents.optional(),
+    withdrawalRate: rate.optional(),
+    inflationRate: rate.optional(),
+    expectedReturn: rate.optional(),
+    annualSuperContrib: annualCents.optional(),
+    employerContribRate: rate.optional(),
+});
+
 // POST update FIRE settings
 export async function POST(request: NextRequest) {
     try {
         const profileId = await getProfileId(request);
-        const body = await request.json();
+        const parsed = await parseBody(request, fireSettingsSchema);
+        if (!parsed.success) return parsed.response;
+        const body = parsed.data;
 
         // Find existing settings for this profile
         const existing = await prisma.fireSettings.findFirst({

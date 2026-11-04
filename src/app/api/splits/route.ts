@@ -3,25 +3,34 @@ import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
 import { applyCategoryActivityDelta } from '@/lib/budgetHelpers';
 import { ownsAllCategories } from '@/lib/profileOwnership';
+import { z } from 'zod';
+import { boundedText, centsAmount, idString, nullableId, parseBody } from '@/lib/validation';
+
+// Split amounts are integer cents (the modal converts before sending), unlike
+// most routes which take dollars.
+const createSplitsSchema = z.object({
+    transactionId: idString,
+    splits: z
+        .array(z.object({
+            categoryId: nullableId.optional(),
+            amount: centsAmount,
+            memo: boundedText(500).nullish(),
+        }))
+        .min(2, 'Need at least 2 splits')
+        .max(100, 'Too many splits'),
+});
 
 // POST - Create splits for a transaction
 export async function POST(request: NextRequest) {
     try {
         const profileId = await getProfileId(request);
-        const body = await request.json();
-        const { transactionId, splits } = body;
+        const parsed = await parseBody(request, createSplitsSchema);
+        if (!parsed.success) return parsed.response;
+        const { transactionId, splits } = parsed.data;
 
-        if (!transactionId || !splits || !Array.isArray(splits) || splits.length < 2) {
-            return NextResponse.json({ error: 'Need transactionId and at least 2 splits' }, { status: 400 });
-        }
-        if (splits.some((split: { amount?: unknown }) =>
-            typeof split.amount !== 'number' || !Number.isFinite(split.amount) || !Number.isInteger(split.amount)
-        )) {
-            return NextResponse.json({ error: 'Split amounts must be integer cents' }, { status: 400 });
-        }
         const categoryIds = splits
-            .map((split: { categoryId?: string }) => split.categoryId)
-            .filter((categoryId: string | undefined): categoryId is string => Boolean(categoryId));
+            .map(split => split.categoryId)
+            .filter((categoryId): categoryId is string => Boolean(categoryId));
         if (!(await ownsAllCategories(profileId, categoryIds))) {
             return NextResponse.json({ error: 'One or more categories were not found' }, { status: 404 });
         }
@@ -36,7 +45,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Validate split amounts sum to transaction amount
-        const splitTotal = splits.reduce((sum: number, s: { amount: number }) => sum + s.amount, 0);
+        const splitTotal = splits.reduce((sum, s) => sum + s.amount, 0);
         if (splitTotal !== transaction.amount) {
             return NextResponse.json({ 
                 error: `Split amounts (${splitTotal}) must equal transaction amount (${transaction.amount})` 
@@ -70,7 +79,7 @@ export async function POST(request: NextRequest) {
 
             // Create new splits
             const createdSplits = await tx.subTransaction.createMany({
-                data: splits.map((s: { categoryId?: string; amount: number; memo?: string }) => ({
+                data: splits.map(s => ({
                     transactionId,
                     categoryId: s.categoryId || null,
                     amount: s.amount,

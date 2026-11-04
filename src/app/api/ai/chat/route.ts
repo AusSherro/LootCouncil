@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { parseBody, requiredText } from '@/lib/validation';
 import prisma from '@/lib/prisma';
 import { chatWithAdvisor } from '@/lib/openai';
 import { getProfileId } from '@/lib/profile';
+
+const chatSchema = z.object({ message: requiredText(4000) });
 
 // POST - Chat with financial advisor
 export async function POST(request: NextRequest) {
@@ -14,12 +18,9 @@ export async function POST(request: NextRequest) {
             });
         }
 
-        const body = await request.json();
-        const { message } = body;
-
-        if (!message?.trim()) {
-            return NextResponse.json({ error: 'Message is required' }, { status: 400 });
-        }
+        const parsed = await parseBody(request, chatSchema);
+        if (!parsed.success) return parsed.response;
+        const { message } = parsed.data;
 
         // Gather context for the AI
         const now = new Date();

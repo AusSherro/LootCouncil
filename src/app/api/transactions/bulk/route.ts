@@ -3,16 +3,34 @@ import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
 import { applyCategoryActivityDelta } from '@/lib/budgetHelpers';
 import { findOwnedCategory } from '@/lib/profileOwnership';
+import { z } from 'zod';
+import { boundedText, idString, nullableId, parseBody } from '@/lib/validation';
+
+const transactionIdsSchema = z
+    .array(idString, { error: 'must be a list of transaction ids' })
+    .min(1, 'No transactions selected')
+    .max(10_000, 'too many transactions selected');
+
+const bulkEditSchema = z.object({
+    transactionIds: transactionIdsSchema,
+    updates: z.object({
+        categoryId: nullableId.optional(),
+        payee: boundedText(200).nullish(),
+        memo: boundedText(500).nullish(),
+        cleared: z.boolean().optional(),
+        approved: z.boolean().optional(),
+    }),
+});
+
+const bulkDeleteSchema = z.object({ transactionIds: transactionIdsSchema });
 
 // POST - Bulk edit transactions
 export async function POST(request: NextRequest) {
     try {
         const profileId = await getProfileId(request);
-        const { transactionIds, updates } = await request.json();
-
-        if (!Array.isArray(transactionIds) || transactionIds.length === 0) {
-            return NextResponse.json({ error: 'No transactions selected' }, { status: 400 });
-        }
+        const parsed = await parseBody(request, bulkEditSchema);
+        if (!parsed.success) return parsed.response;
+        const { transactionIds, updates } = parsed.data;
 
         // Build update data
         const updateData: Record<string, unknown> = {};
@@ -140,11 +158,9 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
     try {
         const profileId = await getProfileId(request);
-        const { transactionIds } = await request.json();
-
-        if (!Array.isArray(transactionIds) || transactionIds.length === 0) {
-            return NextResponse.json({ error: 'No transactions selected' }, { status: 400 });
-        }
+        const parsed = await parseBody(request, bulkDeleteSchema);
+        if (!parsed.success) return parsed.response;
+        const { transactionIds } = parsed.data;
 
         const result = await prisma.$transaction(async (tx) => {
             // Get selected transactions

@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { idString, parseBody, requiredText } from '@/lib/validation';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
 import { toLocalMonthString } from '@/lib/utils';
@@ -114,16 +116,16 @@ export async function GET(request: NextRequest) {
     }
 }
 
+const ynabToken = requiredText(500);
+const importYnabSchema = z.object({ token: ynabToken, budgetId: idString });
+
 // POST - Import a specific budget from YNAB
 export async function POST(request: NextRequest) {
     try {
         const profileId = await getProfileId(request);
-        const body = await request.json();
-        const { token, budgetId } = body;
-
-        if (!token || !budgetId) {
-            return NextResponse.json({ error: 'Token and budgetId required' }, { status: 400 });
-        }
+        const parsed = await parseBody(request, importYnabSchema);
+        if (!parsed.success) return parsed.response;
+        const { token, budgetId } = parsed.data;
 
         // Fetch full budget data
         const budgetRes = await fetch(`${YNAB_API_BASE}/budgets/${budgetId}`, {

@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { MAX_AMOUNT_CENTS, parseBody, requiredText } from '@/lib/validation';
 import prisma from '@/lib/prisma';
 import { optimizeBudget } from '@/lib/openai';
 import { getProfileId } from '@/lib/profile';
@@ -96,16 +98,24 @@ export async function GET(request: NextRequest) {
     }
 }
 
+// suggestedAmount is in cents, as returned by GET; rounded in case the model
+// produced a fractional value.
+const applyOptimizationsSchema = z.object({
+    recommendations: z.array(z.object({
+        categoryName: requiredText(100),
+        suggestedAmount: z.number().finite()
+            .refine(value => Math.abs(value) <= MAX_AMOUNT_CENTS, 'is out of range')
+            .transform(Math.round),
+    }).loose()).min(1, 'No recommendations provided').max(500),
+});
+
 // POST - Apply optimization suggestions
 export async function POST(request: NextRequest) {
     try {
         const profileId = await getProfileId(request);
-        const body = await request.json();
-        const { recommendations } = body; // Array of { categoryName, suggestedAmount }
-
-        if (!recommendations?.length) {
-            return NextResponse.json({ error: 'No recommendations provided' }, { status: 400 });
-        }
+        const parsed = await parseBody(request, applyOptimizationsSchema);
+        if (!parsed.success) return parsed.response;
+        const { recommendations } = parsed.data;
 
         const now = new Date();
         const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;

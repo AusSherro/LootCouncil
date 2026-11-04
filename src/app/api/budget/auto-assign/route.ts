@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { centsAmount, idString, monthKey, parseBody } from '@/lib/validation';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
 import { ownsAllCategories } from '@/lib/profileOwnership';
@@ -33,16 +35,24 @@ function calculateMonthlyNeeded(
     );
 }
 
+const autoAssignSchema = z.object({ month: monthKey });
+
+// Undo payload: what POST returned, amounts in integer cents.
+const undoAutoAssignSchema = z.object({
+    month: monthKey,
+    categories: z
+        .array(z.object({ categoryId: idString, amount: centsAmount }).loose())
+        .min(1, 'Month and categories required')
+        .max(10_000),
+});
+
 // POST - Auto-assign money to categories with goals
 export async function POST(request: NextRequest) {
     try {
         const profileId = await getProfileId(request);
-        const body = await request.json();
-        const { month } = body;
-        
-        if (!month) {
-            return NextResponse.json({ error: 'Month required (YYYY-MM format)' }, { status: 400 });
-        }
+        const parsed = await parseBody(request, autoAssignSchema);
+        if (!parsed.success) return parsed.response;
+        const { month } = parsed.data;
 
         // Always calculate RTA from account balances - envelope totals
         const readyToAssign = await calculateReadyToAssign(profileId, month);
@@ -290,19 +300,9 @@ export async function GET(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
     try {
         const profileId = await getProfileId(request);
-        const body = await request.json();
-        const { month, categories } = body as {
-            month: string;
-            categories: { categoryId: string; amount: number }[];
-        };
-
-        if (!month || !categories?.length) {
-            return NextResponse.json({ error: 'Month and categories required' }, { status: 400 });
-        }
-
-        if (categories.some(c => !Number.isInteger(c.amount))) {
-            return NextResponse.json({ error: 'Amounts must be integer cents' }, { status: 400 });
-        }
+        const parsed = await parseBody(request, undoAutoAssignSchema);
+        if (!parsed.success) return parsed.response;
+        const { month, categories } = parsed.data;
 
         // Never let a caller reverse assignments in another profile's categories.
         if (!(await ownsAllCategories(profileId, categories.map(c => c.categoryId)))) {

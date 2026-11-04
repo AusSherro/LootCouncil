@@ -1,21 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { monthKey, nullableId, parseBody, positiveMoneyAmount, toCents } from '@/lib/validation';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
 import { calculateActivity, getCategoryAvailableMap } from '@/lib/budgetHelpers';
 
 // POST - Transfer funds between budget categories (or to/from Ready to Assign)
+const budgetTransferSchema = z.object({
+    fromCategoryId: nullableId.optional(),
+    toCategoryId: nullableId.optional(),
+    amount: positiveMoneyAmount,
+    month: monthKey,
+});
+
 export async function POST(request: NextRequest) {
     try {
         const profileId = await getProfileId(request);
-        const body = await request.json();
-        const { fromCategoryId, toCategoryId, amount, month } = body;
-
-        if (!amount || !month) {
-            return NextResponse.json(
-                { error: 'Missing required fields: amount, month' },
-                { status: 400 }
-            );
-        }
+        const parsed = await parseBody(request, budgetTransferSchema);
+        if (!parsed.success) return parsed.response;
+        const { fromCategoryId, toCategoryId, amount, month } = parsed.data;
 
         if (!fromCategoryId && !toCategoryId) {
             return NextResponse.json(
@@ -31,7 +34,7 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        const amountCents = Math.round(amount * 100);
+        const amountCents = toCents(amount);
         if (amountCents <= 0) {
             return NextResponse.json(
                 { error: 'Transfer amount must be positive' },
@@ -132,6 +135,13 @@ export async function POST(request: NextRequest) {
         }
 
         // Case 3: Category → Category (original behavior)
+        // The cases above return when either side is missing; this narrows the types.
+        if (!fromCategoryId || !toCategoryId) {
+            return NextResponse.json(
+                { error: 'At least one of fromCategoryId or toCategoryId must be specified' },
+                { status: 400 }
+            );
+        }
         // SEC-5: scope both lookups to the active profile so cross-profile IDs 404.
         const [fromCategory, toCategory] = await Promise.all([
             prisma.category.findFirst({

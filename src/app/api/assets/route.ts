@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { moneyAmount, nonNegativeMoneyAmount, parseBody, toCents } from '@/lib/validation';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
 
@@ -64,26 +66,37 @@ export async function GET(request: NextRequest) {
     }
 }
 
+// This route takes prices and cost basis in dollars (unlike /api/investments).
+const createAssetSchema = z.object({
+    symbol: z.string().trim().max(30).optional(),
+    name: z.string().trim().max(100).optional(),
+    assetClass: z.string().trim().max(30).optional(),
+    currency: z.string().trim().max(10).optional(),
+    isManual: z.boolean().optional(),
+    quantity: z.number().finite().min(0).max(1e12).optional(),
+    costBasis: nonNegativeMoneyAmount.optional(),
+    currentPrice: nonNegativeMoneyAmount.optional(),
+}).refine(body => body.symbol || body.name, { message: 'Symbol or name is required' });
+
+const updateAssetValueSchema = z.object({ currentPrice: moneyAmount });
+
 // POST create new asset - auto-fetches name and price if not a manual asset
 export async function POST(request: NextRequest) {
     try {
         const profileId = await getProfileId(request);
-        const body = await request.json();
-        const { quantity, costBasis, isManual } = body;
-        let { symbol, name, assetClass, currentPrice, currency } = body;
-
-        if (!symbol && !name) {
-            return NextResponse.json(
-                { error: 'Symbol or name is required' },
-                { status: 400 }
-            );
-        }
+        const parsed = await parseBody(request, createAssetSchema);
+        if (!parsed.success) return parsed.response;
+        const { quantity, costBasis, isManual } = parsed.data;
+        let { symbol, name, assetClass, currentPrice, currency } = parsed.data;
 
         // For manual assets, use name as symbol if no symbol provided
         if (isManual && !symbol) {
-            symbol = name.toUpperCase().replace(/\s+/g, '_').slice(0, 10);
+            symbol = (name ?? '').toUpperCase().replace(/\s+/g, '_').slice(0, 10);
         } else if (symbol) {
             symbol = symbol.toUpperCase();
+        }
+        if (!symbol) {
+            return NextResponse.json({ error: 'Symbol is required for tracked assets' }, { status: 400 });
         }
 
         // Only auto-fetch for non-manual assets
@@ -112,8 +125,8 @@ export async function POST(request: NextRequest) {
                 const updated = await prisma.asset.update({
                     where: { id: existing.id },
                     data: {
-                        currentPrice: currentPrice ? Math.round(currentPrice * 100) : existing.currentPrice,
-                        costBasis: costBasis ? Math.round(costBasis * 100) : existing.costBasis,
+                        currentPrice: currentPrice ? toCents(currentPrice) : existing.currentPrice,
+                        costBasis: costBasis ? toCents(costBasis) : existing.costBasis,
                         lastUpdated: new Date(),
                     },
                 });
@@ -125,8 +138,8 @@ export async function POST(request: NextRequest) {
                 where: { id: existing.id },
                 data: {
                     quantity: (existing.quantity || 0) + (quantity ?? 0),
-                    costBasis: (existing.costBasis || 0) + (costBasis ? Math.round(costBasis * 100) : 0),
-                    currentPrice: currentPrice ? Math.round(currentPrice * 100) : existing.currentPrice,
+                    costBasis: (existing.costBasis || 0) + (costBasis ? toCents(costBasis) : 0),
+                    currentPrice: currentPrice ? toCents(currentPrice) : existing.currentPrice,
                     currency,
                     lastUpdated: new Date(),
                 },
@@ -140,8 +153,8 @@ export async function POST(request: NextRequest) {
                 name: name || symbol,
                 assetClass,
                 quantity: isManual ? 1 : (quantity ?? 0),
-                costBasis: costBasis ? Math.round(costBasis * 100) : 0,
-                currentPrice: currentPrice ? Math.round(currentPrice * 100) : 0,
+                costBasis: costBasis ? toCents(costBasis) : 0,
+                currentPrice: currentPrice ? toCents(currentPrice) : 0,
                 currency,
                 isManual: isManual || false,
                 lastUpdated: new Date(),
@@ -244,9 +257,6 @@ export async function PATCH(request: NextRequest) {
         const profileId = await getProfileId(request);
         const { searchParams } = new URL(request.url);
         const id = searchParams.get('id');
-        const body = await request.json();
-        const { currentPrice } = body;
-
         if (!id) {
             return NextResponse.json(
                 { error: 'Missing required field: id' },
@@ -254,12 +264,9 @@ export async function PATCH(request: NextRequest) {
             );
         }
 
-        if (typeof currentPrice !== 'number' || !Number.isFinite(currentPrice)) {
-            return NextResponse.json(
-                { error: 'Missing or invalid currentPrice' },
-                { status: 400 }
-            );
-        }
+        const parsed = await parseBody(request, updateAssetValueSchema);
+        if (!parsed.success) return parsed.response;
+        const { currentPrice } = parsed.data;
 
         const existing = await prisma.asset.findFirst({ where: { id, profileId } });
         if (!existing) {
@@ -269,7 +276,7 @@ export async function PATCH(request: NextRequest) {
         const asset = await prisma.asset.update({
             where: { id },
             data: {
-                currentPrice: Math.round(currentPrice * 100),
+                currentPrice: toCents(currentPrice),
                 lastUpdated: new Date(),
             },
         });

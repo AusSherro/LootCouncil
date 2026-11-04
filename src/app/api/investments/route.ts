@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
+import { z } from 'zod';
+import { MAX_AMOUNT_CENTS, parseBody, requiredText } from '@/lib/validation';
 import { getExchangeRate } from '@/lib/exchangeRate';
 
 const HOME_CURRENCY = 'AUD';
@@ -155,16 +157,31 @@ export async function GET(request: NextRequest) {
     }
 }
 
+const assetClass = requiredText(30);
+const currency = z.string().trim().min(3).max(10);
+// Asset prices are integer cents; yields are decimals (0.04 = 4%).
+const priceCents = z.number().int('must be whole cents').min(0).max(MAX_AMOUNT_CENTS);
+const yieldDecimal = z.number().finite().min(0).max(10);
+const symbol = requiredText(30);
+
+const createAssetSchema = z.object({
+    symbol,
+    name: requiredText(100),
+    assetClass,
+    currency: currency.optional(),
+    isManual: z.boolean().optional(),
+    currentPrice: priceCents.optional(),
+    dividendYield: yieldDecimal.optional(),
+    stakingYield: yieldDecimal.optional(),
+});
+
 // POST create new asset
 export async function POST(request: NextRequest) {
     try {
         const profileId = await getProfileId(request);
-        const body = await request.json();
-        const { symbol, name, assetClass, currency, isManual, currentPrice, dividendYield, stakingYield } = body;
-
-        if (!symbol || !name || !assetClass) {
-            return NextResponse.json({ error: 'Symbol, name, and asset class are required' }, { status: 400 });
-        }
+        const parsed = await parseBody(request, createAssetSchema);
+        if (!parsed.success) return parsed.response;
+        const { symbol, name, assetClass, currency, isManual, currentPrice, dividendYield, stakingYield } = parsed.data;
 
         // For manual assets, set costBasis = currentPrice so initial entry shows 0% return
         const asset = await prisma.asset.create({

@@ -7,6 +7,49 @@ import {
     ownsAllCategories,
     ownsAllCategoryGroups,
 } from '@/lib/profileOwnership';
+import { z } from 'zod';
+import { boundedText, centsAmount, idString, isoDate, parseBody, requiredText } from '@/lib/validation';
+
+const sortOrder = z.number().int().min(0).max(1_000_000);
+const smallInt = z.number().int().min(0).max(10_000);
+
+const createCategorySchema = z.object({
+    type: z.enum(['group', 'category']).optional(),
+    name: requiredText(100),
+    groupId: idString.optional(),
+});
+
+const updateCategorySchema = z.object({
+    type: z.enum(['group', 'category']).optional(),
+    id: idString,
+    updates: z.object({
+        name: requiredText(100).optional(),
+        isHidden: z.boolean().optional(),
+        sortOrder: sortOrder.optional(),
+        groupId: idString.optional(),
+        goalType: boundedText(20).nullish(),
+        goalTarget: centsAmount.nullish(),
+        goalDueDate: z.preprocess(value => (value === '' ? null : value), isoDate.nullable()).optional(),
+        goalPercentageComplete: z.number().int().min(0).max(100).nullish(),
+        goalUnderFunded: centsAmount.nullish(),
+        goalOverallFunded: centsAmount.nullish(),
+        goalOverallLeft: centsAmount.nullish(),
+        goalCadence: smallInt.nullish(),
+        goalCadenceFrequency: smallInt.nullish(),
+    }).default({}),
+});
+
+const reorderItem = z.object({
+    id: idString,
+    sortOrder,
+    groupId: idString.optional(),
+});
+
+const reorderSchema = z.object({
+    type: z.enum(['groups', 'categories']),
+    items: z.array(reorderItem).max(10_000).optional(),
+    orders: z.array(reorderItem).max(10_000).optional(),
+}).refine(body => body.items || body.orders, { message: 'items or orders array required' });
 
 // GET all categories with groups
 export async function GET(request: NextRequest) {
@@ -37,8 +80,9 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
     try {
         const profileId = await getProfileId(request);
-        const body = await request.json();
-        const { type, name, groupId } = body;
+        const parsed = await parseBody(request, createCategorySchema);
+        if (!parsed.success) return parsed.response;
+        const { type, name, groupId } = parsed.data;
 
         if (type === 'group') {
             // Create a new category group
@@ -87,15 +131,16 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
     try {
         const profileId = await getProfileId(request);
-        const body = await request.json();
-        const { type, id, updates } = body;
+        const parsed = await parseBody(request, updateCategorySchema);
+        if (!parsed.success) return parsed.response;
+        const { type, id, updates } = parsed.data;
 
         if (type === 'group') {
-            if (!id || !(await findOwnedCategoryGroup(profileId, id))) {
+            if (!(await findOwnedCategoryGroup(profileId, id))) {
                 return NextResponse.json({ error: 'Category group not found' }, { status: 404 });
             }
             // Whitelist allowed fields for category groups
-            const { name, isHidden, sortOrder } = updates ?? {};
+            const { name, isHidden, sortOrder } = updates;
             const safeUpdates: Record<string, unknown> = {};
             if (name !== undefined) safeUpdates.name = name;
             if (isHidden !== undefined) safeUpdates.isHidden = isHidden;
@@ -107,7 +152,7 @@ export async function PATCH(request: NextRequest) {
             });
             return NextResponse.json({ group: updated });
         } else {
-            if (!id || !(await findOwnedCategory(profileId, id))) {
+            if (!(await findOwnedCategory(profileId, id))) {
                 return NextResponse.json({ error: 'Category not found' }, { status: 404 });
             }
             // Whitelist allowed fields for categories
@@ -116,7 +161,7 @@ export async function PATCH(request: NextRequest) {
                 goalPercentageComplete, goalUnderFunded,
                 goalOverallFunded, goalOverallLeft,
                 goalCadence, goalCadenceFrequency,
-            } = updates ?? {};
+            } = updates;
             const safeUpdates: Record<string, unknown> = {};
             if (name !== undefined) safeUpdates.name = name;
             if (isHidden !== undefined) safeUpdates.isHidden = isHidden;
@@ -130,7 +175,7 @@ export async function PATCH(request: NextRequest) {
             // Goal fields
             if (goalType !== undefined) safeUpdates.goalType = goalType;
             if (goalTarget !== undefined) safeUpdates.goalTarget = goalTarget;
-            if (goalDueDate !== undefined) safeUpdates.goalDueDate = goalDueDate ? new Date(goalDueDate) : null;
+            if (goalDueDate !== undefined) safeUpdates.goalDueDate = goalDueDate;
             if (goalPercentageComplete !== undefined) safeUpdates.goalPercentageComplete = goalPercentageComplete;
             if (goalUnderFunded !== undefined) safeUpdates.goalUnderFunded = goalUnderFunded;
             if (goalOverallFunded !== undefined) safeUpdates.goalOverallFunded = goalOverallFunded;
@@ -219,20 +264,17 @@ export async function DELETE(request: NextRequest) {
 export async function PUT(request: NextRequest) {
     try {
         const profileId = await getProfileId(request);
-        const body = await request.json();
-        const { type, items, orders } = body; // items/orders: [{ id, sortOrder, groupId? }]
-        const data = items || orders; // Support both field names
-
-        if (!data || !Array.isArray(data)) {
-            return NextResponse.json({ error: 'items or orders array required' }, { status: 400 });
-        }
+        const parsed = await parseBody(request, reorderSchema);
+        if (!parsed.success) return parsed.response;
+        const { type, items, orders } = parsed.data;
+        const data = items ?? orders ?? []; // Support both field names
 
         if (type === 'groups') {
-            if (!(await ownsAllCategoryGroups(profileId, data.map((item: { id: string }) => item.id)))) {
+            if (!(await ownsAllCategoryGroups(profileId, data.map(item => item.id)))) {
                 return NextResponse.json({ error: 'One or more category groups were not found' }, { status: 404 });
             }
             await Promise.all(
-                data.map((item: { id: string; sortOrder: number }) =>
+                data.map(item =>
                     prisma.categoryGroup.update({
                         where: { id: item.id },
                         data: { sortOrder: item.sortOrder },
@@ -240,17 +282,17 @@ export async function PUT(request: NextRequest) {
                 )
             );
         } else if (type === 'categories') {
-            if (!(await ownsAllCategories(profileId, data.map((item: { id: string }) => item.id)))) {
+            if (!(await ownsAllCategories(profileId, data.map(item => item.id)))) {
                 return NextResponse.json({ error: 'One or more categories were not found' }, { status: 404 });
             }
             const destinationGroupIds = data
-                .map((item: { groupId?: string }) => item.groupId)
-                .filter((groupId: string | undefined): groupId is string => Boolean(groupId));
+                .map(item => item.groupId)
+                .filter((groupId): groupId is string => Boolean(groupId));
             if (!(await ownsAllCategoryGroups(profileId, destinationGroupIds))) {
                 return NextResponse.json({ error: 'One or more destination groups were not found' }, { status: 404 });
             }
             await Promise.all(
-                data.map((item: { id: string; sortOrder: number; groupId?: string }) =>
+                data.map(item =>
                     prisma.category.update({
                         where: { id: item.id },
                         data: { 
