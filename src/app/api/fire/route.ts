@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
 import { getExchangeRate } from '@/lib/exchangeRate';
 import { RECONCILIATION_ADJUSTMENT_PAYEE } from '@/lib/budgetUtils';

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
 import { findOwnedCategory } from '@/lib/profileOwnership';
 import { getMonthOffset, getMonthRange, getCategoryActivityMap, getCategoryAvailableMap, calculateGoalUnderFunded } from '@/lib/budgetHelpers';

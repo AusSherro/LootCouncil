@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import prisma from '@/lib/prisma';
 import YahooFinance from 'yahoo-finance2';
 import { getProfileId } from '@/lib/profile';
 

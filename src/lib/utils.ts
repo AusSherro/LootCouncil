@@ -1,6 +1,6 @@
 // Currency and number formatting utilities for Loot Council
 
-export interface FormatCurrencyOptions {
+interface FormatCurrencyOptions {
     minimumFractionDigits?: number;
     maximumFractionDigits?: number;
     useAbsolute?: boolean;

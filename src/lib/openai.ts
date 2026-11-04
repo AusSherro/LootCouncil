@@ -9,20 +9,23 @@ const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY || '',
 });
 
+/** Chat model for every AI feature. Override with OPENAI_MODEL in .env. */
+export const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+
 /** Get the shared OpenAI client instance, or null if API key is not configured */
 export function getOpenAIClient(): OpenAI | null {
     if (!process.env.OPENAI_API_KEY) return null;
     return openai;
 }
 
-export interface SpendingInsight {
+interface SpendingInsight {
     type: 'warning' | 'success' | 'tip' | 'trend';
     title: string;
     description: string;
     emoji: string;
 }
 
-export interface BudgetRecommendation {
+interface BudgetRecommendation {
     categoryName: string;
     currentAmount: number;
     suggestedAmount: number;
@@ -58,7 +61,7 @@ Guidelines:
 
     try {
         const response = await openai.chat.completions.create({
-            model: 'gpt-4o-mini',
+            model: OPENAI_MODEL,
             messages: [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: message },
@@ -113,7 +116,7 @@ Types:
 
     try {
         const response = await openai.chat.completions.create({
-            model: 'gpt-4o-mini',
+            model: OPENAI_MODEL,
             messages: [{ role: 'user', content: prompt }],
             temperature: 0.7,
             max_tokens: 800,
@@ -165,7 +168,7 @@ Amounts in cents. Only include categories that should change.`;
 
     try {
         const response = await openai.chat.completions.create({
-            model: 'gpt-4o-mini',
+            model: OPENAI_MODEL,
             messages: [{ role: 'user', content: prompt }],
             temperature: 0.5,
             max_tokens: 800,

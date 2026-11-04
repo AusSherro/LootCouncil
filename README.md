@@ -319,6 +319,7 @@ DATABASE_URL="file:../data/loot-council.db"
 
 # Optional — AI Features (OpenAI)
 OPENAI_API_KEY="sk-..."
+OPENAI_MODEL="gpt-4o-mini"   # defaults to gpt-4o-mini
 
 # Optional — Currency & Investments
 HOME_CURRENCY="AUD"

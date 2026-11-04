@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getOpenAIClient } from '@/lib/openai';
+import { getOpenAIClient, OPENAI_MODEL } from '@/lib/openai';
 
 interface SimilarGroup {
     payees: string[];
@@ -132,7 +132,7 @@ Return empty array [] if no similar payees found. Only include groups with 2+ pa
 
     try {
         const response = await openai.chat.completions.create({
-            model: 'gpt-4o-mini',
+            model: OPENAI_MODEL,
             messages: [{ role: 'user', content: prompt }],
             temperature: 0.3,
             max_tokens: 1500,

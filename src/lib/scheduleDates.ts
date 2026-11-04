@@ -11,7 +11,7 @@
  * switches twice a year, so a monthly schedule would drift under local mutators.
  */
 
-export interface RecurringSchedule {
+interface RecurringSchedule {
     frequency: string;
     nextDueDate: Date;
     dayOfMonth?: number | null;
