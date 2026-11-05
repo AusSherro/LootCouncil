@@ -40,9 +40,9 @@ const diff = runPrisma(
     [
         'migrate',
         'diff',
-        '--from-url',
-        `file:${databasePath.replace(/\\/g, '/')}`,
-        '--to-schema-datamodel',
+        // DATABASE_URL (set by runPrisma) points the config datasource at the test DB.
+        '--from-config-datasource',
+        '--to-schema',
         'prisma/schema.prisma',
         '--script',
     ],

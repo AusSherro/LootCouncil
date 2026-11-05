@@ -1,9 +1,19 @@
 // Demo data seeder for README screenshots.
 // Populates an ISOLATED database (never the real one) with realistic fake data.
 // Usage: DATABASE_URL="file:../data/loot-council-demo.db" node scripts/seed-demo.mjs
+import path from 'node:path';
 import { PrismaClient } from '@prisma/client';
+import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 
-const prisma = new PrismaClient();
+// Relative paths are resolved against prisma/, the same as src/lib/databaseUrl.ts.
+const url = process.env.DATABASE_URL ?? '';
+if (!url.startsWith('file:')) throw new Error('Set DATABASE_URL to a file: URL for the demo database');
+const filePath = url.slice('file:'.length);
+const prisma = new PrismaClient({
+    adapter: new PrismaBetterSqlite3({
+        url: `file:${path.isAbsolute(filePath) ? filePath : path.resolve('prisma', filePath)}`,
+    }),
+});
 
 // Deterministic PRNG so the dataset is reproducible.
 function mulberry32(seed) {
