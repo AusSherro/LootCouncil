@@ -3,12 +3,10 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Sidebar from "@/components/Sidebar";
 import MobileNav from "@/components/MobileNav";
-import UndoToast from "@/components/UndoToast";
 import { ToastProvider } from "@/components/Toast";
 import { SettingsProvider } from "@/components/SettingsProvider";
 import { ProfileProvider } from "@/components/ProfileProvider";
 import { DataProvider } from "@/components/DataProvider";
-import { UndoProvider } from "@/lib/useUndo";
 import { KeyboardShortcutsProvider } from "@/components/KeyboardShortcutsProvider";
 import { AutoResetErrorBoundary } from "@/components/ErrorBoundary";
 
@@ -56,25 +54,22 @@ export default function RootLayout({
           <ProfileProvider>
             <DataProvider>
               <SettingsProvider>
-                <UndoProvider>
-                  <KeyboardShortcutsProvider>
-                    <div className="flex min-h-screen">
-                      <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:z-[200] focus:top-4 focus:left-4 focus:px-4 focus:py-2 focus:bg-gold focus:text-background focus:rounded-lg focus:font-medium">
-                        Skip to content
-                      </a>
-                      <Sidebar />
-                      <main id="main-content" className="flex-1 overflow-auto pt-16 md:pt-0 pb-20 md:pb-0">
-                        <div className="mx-auto max-w-[1400px]">
-                          <AutoResetErrorBoundary>
-                            {children}
-                          </AutoResetErrorBoundary>
-                        </div>
-                      </main>
-                    </div>
-                    <MobileNav />
-                    <UndoToast />
-                  </KeyboardShortcutsProvider>
-                </UndoProvider>
+                <KeyboardShortcutsProvider>
+                  <div className="flex min-h-screen">
+                    <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:z-[200] focus:top-4 focus:left-4 focus:px-4 focus:py-2 focus:bg-gold focus:text-background focus:rounded-lg focus:font-medium">
+                      Skip to content
+                    </a>
+                    <Sidebar />
+                    <main id="main-content" className="flex-1 overflow-auto pt-16 md:pt-0 pb-20 md:pb-0">
+                      <div className="mx-auto max-w-[1400px]">
+                        <AutoResetErrorBoundary>
+                          {children}
+                        </AutoResetErrorBoundary>
+                      </div>
+                    </main>
+                  </div>
+                  <MobileNav />
+                </KeyboardShortcutsProvider>
               </SettingsProvider>
             </DataProvider>
           </ProfileProvider>

@@ -70,7 +70,6 @@ The application is a full-stack monolith built with **Next.js 16** (App Router),
 - Keyboard shortcuts (arrow nav, Ctrl+Z undo, N for new transaction)
 - Loading skeletons and error boundaries
 - Shared accessible modal behavior with focus trapping, Escape handling, focus restoration, and scroll locking
-- Undo/redo system
 - AI data consent modal
 - Selective client-side caching for slow-changing transaction form metadata
 

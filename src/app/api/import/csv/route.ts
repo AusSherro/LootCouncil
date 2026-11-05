@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { nullableId, parseFormBody, uploadedFile } from '@/lib/validation';
 import prisma from '@/lib/prisma';
 import { getProfileId } from '@/lib/profile';
+import { findMatchingRule } from '@/lib/ruleEngine';
+import { applyCategoryActivityDelta } from '@/lib/budgetHelpers';
 
 interface CSVRow {
     [key: string]: string;
@@ -124,13 +126,30 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Account not found' }, { status: 404 });
         }
 
+        // Rules are applied the same way as for transactions entered by hand.
+        // Rule amounts are in dollars; imported amounts are in cents.
+        const [rules, categories] = await Promise.all([
+            prisma.transactionRule.findMany({
+                where: { isActive: true, profileId },
+                orderBy: { priority: 'desc' },
+            }),
+            prisma.category.findMany({ where: { group: { profileId } }, select: { id: true } }),
+        ]);
+        const ownedCategoryIds = new Set(categories.map(c => c.id));
+
         let imported = 0;
         let duplicates = 0;
+        let categorized = 0;
         const skipped = 0;
 
         // Wrap entire import in a transaction to prevent race conditions
         await prisma.$transaction(async (tx) => {
             for (const t of transactions) {
+                const rule = findMatchingRule(rules, { payee: t.payee, memo: t.memo, amount: t.amount / 100 });
+                const payee = rule?.payeeRename || t.payee;
+                const memo = rule?.memoTemplate || t.memo;
+                const categoryId = rule?.categoryId && ownedCategoryIds.has(rule.categoryId) ? rule.categoryId : null;
+
                 // Check for duplicate (same date, amount, payee within 5 days)
                 const startDate = new Date(t.date);
                 startDate.setDate(startDate.getDate() - 2);
@@ -142,7 +161,8 @@ export async function POST(request: NextRequest) {
                         accountId,
                         amount: t.amount,
                         date: { gte: startDate, lte: endDate },
-                        payee: t.payee,
+                        // Match the bank's payee or the rule's rename, so a re-import is still caught
+                        payee: { in: [...new Set([t.payee, payee])] },
                     },
                 });
 
@@ -156,9 +176,10 @@ export async function POST(request: NextRequest) {
                     data: {
                         date: t.date,
                         amount: t.amount,
-                        payee: t.payee,
-                        memo: t.memo || null,
+                        payee,
+                        memo: memo || null,
                         accountId,
+                        categoryId,
                         cleared: true,
                         approved: false, // Mark as unapproved for review
                     },
@@ -173,6 +194,11 @@ export async function POST(request: NextRequest) {
                     },
                 });
 
+                if (categoryId) {
+                    await applyCategoryActivityDelta(tx, categoryId, t.date.toISOString().slice(0, 7), t.amount);
+                    categorized++;
+                }
+
                 imported++;
             }
         });
@@ -182,6 +208,7 @@ export async function POST(request: NextRequest) {
             imported,
             skipped,
             duplicates,
+            categorized,
             total: transactions.length,
         });
     } catch (error) {

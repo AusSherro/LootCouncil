@@ -163,7 +163,6 @@ See [API Contracts](./api-contracts.md) for complete endpoint documentation.
 - **Settings context** — `SettingsProvider` wraps the app for theme/currency/format
 - **Profile context** — `ProfileProvider` wraps the app for multi-profile switching; it writes the `loot-council-profile` cookie from `localStorage` on start-up so the first API calls use the right profile
 - **Keyboard context** — `KeyboardShortcutsProvider` for global shortcuts
-- **Undo system** — `UndoProvider` / `useUndo` with action history stack
 - **Per-profile preferences** in `localStorage`: transaction filters, report category exclusions, last-used transaction account
 
 ### Component Architecture

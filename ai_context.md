@@ -124,7 +124,6 @@ src/
 │   ├── ErrorBoundary.tsx       # AutoResetErrorBoundary (resets on navigation)
 │   ├── KeyboardShortcutsProvider.tsx # Global keyboard shortcuts
 │   ├── ProfileProvider.tsx     # Multi-profile context provider
-│   ├── UndoToast.tsx           # Undo/redo floating UI
 │   ├── SettingsProvider.tsx    # Settings context
 │   └── Toast.tsx               # Toast notification component
 ├── lib/
@@ -144,7 +143,6 @@ src/
 │   ├── scheduleDates.ts        # calculateNextDueDate() for recurring schedules (UTC-safe)
 │   ├── transactionFormPreferences.ts # Last-used transaction account per profile
 │   ├── useModalA11y.ts         # Dialog focus, Escape, and scroll behavior
-│   ├── useUndo.tsx             # Undo/redo provider and hooks
 │   ├── useKeyboardShortcuts.tsx # Keyboard shortcut hook
 │   ├── *.test.ts               # Unit tests (budgetUtils, ruleEngine, scheduleDates, transactionFormPreferences, utils)
 │   └── *.integration.test.ts   # SQLite integration tests (budgetInvariants, csvImport, investments, moneyPaths, pass4AuditFixes, profileIsolation, splitActivity)
@@ -247,7 +245,6 @@ export const POST = withErrorHandler(async (request: NextRequest) => {
 | **Bulk Transactions** | Select and edit multiple |
 | **Keyboard Shortcuts** | Arrow navigation, Ctrl+Z undo |
 | **Mobile Responsive** | Bottom nav on small screens |
-| **Undo/Redo System** | Action history with revert |
 | **Loading Skeletons** | Smooth loading states |
 | **Error Boundaries** | Graceful error handling |
 | **7 Color Themes** | Finance, Dungeon, Forest, Ocean, Crimson, Royal, Kawaii |
@@ -591,7 +588,6 @@ When working on specific features, these files are most relevant:
 | Dates | `lib/utils.ts` (local-date helpers), `lib/scheduleDates.ts` |
 | Settings | `app/settings/page.tsx`, `components/SettingsProvider.tsx` |
 | Mobile UI | `components/Sidebar.tsx`, `components/MobileNav.tsx`, `lib/navigation.ts` |
-| Undo/Redo | `lib/useUndo.tsx`, `components/UndoToast.tsx` |
 | Keyboard nav | `lib/useKeyboardShortcuts.tsx`, `components/KeyboardShortcutsProvider.tsx` |
 | Error handling | `lib/apiHandler.ts` |
 | Client data fetching | `lib/useApi.ts` (SWR) |

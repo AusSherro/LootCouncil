@@ -179,6 +179,60 @@ describe('CSV import', () => {
         expect(balance).toBe(aggregate._sum.amount);
     });
 
+    it('applies transaction rules and still catches re-imports of renamed payees', async () => {
+        const group = await prisma.categoryGroup.create({ data: { name: 'CSV Rules', profileId } });
+        const category = await prisma.category.create({ data: { name: 'Groceries', groupId: group.id } });
+        const rulesAccount = await prisma.account.create({
+            data: { name: 'Rules Target', type: 'checking', profileId },
+        });
+        await prisma.transactionRule.create({
+            data: {
+                name: 'Woolies',
+                matchField: 'payee',
+                matchType: 'contains',
+                matchValue: 'WOOLWORTHS',
+                categoryId: category.id,
+                payeeRename: 'Woolworths',
+                profileId,
+            },
+        });
+        const rulesCsv = [
+            'Date,Amount,Description',
+            '12/09/2026,-62.40,WOOLWORTHS 1234 SYDNEY',
+            '13/09/2026,-15.00,Bus Fare',
+        ].join('\n');
+
+        const response = await importCsv(
+            csvRequest(rulesCsv, { action: 'import', accountId: rulesAccount.id }, profileId)
+        );
+        const result = await response.json();
+        expect(result.imported).toBe(2);
+        expect(result.categorized).toBe(1);
+
+        const groceries = await prisma.transaction.findFirstOrThrow({
+            where: { accountId: rulesAccount.id, amount: -6240 },
+        });
+        expect(groceries.payee).toBe('Woolworths');
+        expect(groceries.categoryId).toBe(category.id);
+        const fare = await prisma.transaction.findFirstOrThrow({
+            where: { accountId: rulesAccount.id, amount: -1500 },
+        });
+        expect(fare.categoryId).toBeNull();
+
+        // The category's available balance must reflect the imported spend.
+        const budget = await prisma.monthlyBudget.findUniqueOrThrow({
+            where: { month_categoryId: { categoryId: category.id, month: '2026-09' } },
+        });
+        expect(budget.available).toBe(-6240);
+
+        // The stored payee is the rename, but the same file must still be a duplicate.
+        const again = await (await importCsv(
+            csvRequest(rulesCsv, { action: 'import', accountId: rulesAccount.id }, profileId)
+        )).json();
+        expect(again.imported).toBe(0);
+        expect(again.duplicates).toBe(2);
+    });
+
     it('rejects an import into another profile\'s account', async () => {
         const response = await importCsv(
             csvRequest(simpleCsv, { action: 'import', accountId: foreignAccountId }, profileId)

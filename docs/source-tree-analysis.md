@@ -149,7 +149,6 @@ components/
 ├── ErrorBoundary.tsx              # AutoResetErrorBoundary (resets on navigation)
 ├── KeyboardShortcutsProvider.tsx  # Global keyboard shortcut system
 ├── ProfileProvider.tsx            # Multi-profile context provider
-├── UndoToast.tsx                  # Undo/redo floating UI
 ├── SettingsProvider.tsx           # Settings context provider
 └── Toast.tsx                      # Toast notification component
 ```
@@ -173,7 +172,6 @@ lib/
 ├── useApi.ts                      # SWR data layer: useApi, useApiQuery, revalidateApi
 ├── useKeyboardShortcuts.tsx       # Keyboard shortcut hook
 ├── useModalA11y.ts                # Dialog focus, Escape, and scroll behavior
-├── useUndo.tsx                    # Undo/redo provider and hooks
 ├── utils.ts                       # formatCurrency, setDefaultCurrency, toLocalDateString, toLocalMonthString
 ├── validation.ts                  # Zod schemas + parseBody/parseFormBody for API routes
 ├── budgetUtils.test.ts            # Unit tests
@@ -208,7 +206,7 @@ prisma/
 
 | Entry Point | File | Purpose |
 |-------------|------|---------|
-| App Root | `src/app/layout.tsx` | Root layout with providers (Toast, Profile, Settings, Undo, Keyboard) |
+| App Root | `src/app/layout.tsx` | Root layout with providers (Toast, Profile, Settings, Keyboard) |
 | Dashboard | `src/app/page.tsx` | Home page with financial summary |
 | API Gateway | `src/app/api/*/route.ts` | 47 API route files |
 | Database | `prisma/schema.prisma` | Schema definition (20 models); data stored under `data/` |

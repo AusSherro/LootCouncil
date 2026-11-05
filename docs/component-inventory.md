@@ -76,7 +76,6 @@ The application has **31 React component files** in `src/components/`. Component
 | Component | File | Description |
 |-----------|------|-------------|
 | Toast | `Toast.tsx` | `ToastProvider` and `useToast()` notifications |
-| UndoToast | `UndoToast.tsx` | Floating undo/redo action bar |
 
 ---
 
@@ -120,14 +119,12 @@ layout.tsx
 └── ToastProvider
     └── ProfileProvider
         └── SettingsProvider
-            └── UndoProvider (src/lib/useUndo.tsx)
-                └── KeyboardShortcutsProvider
-                    ├── Sidebar                  # Desktop nav + profile menu
-                    ├── <main>
-                    │   └── AutoResetErrorBoundary
-                    │       └── page
-                    ├── MobileNav                # Mobile bottom nav
-                    └── UndoToast                # Floating undo bar
+            └── KeyboardShortcutsProvider
+                ├── Sidebar                  # Desktop nav + profile menu
+                ├── <main>
+                │   └── AutoResetErrorBoundary
+                │       └── page
+                └── MobileNav                # Mobile bottom nav
 
 Page Components (each page)
 ├── Skeleton                   # Loading states

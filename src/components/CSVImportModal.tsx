@@ -29,6 +29,7 @@ interface ImportResult {
     success: boolean;
     imported: number;
     duplicates: number;
+    categorized?: number;
     total: number;
 }
 
@@ -317,6 +318,9 @@ export default function CSVImportModal({ isOpen, onClose, onSuccess, accounts }:
                         <h3 className="text-xl font-semibold text-foreground mb-2">Import Complete!</h3>
                         <div className="space-y-1 text-neutral mb-6">
                             <p><span className="text-success font-medium">{result.imported}</span> transactions imported</p>
+                            {!!result.categorized && (
+                                <p><span className="text-gold font-medium">{result.categorized}</span> categorised by your rules</p>
+                            )}
                             {result.duplicates > 0 && (
                                 <p><span className="text-warning font-medium">{result.duplicates}</span> duplicates skipped</p>
                             )}
