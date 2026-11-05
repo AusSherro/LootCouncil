@@ -8,6 +8,7 @@ export function matchesRule(value: string, matchType: string, matchValue: string
 
     switch (matchType) {
         case 'equals':
+        case 'exact': // Older rules were saved with 'exact' by the settings form.
             return lowerValue === lowerMatch;
         case 'contains':
             return lowerValue.includes(lowerMatch);

@@ -87,7 +87,7 @@ export default function TransactionRulesSettings() {
     function openEditForm(rule: TransactionRule) {
         setName(rule.name);
         setMatchField(rule.matchField);
-        setMatchType(rule.matchType);
+        setMatchType(rule.matchType === 'exact' ? 'equals' : rule.matchType);
         setMatchValue(rule.matchValue);
         setCategoryId(rule.categoryId || '');
         setIsActive(rule.isActive);
@@ -258,7 +258,7 @@ export default function TransactionRulesSettings() {
                                 className="input"
                             >
                                 <option value="contains">Contains</option>
-                                <option value="exact">Exact Match</option>
+                                <option value="equals">Exact Match</option>
                                 <option value="startsWith">Starts With</option>
                                 <option value="endsWith">Ends With</option>
                             </select>

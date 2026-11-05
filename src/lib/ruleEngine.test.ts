@@ -4,6 +4,7 @@ import { findMatchingRule, matchesRule } from './ruleEngine';
 describe('matchesRule', () => {
     it.each([
         ['equals', 'Coffee Shop', 'coffee shop'],
+        ['exact', 'Coffee Shop', 'coffee shop'],
         ['contains', 'Weekly Coffee Shop', 'coffee'],
         ['startsWith', 'Coffee Shop', 'coffee'],
         ['endsWith', 'Local Coffee', 'coffee'],

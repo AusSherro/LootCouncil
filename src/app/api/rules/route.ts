@@ -17,9 +17,11 @@ import {
 } from '@/lib/validation';
 
 const matchField = z.enum(['payee', 'memo', 'amount']);
-// 'exact' is what the rules settings form sends for "Exact Match"; the rule
-// engine only knows 'equals'. Both are accepted here so existing forms keep working.
-const matchType = z.enum(['contains', 'equals', 'exact', 'startsWith', 'endsWith', 'regex']);
+// 'exact' is an older spelling of 'equals' (the settings form used to send it);
+// it is still accepted but stored as 'equals'.
+const matchType = z
+    .enum(['contains', 'equals', 'exact', 'startsWith', 'endsWith', 'regex'])
+    .transform(value => (value === 'exact' ? 'equals' : value));
 // Not trimmed: leading/trailing spaces are meaningful in a "contains" match.
 const matchValue = z.string().min(1, 'is required').max(200, 'must be at most 200 characters');
 const priority = z.number().int().min(-1000).max(1000);
