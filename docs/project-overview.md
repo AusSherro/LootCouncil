@@ -8,7 +8,7 @@
 
 **Loot Council** is a local-first personal finance application for zero-based envelope budgeting inspired by YNAB. The default Finance theme is clean and work-focused, with optional personality themes including the original dark Dungeon palette. All data lives on the user's machine via SQLite — privacy first, no cloud dependency. It runs locally on the user's Windows PC, started with `start-budget.bat`.
 
-The application is a full-stack monolith built with **Next.js 16** (App Router), **TypeScript 5**, **Prisma 6** ORM over **SQLite**, and styled with **Tailwind CSS 4**. It provides budgeting, investment portfolio tracking, FIRE (Financial Independence, Retire Early) calculator, AI-powered financial advisement, and comprehensive reporting.
+The application is a full-stack monolith built with **Next.js 16** (App Router), **TypeScript 5**, **Prisma 7** ORM over **SQLite**, and styled with **Tailwind CSS 4**. It provides budgeting, investment portfolio tracking, FIRE (Financial Independence, Retire Early) calculator, AI-powered financial advisement, and comprehensive reporting.
 
 ---
 
@@ -35,7 +35,7 @@ The application is a full-stack monolith built with **Next.js 16** (App Router),
 | Framework | Next.js (App Router + Turbopack) | 16.2 |
 | Language | TypeScript (strict mode) | 5.x |
 | Database | SQLite | Local file |
-| ORM | Prisma | 6.19 |
+| ORM | Prisma | 7.10 |
 | Styling | Tailwind CSS | 4.x |
 | Icons | Lucide React | 0.563.0 |
 | Charts | Recharts | 3.7.0 |
@@ -99,4 +99,4 @@ The application is a full-stack monolith built with **Next.js 16** (App Router),
 - **Local-first** — SQLite database stored at `data/loot-council.db`
 - **Multi-profile** — Profile model scopes all data; profile selected via cookie/query param
 - **Server bound to 127.0.0.1** — Not accessible from network (security hardening)
-- **Runs locally only** — `start-budget.bat` opens the browser and runs `npm run dev`. The `Dockerfile` and `deploy/` (Raspberry Pi/Caddy) files are left over from an earlier self-hosted setup and are not how the app runs today
+- **Runs locally only** — `start-budget.bat` opens the browser and runs `npm run dev`.

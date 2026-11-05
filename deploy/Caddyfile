@@ -1,9 +1,0 @@
-# Reverse proxy
-# Loot Council: http://192.168.68.120/
-#
-# `loot-council` resolves via the Compose `web` network, so the app never needs
-# a published host port.
-
-:80 {
-	reverse_proxy loot-council:3000
-}

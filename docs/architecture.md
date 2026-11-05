@@ -67,7 +67,7 @@ Loot Council is a **local-first personal finance application** built as a monoli
 | **Framework** | Next.js (App Router) | 16.2 | Full-stack React framework |
 | **Language** | TypeScript | 5.x | Type-safe development |
 | **Database** | SQLite | — | Local file-based database |
-| **ORM** | Prisma | 6.19 | Database access & migrations |
+| **ORM** | Prisma | 7.10 | Database access & migrations |
 | **Styling** | Tailwind CSS | 4.x | Utility-first CSS |
 | **Charts** | Recharts | 3.7.0 | Data visualizations |
 | **Icons** | Lucide React | 0.563.0 | Icon library |
@@ -194,7 +194,7 @@ The app runs only on the user's Windows PC. `start-budget.bat` opens `http://127
 ```bash
 npm run dev          # Turbopack dev server (127.0.0.1:3000)
 npx prisma studio    # Database GUI (localhost:5555)
-npm run build        # Production build (standalone output)
+npm run build        # Production build
 npm run start        # Production server (127.0.0.1 only)
 ```
 
@@ -202,8 +202,6 @@ npm run start        # Production server (127.0.0.1 only)
 - **Node.js 20.9+** on the local machine
 - **No cloud infrastructure** — runs entirely locally
 - **GitHub Actions CI** — lint, typecheck, isolated tests, production build, and dependency audit on pushes and pull requests to `main`
-
-The repository also contains a `Dockerfile` and Raspberry Pi/Caddy files under `deploy/` from an earlier self-hosted setup. They are not how the app runs today.
 
 ---
 

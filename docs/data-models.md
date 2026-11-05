@@ -6,7 +6,7 @@
 
 ## Overview
 
-The database uses **SQLite** (local file: `data/loot-council.db`) managed through **Prisma 6** ORM. The schema defines **20 models** organized into 8 functional domains.
+The database uses **SQLite** (local file: `data/loot-council.db`) managed through **Prisma 7** ORM. The schema defines **20 models** organized into 8 functional domains.
 
 **Key conventions:**
 - All monetary values stored as **integers in cents** (avoids floating-point errors)

@@ -10,7 +10,6 @@
 loot-council/
 ├── .github/workflows/ci.yml       # Lint, typecheck, test, build, and dependency audit
 ├── data/                          # Local SQLite databases (gitignored)
-├── deploy/                        # Former Raspberry Pi/Caddy/Compose setup (not used to run the app)
 ├── docs/                          # Project documentation
 ├── prisma/                        # Schema (20 models) and migrations
 ├── scripts/
@@ -21,8 +20,8 @@ loot-council/
 │   ├── app/                       # Next.js App Router pages and 47 API routes
 │   ├── components/                # 31 reusable UI components
 │   └── lib/                       # 29 utilities, hooks, and test files
-├── Dockerfile                     # Standalone image (not used to run the app today)
-├── next.config.ts                 # Standalone output, Turbopack, package-import optimisation
+├── prisma.config.ts               # Prisma CLI config (schema, migrations, datasource URL)
+├── next.config.ts                 # Turbopack, package-import optimisation
 ├── package.json                   # Scripts and dependencies
 ├── start-budget.bat               # Windows launcher: opens the browser and runs npm run dev
 ├── vitest.config.ts               # Unit/integration test configuration
@@ -163,7 +162,8 @@ lib/
 ├── exchangeRate.ts                # Exchange-rate retrieval with 1-hour DB cache
 ├── navigation.ts                  # Shared navigation items for Sidebar/MobileNav
 ├── openai.ts                      # OpenAI client, OPENAI_MODEL, chat/insights/optimize helpers
-├── prisma.ts                      # Prisma client singleton (default export)
+├── databaseUrl.ts                 # Resolves DATABASE_URL to an absolute SQLite path
+├── prisma.ts                      # Prisma client singleton (better-sqlite3 adapter, default export)
 ├── profile.ts                     # getProfileId() (query param → cookie → oldest profile)
 ├── profileOwnership.ts            # Profile-scoped entity lookup helpers
 ├── ruleEngine.ts                  # matchesRule() + findMatchingRule() with ReDoS guards
@@ -210,6 +210,6 @@ prisma/
 | Dashboard | `src/app/page.tsx` | Home page with financial summary |
 | API Gateway | `src/app/api/*/route.ts` | 47 API route files |
 | Database | `prisma/schema.prisma` | Schema definition (20 models); data stored under `data/` |
-| Config | `next.config.ts` | Next.js config (standalone output, Turbopack) |
+| Config | `next.config.ts` | Next.js config (Turbopack) |
 | Styles | `src/app/globals.css` | Theme variables, animations |
 | Launch Script | `start-budget.bat` | Windows launch (opens browser + runs `npm run dev`) |

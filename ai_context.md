@@ -4,7 +4,7 @@
 **Loot Council** is a local-first personal finance application for serious zero-based budgeting (envelope method). Its default Finance theme is clean and work-focused; optional themes provide more personality, including the original dark Dungeon palette.
 
 ### Core Philosophy
-1. **Local-First**: Data lives on the user's machine (`sqlite`). Privacy first. No cloud dependency. The app runs only on the user's Windows PC: `start-budget.bat` opens `http://127.0.0.1:3000` and runs `npm run dev` (bound to 127.0.0.1). The `Dockerfile` and `deploy/` (Raspberry Pi/Caddy) files are from an earlier self-hosted setup and are not how it runs today.
+1. **Local-First**: Data lives on the user's machine (`sqlite`). Privacy first. No cloud dependency. The app runs only on the user's Windows PC: `start-budget.bat` opens `http://127.0.0.1:3000` and runs `npm run dev` (bound to 127.0.0.1).
 2. **Aesthetic**: Trustworthy, modern, and factual. Finance light is the default; six optional themes are available.
 3. **YNAB-Inspired**: Envelope budgeting, "Ready to Assign", category goals - all inspired by YNAB methodology.
 
@@ -16,7 +16,7 @@
 | Framework | Next.js 16 | App Router with Turbopack |
 | Language | TypeScript 5 | Strict mode |
 | Database | SQLite | Local file: `data/loot-council.db` |
-| ORM | Prisma 6 | Do NOT upgrade to 7 (driver issues) |
+| ORM | Prisma 7 | better-sqlite3 driver adapter |
 | Styling | Tailwind CSS 4 | Custom CSS variables in globals.css |
 | Icons | Lucide React | Consistent icon library |
 | Charts | Recharts | For all data visualizations |
@@ -153,7 +153,7 @@ src/
 ## ⚠️ Critical Development Directives
 
 ### 1. Database & Prisma
-- **Version**: Use **Prisma 6**. Do NOT upgrade to Prisma 7 (driver adapter issues with Next.js 16 Turbopack).
+- **Version**: Prisma 7 with the `better-sqlite3` driver adapter. The client is created in `src/lib/prisma.ts`; CLI settings live in `prisma.config.ts`. A relative `DATABASE_URL` is resolved against `prisma/` by `src/lib/databaseUrl.ts`, so `file:../data/loot-council.db` means `data/loot-council.db`.
 - **Connection**: `DATABASE_URL="file:../data/loot-council.db"` in `.env`
 - **Schema changes**: Every change to `schema.prisma` needs a migration: `npx prisma migrate dev --name <change>`. `npm test` builds the test DB with `prisma migrate deploy` and fails on schema drift. The history is a single squashed baseline, `20260726120000_init`
 - **Client location**: Default `@prisma/client` output; import the shared client with `import prisma from '@/lib/prisma'`

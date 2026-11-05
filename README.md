@@ -244,7 +244,7 @@ Most budgeting apps want your data in their cloud and a monthly subscription fee
 </td>
 <td align="center" width="96">
 <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/prisma/prisma-original.svg" width="48" height="48" alt="Prisma" />
-<br/><sub><b>Prisma 6</b></sub>
+<br/><sub><b>Prisma 7</b></sub>
 </td>
 <td align="center" width="96">
 <img src="https://cdn.jsdelivr.net/gh/devicons/devicon/icons/tailwindcss/tailwindcss-original.svg" width="48" height="48" alt="Tailwind" />
@@ -266,7 +266,7 @@ Most budgeting apps want your data in their cloud and a monthly subscription fee
 | Framework | Next.js (App Router + Turbopack) | 16.2.6 | Full-stack React framework |
 | Language | TypeScript (strict mode) | 5.x | Type safety |
 | Database | SQLite | — | Local-first data storage |
-| ORM | Prisma | 6.19.2 | Database access & migrations |
+| ORM | Prisma | 7.10 | Database access & migrations |
 | Styling | Tailwind CSS | 4.x | Utility-first CSS |
 | Icons | Lucide React | 0.563.0 | Consistent icon system |
 | Charts | Recharts | 3.7.0 | Data visualization |
@@ -286,7 +286,7 @@ Most budgeting apps want your data in their cloud and a monthly subscription fee
 
 ### Prerequisites
 
-- **Node.js** 20+ ([download](https://nodejs.org/)) — matches the project's Docker image
+- **Node.js** 20+ ([download](https://nodejs.org/))
 - **npm** (bundled with Node.js)
 
 ### Quick Start

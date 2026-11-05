@@ -9,13 +9,13 @@
 - **Type:** Monolith — Full-stack web application
 - **Primary Language:** TypeScript 5 (strict mode)
 - **Framework:** Next.js 16 (App Router + Turbopack)
-- **Database:** SQLite (local file) via Prisma 6
+- **Database:** SQLite (local file) via Prisma 7
 - **Architecture:** Local-first, monolithic, client-rendered pages + API routes
 - **How it runs:** Locally on the user's Windows PC via `start-budget.bat` (`npm run dev`, bound to 127.0.0.1)
 
 ### Quick Reference
 
-- **Tech Stack:** Next.js 16.2 · TypeScript 5 · SQLite · Prisma 6 · Tailwind CSS 4 · Recharts · Lucide React · OpenAI
+- **Tech Stack:** Next.js 16.2 · TypeScript 5 · SQLite · Prisma 7 · Tailwind CSS 4 · Recharts · Lucide React · OpenAI
 - **Entry Point:** `src/app/layout.tsx` (root layout) → `src/app/page.tsx` (dashboard)
 - **API Gateway:** `src/app/api/*/route.ts` (47 route files, 26 top-level domains)
 - **Database:** `prisma/schema.prisma` (20 models) → `data/loot-council.db`

@@ -42,8 +42,6 @@ Open [http://127.0.0.1:3000](http://127.0.0.1:3000).
 
 Loot Council runs only on the local machine. On Windows, double-click `start-budget.bat`: it opens `http://127.0.0.1:3000` in the browser and runs `npm run dev`. The server binds to `127.0.0.1`, so it is not reachable from other devices on the network.
 
-The repository still contains a `Dockerfile` and Raspberry Pi/Caddy files under `deploy/`. They are not used to run the app at the moment and are not covered by this guide.
-
 ---
 
 ## Environment Setup
@@ -71,7 +69,7 @@ These are the only environment variables the code reads. Other settings live els
 | Command | Description |
 |---------|-------------|
 | `npm run dev` | Start dev server with Turbopack on `127.0.0.1:3000` (hot reload) |
-| `npm run build` | Production build (`output: 'standalone'`) |
+| `npm run build` | Production build |
 | `npm run start` | Start production server on `127.0.0.1` |
 | `npm run lint` | Run ESLint |
 | `npm run typecheck` | Run `tsc --noEmit` |
@@ -215,7 +213,7 @@ DATABASE_URL="file:../data/loot-council-demo.db" node scripts/seed-demo.mjs
 - **Via Prisma:** `npx prisma migrate reset` (drops and recreates the whole database file)
 
 ### Important: Prisma Version
-Use **Prisma 6**. Do NOT upgrade to Prisma 7 (driver adapter issues with Next.js 16 Turbopack).
+Prisma 7 with the `better-sqlite3` driver adapter. The client is created in `src/lib/prisma.ts`; CLI settings live in `prisma.config.ts`. A relative `DATABASE_URL` is resolved against `prisma/` by `src/lib/databaseUrl.ts`, so `file:../data/loot-council.db` means `data/loot-council.db`.
 
 ---
 
