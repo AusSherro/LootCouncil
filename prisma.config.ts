@@ -9,7 +9,5 @@ if (existsSync('.env')) process.loadEnvFile('.env');
 export default defineConfig({
     schema: 'prisma/schema.prisma',
     migrations: { path: 'prisma/migrations' },
-    // Commands like `prisma generate` need no database, and CI has no .env,
-    // so fall back to the usual local path.
-    datasource: { url: resolveDatabaseUrl(process.env.DATABASE_URL ?? 'file:../data/loot-council.db') },
+    datasource: { url: resolveDatabaseUrl() },
 });
